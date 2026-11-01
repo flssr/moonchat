@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: moonchat-biz
+
+server:
+  port: ${MOONCHAT_BIZ_PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+info:
+  app:
+    name: moonchat-biz

@@ -1,0 +1,3 @@
+[submodule "vendor/turms"]
+	path = vendor/turms
+	url = https://github.com/turms-im/turms.git

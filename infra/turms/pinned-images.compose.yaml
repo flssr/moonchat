@@ -1,0 +1,12 @@
+services:
+  turms-admin:
+    image: ghcr.io/turms-im/turms-admin@sha256:bbdda2f39418e615de7647c7d460abe07acf9a1030350c595ab59b09a9488c8c
+    pull_policy: always
+
+  turms-gateway:
+    image: ghcr.io/turms-im/turms-gateway@sha256:99f51a29c23dff5590c6a71191b571d002a377afd161f29d5b500b188b0a42b6
+    pull_policy: always
+
+  turms-service:
+    image: ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c
+    pull_policy: always
