@@ -10,40 +10,44 @@
 
 | # | 文档 | id | 类型 | parent | depends-on | 一句话 | 回答什么问题 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | [`goal-and-requirements.md`](goal-and-requirements.md) | `moonchat-product` | goal-and-requirements | —（根） | — | agent 不是工具，而是和你同处一个房间的参与者 | 这个产品为谁解决什么？什么不做？M1/M2/M3 各验什么？ |
-| 2 | [`architecture.md`](architecture.md) | `moonchat-architecture` | architecture-design | `moonchat-product` | — | Turms 拥有「谁在哪个会话里说了什么」，Biz 拥有「谁是谁、哪些账号有哪些工作区」 | 分几层？谁是谁的真相？一条消息怎么走完全程？跨模块不许破什么？ |
-| 3 | [`messaging-and-tunnel.md`](messaging-and-tunnel.md) | `moonchat-messaging` | module-design | `moonchat-architecture` | —（被 #4、#5 依赖） | Turms 是消息与成员的唯一真相，`im-facade` 是唯一窄门且门里没有发送的手 | 消息落在哪？只读查询怎么出去？为什么 Biz 一条消息都不发？ |
-| 4 | [`account-and-ownership.md`](account-and-ownership.md) | `moonchat-accounts` | module-design | `moonchat-architecture` | `moonchat-messaging` | 真人与 agent 是同一种账号，账号归归属者，实际操作人是 agent | 账号模型？归属如何授权？来源标记从哪来、能拿来判权限吗？ |
-| 5 | [`workspace.md`](workspace.md) | `moonchat-workspaces` | module-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-messaging` | 工作区是 agent 账号在一个会话里的切片——承载通道与状态，不承载内容与记忆 | 工作区存什么不存什么？三档投递怎么定义？offline 与拉取边界？ |
-| 6 | [`agent-connection.md`](agent-connection.md) | `moonchat-agent-connection` | module-design | `moonchat-architecture` | `moonchat-workspaces`、`moonchat-accounts` | agent 的端点是它的大脑，connector 是它在 Turms 里的手和耳朵 | 三条车道怎么走？connector 有几个模块？限流与无响应在哪收口？ |
-| 7 | [`content-and-moderation.md`](content-and-moderation.md) | `moonchat-content` | module-design | `moonchat-architecture` | `moonchat-accounts` | 帖子、动态流、图片都在 PG 与 RustFS 里，与实时链路无关 | 内容层怎么存？附件怎么引用？举报与处置怎么落到隧道与工作区？ |
-| 8 | [`deployment.md`](deployment.md) | `moonchat-deployment` | module-design | `moonchat-architecture` | `moonchat-agent-connection` | connector 必须独立进程，但那是运行时边界，不是服务边界 | 部署哪些单元？为什么不能合进一个进程？什么时候才升格微服务？ |
+| 1 | [`goal-and-requirements.md`](goal-and-requirements.md) | `moonchat-product` | goal-and-requirements | —（根） | — | 一个 QQ / 微信形态的社交平台，账号的能力是可被 agent 操控的清单 | 这个产品为谁解决什么？第一版做什么？什么不做？V2 打算做什么？ |
+| 2 | [`architecture.md`](architecture.md) | `moonchat-architecture` | architecture-design | `moonchat-product` | — | Turms 只做会话、消息与投递；群、成员、好友、账号的真相都在 PG，Turms 里的群是单向投影 | 分几层？谁是谁的真相？一条消息怎么走完全程？跨模块不许破什么？ |
+| 3 | [`messaging-and-tunnel.md`](messaging-and-tunnel.md) | `moonchat-messaging` | module-design | `moonchat-architecture` | —（被 #4、#5、#6、#8 依赖） | Turms 是消息唯一的写入者与投递者；群与成员的真相在 PG，`im-facade` 负责投影并握着唯一一支代发的手 | 群和消息落在哪？谁在建群？消息怎么写入？Turms 里的群为什么只是投影？ |
+| 4 | [`account-and-ownership.md`](account-and-ownership.md) | `moonchat-accounts` | module-design | `moonchat-architecture` | `moonchat-messaging` | 真人与 agent 是同一种账号，账号归归属者，能力是一张清单 | 账号模型与资料？主页是什么？来源标记能拿来判权限吗？ |
+| 5 | [`friends.md`](friends.md) | `moonchat-friends` | module-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-messaging` | 好友关系是私聊的授权，它是 PG 里的一张表——隧道不知道它，执行点在 Biz 的写入网关 | 谁能加谁？agent 怎么加好友？非好友为什么在私聊里根本不出现？删好友之后会怎样？ |
+| 6 | [`agent-connection.md`](agent-connection.md) | `moonchat-agent-connection` | module-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | agent 是它自己账号的一个 Turms 客户端；平台不给它专用转发层 | agent 怎么接入？发言走哪？限流与来源在哪收口？收全部会话的代价是什么？ |
+| 7 | [`deployment.md`](deployment.md) | `moonchat-deployment` | module-design | `moonchat-architecture` | `moonchat-messaging` | 业务只有一个进程：Biz 是无状态 REST，会话在客户端、限流桶在 Redis | 部署哪些单元？为什么不需要第二个业务进程？什么时候才拆？ |
+| 8 | [`biz-data-model.md`](biz-data-model.md) | `moonchat-biz-data` | submodule-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | biz 的 PostgreSQL 只有七张表，业务真相全在这里，消息与投递状态都不在 | 表怎么建？聚合边界在哪？哪些规则只能由应用层守？哪些表明确不建？ |
 
 依赖图（`depends-on` 边，先读被依赖的一方）：
 
 ```mermaid
 graph TD
-  P["moonchat-product<br/>产品目标与切片"]
+  P["moonchat-product<br/>PRD：定位与 V1/V2"]
   A["moonchat-architecture<br/>架构总览"]
   M["moonchat-messaging<br/>消息与隧道"]
   AC["moonchat-accounts<br/>账号与归属"]
-  W["moonchat-workspaces<br/>工作区"]
-  AG["moonchat-agent-connection<br/>接入面与 connector"]
-  C["moonchat-content<br/>内容与治理"]
+  F["moonchat-friends<br/>好友关系"]
+  AG["moonchat-agent-connection<br/>agent 接入面"]
   D["moonchat-deployment<br/>部署与运行时"]
+  BD["moonchat-biz-data<br/>biz 数据模型与表结构"]
 
   P --> A
   A --> M
   A --> AC
-  A --> W
+  A --> F
   A --> AG
-  A --> C
   A --> D
   M --> AC
-  AC --> W
-  W --> AG
-  AC --> C
-  AG --> D
+  M --> F
+  M --> AG
+  AC --> F
+  AC --> AG
+  F --> AG
+  A --> BD
+  BD --> M
+  BD --> AC
+  BD --> F
 ```
 
 ---
@@ -52,11 +56,10 @@ graph TD
 
 | 你要做什么 | 顺序 |
 | --- | --- |
-| 只想看懂产品 | 1 → 2 |
-| 准备实现 M1 | 1（M1 切片与验收）→ 2 → 3 → 4 → 5 → 6 → 8 |
+| 只想看懂产品 | 1 |
+| 准备实现 V1 | 1（范围与验收）→ 2 → 3 → 4 → 5 → 6 → 7 → 8（动手写迁移前先看表结构） |
 | 只碰某个模块 | 先读它的 `depends-on`，再读它自己；涉及边界时回读 2 的「三条边界硬规矩」与「跨模块不变量」 |
-| 判断一个想法是不是越界 | 1（Non-Goals + M1 不包含清单）→ 2（跨模块不变量） |
-| 改内容层 / 图片 / 举报 | 4（账号是作者主体）→ 7 |
+| 判断一个想法是不是越界 | 1（§5 范围 + §8 Non-Goals）→ 2（跨模块不变量） |
 
 ---
 
@@ -64,10 +67,10 @@ graph TD
 
 ```yaml
 ---
-id: moonchat-workspaces        # 全局唯一，发布后不改；改 id 等于断开所有引用
-type: module-design            # goal-and-requirements | architecture-design | module-design
+id: moonchat-friends           # 全局唯一，发布后不改；改 id 等于断开所有引用
+type: module-design            # goal-and-requirements | architecture-design | module-design | submodule-design
 status: active                 # active | draft | stale | deprecated
-title: 工作区
+title: 好友关系
 parent: moonchat-architecture  # 树边，只能指向已存在的 id
 depends-on:                    # 语义依赖边，只能指向已存在的 id
   - moonchat-accounts
@@ -75,7 +78,7 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 ---
 ```
 
-- 顶层树：`moonchat-product` → `moonchat-architecture` → 6 份 module-design。
+- 顶层树：`moonchat-product` → `moonchat-architecture` → 6 份 module-design，外加挂在架构下的 1 份 submodule-design（`moonchat-biz-data`，把各模块的业务真相落成 PG 表结构）。
 - `depends-on` 表示**读它与改它前必须先理解的上游**，不是调用关系。
 - 正文第一行固定是 `**一句话**：…` 定位句；改模块职责时这句与上表都要同步改。
 
@@ -83,18 +86,25 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 
 ## 四、维护约定
 
-1. **一份文件一个模块**，文件名用模块的英文短名（`workspace.md`，不是 `05-工作区设计.md`）。
+1. **一份文件一个模块**，文件名用模块的英文短名（`friends.md`，不是 `05-好友设计.md`）。
 2. **spec 一律放在 `docs/` 下**。仓库根目录只允许 `README.md` 与 `AGENTS.md` 两个文件；新增、改名或删除 spec 时，同步改完 `README.md` 与本台账的全部链接，不留半迁移状态。
 3. **新增 spec 时同时做三件事**：建文件 → 填齐 frontmatter 并挂好 `parent` / `depends-on` → 更新本文档「一、台账」与依赖图。
 4. **临时笔记不进仓库**：计划写进对话内 TODO，草稿留在对话里；`NOTES.md` / `TODO.md` / `plan.md` 出现在任何目录都算污染。
-5. **只在本文档登记已定稿的 spec**。还在讨论中的内容不进台账——台账的用途是「这里有什么」，不是「这里可能有什么」。
+5. **只登记已定稿的 spec**。还在讨论中的内容不进台账——台账的用途是「这里有什么」，不是「这里可能有什么」。
+6. **`deliverables/` 放对外交付稿，不是 spec**：目前一份 `deliverables/MoonChat_V1_HLD.md`（V1 概要设计稿，源于 spec 重写前的三档投递 / connector / 工作区设计）。它没有 frontmatter、不进 `docs/`、不参与 spec-graph，**也不作为设计依据**；与本文档登记的 8 份 spec 冲突时以 spec 为准。
 
 ---
 
 ## 五、已知缺口（与本台账相关）
 
-- `workspace.md` 中**默认档位 `push_all`** 与**轻信号 5 秒合并窗口**都标着「（未确认）」，尚未定稿。
-- `agent-connection.md` 中「无响应」判据在档位上线后**已不成立**，M2 之前必须按档位重写。
-- 三处缺口的具体处置规矩见 [`AGENTS.md`](../AGENTS.md) §5。
+- **写入网关不是唯一写入路径**（`agent-connection.md`、`messaging-and-tunnel.md`）：持 Turms 凭据的客户端可以直连 Turms 写入，绕过限流、来源标记与非好友私聊校验；群消息仍由 Turms 的成员投影把关。真人与 agent 都在这条缺口里。
+- **Turms 被配置成不校验好友关系**（`allowSendMessagesToStranger = true`）：好友校验只在写入网关，这是「好友不投影」的直接代价。
+- **Turms 里可能有游离 group**（客户端自建）：平台不认，但 Turms 的群列表因此不等于 PG 的 `room_info` 表。
+- **无响应提示不在第一版**；旧判据（依赖投递与档位）已不成立，重写口径在 `moonchat-product` §13。
+- **公开群的 Turms 只读能力未实测**，因此公开群与邀请链接被推迟。
+- **若干数字仍无依据**：P95 300ms、两级限流桶的具体速率。
+- **Admin API 能否以指定发送者代发消息未实测**（`messaging-and-tunnel.md` 的实测第 5 条）：整套写入路径建在这个假设上，不成立就要退回让客户端各自直发。
+- **客户端还没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、群成员资料页都没描述；「非好友只见资料页」这类界面级规则目前只写在 `friends.md`，实现客户端前先回读它。
+- 具体处置规矩见 [`AGENTS.md`](../AGENTS.md) §5。
 
 > 给 AI agent 的协作规则（硬边界、已定简化、范围纪律、提交规范、交付前自检）在仓库根目录的 [`AGENTS.md`](../AGENTS.md)。

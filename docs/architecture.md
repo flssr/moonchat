@@ -8,83 +8,97 @@ parent: moonchat-product
 
 # MoonChat 架构总览
 
-**一句话**：Turms 拥有「谁在哪个会话里说了什么」，Biz 拥有「谁是谁、哪些账号有哪些工作区」，两者之间只经由 `im-facade` 与「agent 校验 / 工作区解析」两个窄接口。
+**一句话**：Turms 是 IM 引擎——会话、消息、投递与消息存储都在它那儿；账号、好友、群与成员都在 PG，发言统一经 Biz 的写入网关代发进 Turms，而读消息由每个客户端自己的 Turms 会话完成。
 
 本文件只放**跨模块**的东西：分层、拓扑、边界规矩、数据归属、端到端主线、跨模块不变量。每个模块的职责、边界、流程、不变量与简化项都在各自的 module-design 里。
 
 ## 分层
 
-- **隧道层（Turms）**：消息、群成员、会话、私信、在线状态。**账号即 Turms 用户，一账号一用户**；客户端只有两类——真人客户端（Flutter，同一账号可多端）与 `agent-connector`。
-- **业务层（moonchat-biz，Spring）**：账号与归属（真人与 agent 同构）、工作区、房间可见性、动态流、举报。**不发送任何消息，不在实时消息链路上。**
-- **接入层（agent-connector）**：把 agent 账号在隧道里的每个会话翻译成一个工作区上的 webhook（内容按该工作区的投递档位裁剪），把 agent 的发送调用翻译回隧道，并提供 agent 自己拉取历史的只读出口。它是 agent 在隧道里的「手和耳朵」。
+- **传输层（Turms）**：会话、消息存储、投递、在线状态；外加群与成员的**投影**（只含投递必需的字段）。**账号即 Turms 用户，一账号一用户**。它是消息唯一的写入者与投递者。
+- **业务层（moonchat-biz）**：账号与资料、好友关系、群与群成员、凭据签发、**写入网关**（发言的归属校验、授权判定、限流与来源标记）。并通过 `im-facade` 把群与成员投影进 Turms、把发言代发进 Turms。
+- **客户端**：只有一类形状——**账号的 Turms 客户端**。真人的 Flutter 与 agent 端点都是：各自用该账号的 Turms 凭据连 `turms-gateway` 收消息与自己查历史，用 Biz 的 REST 发言与做关系动作。两者的差别只有凭据类型（真人是登录 JWT，agent 是账号密钥）与限流（只有 agent 进桶）。
+
+上一版的 `agent-connector` 不再存在：它是「平台侧替 agent 持会话 + 转发 webhook」的那一层，而这两件事现在分别由「agent 自己持会话」与「Biz 的写入网关」承担。为什么删得掉，见 `moonchat-agent-connection`。
 
 ## 顶层拓扑
 
 ```
-── 隧道面 ─────────────────────────────────────────────────────────
-Flutter Web ──WS（Turms 协议，可切换账号）──┐
-                                            ├──> turms-gateway ──> turms-service ──> MongoDB
-agent-connector ──WS（Turms）───────────────┘                            └── Redis
-   │  ▲ 为每个 agent 账号与平台系统账号各维持一条 Turms 会话
-   │
+── 传输面 ─────────────────────────────────────────────────────────
+Flutter Web ──WS（Turms：收取消息、自己查历史）────────────────┐
+agent 端点 ──WS（同一个 Turms 网关，用该账号凭据）──────────────┤
+                                                              ├──> turms-gateway ──> turms-service ──> MongoDB
+                                                              ┘                          └── Redis
+
 ── 业务面 ─────────────────────────────────────────────────────────
 Flutter Web ──REST/JSON──> moonchat-biz ──> PostgreSQL
-agent-connector ──内部接口（agent 密钥校验、工作区解析）──> moonchat-biz
-moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员 / 签发账号凭据 / 只读查询，不发消息）
-
-── 存储面 ─────────────────────────────────────────────────────────
-Flutter Web / agent ──直传（预签名 URL）──> RustFS（S3 兼容）
-消息与帖子里只存附件 id，不存外链
-
-── agent 接入面（用户自己的服务）────────────────────────────────────
-agent-connector ── webhook（HMAC 签名，带 workspace_id，按档位裁剪内容，agent 回 2xx）──> 用户的 agent 端点
-                ◀── POST /agent-messages（带 agent 密钥）──
-                ◀── GET /agent-workspaces/{id}/messages（带 agent 密钥，只读拉取）──
+   │  账号、好友、群与成员、凭据签发、发言写入网关
+agent 端点   ──REST/JSON（账号密钥）──> moonchat-biz（同一套接口）
+moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影 / 签发凭据 / 同步资料 / 代发消息）
 ```
+
+两条方向相反的路：
+
+| 路 | 走哪 | 谁发起 | 带什么 |
+| --- | --- | --- | --- |
+| **写** | 客户端 → Biz REST → `im-facade` → Turms Admin API | 真人客户端或 agent 端点 | 目标会话、正文；身份来自 REST 入口的凭据 |
+| **读** | 客户端 → Turms WS / 客户端 API | 客户端自己 | 该账号在自己可见范围内的消息 |
 
 ## 模块与文档
 
 | 模块 | 文档 | 一句话 |
 | --- | --- | --- |
-| 消息与隧道 | `moonchat-messaging` | Turms 是消息与成员的唯一真相，`im-facade` 是唯一窄门且门里没有发消息的手 |
-| 账号与归属 | `moonchat-accounts` | 真人与 agent 同构账号；归属者切换账号使用它，来源由写入路径决定 |
-| 工作区 | `moonchat-workspaces` | agent 账号在会话里的切片：承载通道与状态，不承载内容与记忆 |
-| agent 接入面与 connector | `moonchat-agent-connection` | 唤醒与发言两条车道；connector 是唯一出口与唯一会话 |
-| 内容与治理 | `moonchat-content` | 帖子、动态流、图片在 PG 与 RustFS；治理只做处置 |
-| 部署与运行时 | `moonchat-deployment` | connector 必须独立进程，但那是运行时边界，不是服务边界 |
+| 消息与隧道 | `moonchat-messaging` | Turms 只做会话、消息与投递；群与成员的真相在 PG，`im-facade` 负责投影与代发 |
+| 账号与归属 | `moonchat-accounts` | 真人与 agent 同构账号；归属者切换账号使用它，来源由写入网关的凭据决定 |
+| 好友关系 | `moonchat-friends` | 好友是私聊的授权，落在 PG 的一张表里，隧道不知道它 |
+| agent 接入面 | `moonchat-agent-connection` | agent 是它自己账号的一个 Turms 客户端；平台不给它专用转发层 |
+| 部署与运行时 | `moonchat-deployment` | 只有一个业务进程，但写入与投递的边界不因合并而消失 |
+| biz 数据模型与表结构 | `moonchat-biz-data` | biz 的 PostgreSQL 只有七张表，业务真相全在这里 |
 
-## 三条边界硬规矩
+## 四条边界硬规矩
 
-1. **消息只由隧道写入。** 能向 Turms 发消息的只有真人客户端与 `agent-connector`，后者代 agent 发言。Biz 一条消息都不发，也不直连 MongoDB。
-2. **Biz 不碰实时消息流。** 它只在需要时做只读查询（公开房间的历史、agent 拉取自己工作区的历史），不参与投递。
-3. **connector 不持有业务真相。** 账号归属、密钥、工作区与 offline 开关都在 PG；connector 通过 Biz 的内部接口取，只做短时缓存。
+1. **消息只由隧道写入。** Turms 是消息存储与投递的唯一写入者。服务端要发一条消息，只有一条路：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`；客户端则用自己账号的 Turms 会话发。除此之外没有第三个写入者，任何模块不得直写 Mongo 的消息集合。
+2. **`im-facade` 只有一支发送的手，只对写入网关开放。** 它能建群、改成员投影、签发凭据、同步资料、代发消息。**代发必须带调用方已认证出的 `senderId`**——它不能代表一个未经 Biz 校验的账号发言。客户端的 Turms 会话能自己发消息，那是 `moonchat-messaging` 里写明的已知旁路，不是第二条服务端入口。
+3. **Biz 不做投递、不订阅消息事件。** 它在写入进路上同步校验（归属、授权、限流、来源），校验完就交出去；不参与投递，不订阅消息事件做计数 / 通知 / 审计。
+4. **业务真相只在 PG。** 账号归属、唯一认证哈希、好友、群成员、群资料都在 PG；Turms 只保留投递必需的投影，客户端只持有可重建的本地状态。限流桶在 Biz 的 Redis 键空间里，是可重建的运行状态，不是业务真相。
 
 ## 数据归属
 
 | 数据 | 归属 | 备注 |
 | --- | --- | --- |
-| 账号（human / agent）、归属者、agent 端点与密钥哈希、默认投递档位 | PostgreSQL（Biz） | 业务真相 |
-| 工作区记录（scope 绑定、offline 开关、档位覆盖）、房间业务属性（公开/私密）、帖子与来源、互动、举报 | PostgreSQL（Biz） | 业务真相 |
-| 房间消息、私信消息、会话状态、群成员关系、消息来源属性 | Turms（MongoDB / Redis） | 隧道真相 |
-| agent 会话、按工作区索引的投递记录与 60 秒计时、轻信号合并状态（每工作区最多一条未决信号）、两级令牌桶 | agent-connector 的 Redis 键空间 | 可重建，丢了只需重放未决投递 |
-| 附件元数据（附件 id、归属、可见范围） | PostgreSQL（Biz） | 业务真相 |
-| 图片对象 | RustFS（S3 兼容对象存储） | 只存二进制，不存任何业务关系 |
+| 账号（human / agent）、归属者、资料（名字）、唯一认证哈希 | PostgreSQL（Biz） | 业务真相 |
+| 好友关系与好友申请 | PostgreSQL（Biz） | 业务真相；隧道不知道它的存在 |
+| 群（名称、所有者）、群成员 | PostgreSQL（Biz） | 业务真相；`room_info` / `room_member`；群只有一种可见性，它不是一列数据（`moonchat-messaging` 的 `GroupType`） |
+| 消息、会话、在线状态 | Turms（MongoDB / Redis） | 传输引擎真相；PG 没有消息副本 |
+| 群与群成员在 Turms 里的 group / member | Turms | **投影**：只含投递必需的字段，可从 PG 重建 |
+| 发言的限流桶（账号 → 会话两级） | Biz 的 Redis 键空间 | 可重建；重启后从零开始，不需要持久化 |
+| 发言的来源、限流命中 | Biz 的结构化日志 | 不进消息、不进 PG；没有审计表（`moonchat-product` §5.3） |
 
-两条同构的「一处记录 + 一处隧道对象」：**房间 = PG 的 `room` 记录 + Turms 的 group**；**工作区 = PG 的 `workspace` 记录 + Turms 侧的一个群成员身份或一条私信会话**。PG 只管状态与开关，内容一概在隧道里。
+两条不对称的事实：**业务真相都在 PG，Turms 里的群与成员只是投影**；**消息只在 Turms，PG 一行副本都没有**——所以「一条消息的历史」永远向 Turms 查，而「这个群有谁、这个人能不能私聊」永远向 PG 查。
+
+## PG → Turms 的单向投影
+
+- **方向只有一个**：Biz 写 PG，再经 `im-facade` 把群与成员投影进 Turms。没有反向：Biz 从不拿 Turms 的群成员或会话去做业务判断。
+- **可重放**：投影失败可重试；Turms 侧以 PG 为准重算，丢了按 PG 重建。
+- **只投影投递必需的字段**：群的 id、名字、所有者，以及成员列表。群的可见性、成员变更历史、好友关系都不投影；字段级规则与重建口径在 `moonchat-messaging` 的「群与成员的投影」。
+- **好友不投影**：Turms 不需要知道谁是好友，私聊在它那里只是一个会话。因此 Turms 会配置成不校验私聊的双方关系（`allowSendMessagesToStranger = true`，见 `moonchat-messaging`），好友校验统一在 Biz 的写入网关。
+- **Turms 里没被 PG 记过的群，平台视为不存在**：客户端即使自己建了一个 Turms group，它没有成员授权、不进群列表、不被投递，也不在 `room_info` 表里。
 
 ## 一条消息的旅程
 
-1. 人在房间里说话：客户端直连 Turms 发出，Turms 落库并广播（`moonchat-messaging`）。
-2. connector 用该 agent 账号的会话收到推送，解析成 `workspace_id`，offline 则丢弃，再按该工作区的**档位**分流：`push_all` 带全文投递、`signal_only` 只发轻信号（同一工作区同时最多一条未决信号，新消息只更新 `since_seq` 与 `unread_count`）、`mention_only` 只在 mentions 命中时才投递（`moonchat-workspaces`）。
-3. 签名 webhook 打到 agent 端点，带 `workspace_id`；agent 立刻 ack（`moonchat-agent-connection`）。
-4. `signal_only` 下 agent 另调 `GET /agent-workspaces/{id}/messages` 拉全文：connector 校验归属与 offline → Biz → `im-facade` → Turms 历史查询，全程只读。
-5. agent 想说话时另调 `/agent-messages`：过归属校验、两级桶、已参与会话校验，用同一账号的会话发出。
-6. 60 秒内没人替它说话，房间里出现「agent 无响应」的系统消息。
+0. **平台不为非好友提供私聊入口**：私聊只从好友列表与资料页进入，群聊里点非好友只能看到资料页与「加好友」。这条是客户端规则，也是写入网关的授权判据（见 `moonchat-friends`）。
+1. 写作者发言：真人客户端带登录 JWT、agent 端点带账号密钥，`POST /api/conversations/{type}/{id}/messages`。**这是唯一的服务端写入口**。
+2. Biz 的写入网关逐项校验：归属（这个凭据能不能代表这个账号）→ 会话（`room` 是 `room_info.id`，`dm` 是对端 `account_id`）→ 授权事实（群看 PG 的群成员，私聊看 PG 的好友关系）→ 限流（只有 agent 来源进「账号 → 会话」两级桶）→ 来源标记（写进结构化日志，不写进消息）。
+3. 校验通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `senderId`（第 2 步认证出的账号）、`senderDeviceType`、目标会话与正文。
+4. Turms 在写入路径上再做一次自己的校验（群消息必须是投影里的成员、私聊不得命中黑名单）、落库、并把消息推给双方的所有在线端。
+5. 该账号的所有 Turms 端（归属者的客户端、agent 端点）都收到广播。**平台不替 agent 筛选**：哪些会话归它管由 agent 自己判断（`moonchat-agent-connection`）。
+6. 读历史不走 Biz：客户端用自己的 Turms 会话查，可见范围由 Turms 的会话与成员关系决定。
 
 ## 跨模块不变量
 
-- **消息只有一个写入者：Turms。** 任何服务不得直写 Mongo 的消息集合，Biz 不得代发消息。
-- **身份只有一处真相**：Biz 的 `account` 表；`account.id` 就是 Turms 用户 id，connector 只能缓存校验结果。
-- **Turms 的客户端只有两类**：真人客户端与 `agent-connector`；agent 端点在任何情况下都不直连 Turms。
-- **工作区是切片，不是权限边界**：权限由群成员关系与房间可见性决定，工作区只描述通道与状态。
-- **档位只决定投递什么**：它是 agent 自己的接收策略，不改变成员关系、不扩大或缩小任何一方的可读范围；拉取出口的可见范围与投递路径完全相同。
+- **消息只有一个写入者：Turms。** 服务端的唯一写入口是写入网关经 `im-facade` 的那一支手；任何服务不得直写 Mongo 的消息集合。
+- **业务真相只在 PG。** 账号、好友、群与成员都以 PG 为准；Turms 里的 group / member 是可重建投影，任何模块不得把它们当成真相，也不得为它们再建表。
+- **身份只有一处真相**：Biz 的 `account` 表；`account.id` 就是 Turms 用户 id。
+- **客户端只有一类**：账号的 Turms 客户端。agent 端点不是特例——它用同一套凭据签发路径拿 Turms 凭据，用同一套 REST 发言。
+- **私聊的授权是 PG 的好友关系，执行点在写入网关**，不在 Turms，也不在客户端的入口规则。客户端的入口规则（只从好友列表与资料页进）是体验层，不承担授权；改过的客户端直连 Turms 仍是已知缺口（见 `moonchat-messaging` 与 `moonchat-friends`）。
+- **限流只在写入网关一处**：两级桶（账号 → 会话），超限直接拒绝，不计入也不影响真人；本人的发言不进任何 agent 桶。
+- **没有投递设置这一层**：平台没有 webhook、没有推送档位、没有工作区。agent 收到的是它账号的全部会话消息，怎么用由它自己决定。

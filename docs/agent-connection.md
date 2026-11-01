@@ -2,98 +2,125 @@
 id: moonchat-agent-connection
 type: module-design
 status: active
-title: agent 接入面与 connector
+title: agent 接入面
 parent: moonchat-architecture
 depends-on:
-  - moonchat-workspaces
   - moonchat-accounts
+  - moonchat-friends
+  - moonchat-messaging
 ---
 
-# agent 接入面与 connector
+# agent 接入面
 
-**一句话**：agent 的端点是它的「大脑」，connector 是它在 Turms 里的「手和耳朵」——一条 Turms 会话 + 一个端点，承载 N 个工作区。
+**一句话**：agent 端点就是它自己账号的一个 Turms 客户端——用该账号的凭据收消息与自己查历史，用 Biz 的 REST 发言与做关系动作；平台没有给它专用的转发层。
 
-## 三条车道
-
-webhook 不是链路中的一跳，而是 connector 对 agent 端点发起的那次 POST。唤醒、拉取、发言是**三趟独立请求**：agent 回 2xx 只是 ack，body 不携带任何要发的内容；要看正文得拉，要说话必须另调一次 `/agent-messages`。
+## 接入面
 
 ```mermaid
 flowchart LR
-  AG["agent 端点<br/>（你的服务，agent 的大脑）"]
-  CN["agent-connector"]
-  TM["Turms"]
+  AG["agent 端点<br/>（用户自己的服务，agent 的大脑）"]
+  CN["turms-gateway"]
+  BZ["moonchat-biz<br/>账号 / 好友 / 群成员 / 写入网关"]
 
-  TM -->|"① 推送：这个账号所在会话的每条消息"| CN
-  CN -->|"② webhook：HMAC 签名 POST，内容按档位裁剪，期望 2xx"| AG
-  AG -->|"③ 2xx ack（不携带任何要发的内容）"| CN
-  AG -->|"④ GET /agent-workspaces/{id}/messages（agent 密钥，since_seq）"| CN
-  CN -->|"⑤ 只读历史查询"| TM
-  AG -->|"⑥ POST /agent-messages（agent 密钥，要发的内容在这里）"| CN
-  CN -->|"⑦ 用该账号的 Turms 会话发出"| TM
+  CN -->|"① 推：该账号全部会话的消息"| AG
+  AG -->|"② 查历史：Turms 客户端 API"| CN
+  AG -->|"③ 发言：POST /api/conversations/{type}/{id}/messages"| BZ
+  AG -->|"④ 关系动作：与真人同一套 /api/friendships"| BZ
+  AG -->|"⑤ 换凭据：POST /api/agent/session"| BZ
+  BZ -->|"⑥ im-facade → Turms Admin API 代发"| CN
 ```
 
-| 车道 | 谁发起 | 携带什么 | 凭据 | 对方的期待 |
-| --- | --- | --- | --- | --- |
-| 唤醒 ①②③ | connector → 端点 | `workspace_id`、会话、按档位裁剪的消息或轻信号、发送者账号、event id | HMAC 签名 + 时间戳窗口 | 立刻 2xx；body 随你，平台按 event id 去重 |
-| 拉取 ④⑤ | 端点 → connector | 目标工作区、`since_seq`、`limit` | agent 密钥 | 按 seq 升序返回消息，只读，带发送者与 `mentions` |
-| 发言 ⑥⑦ | 端点 → connector | 目标会话、内容、附件 id | agent 密钥 | 成功才落 Turms，失败回执错误、自己重试 |
+| 车道 | 谁发起 | 走哪 | 凭据 |
+| --- | --- | --- | --- |
+| 收消息 ① | Turms 推给它自己的会话 | WS（与真人客户端同一个网关） | Turms 凭据 |
+| 查历史 ② | agent 端点 → Turms | Turms 客户端 API，可见范围由它的会话与成员关系决定 | Turms 凭据 |
+| 发言 ③ | agent 端点 → Biz | REST，唯一的服务端写入口 | 账号密钥 |
+| 关系动作 ④ | agent 端点 → Biz | REST，与真人同一套接口 | 账号密钥 |
+| 换凭据 ⑤ | agent 端点 → Biz | REST，一次性明文密钥换 Turms 凭据 | 账号密钥 |
 
-由此得出四点：
+**没有 agent 专用端点**：上一版的 `/agent-messages`、`/agent-conversations/...`、`/agent-subscription`、`/agent-friend-requests`、`/agent-friends/{id}` 全部消失。agent 与真人共用 `/api/*`，差别只在凭据类型。
 
-- 回 2xx 不代表要说话——可以收一堆只 ack；也可以没收到任何消息就用 ⑥ 主动发言。
-- 因为 ③ ⑥ 是两趟，agent 可以 ack 后慢慢想再发：只要 60 秒内用 ⑥ 说过话，房间就不会出现「无响应」。
-- **档位决定 ② 里有什么**：`push_all` 带正文，`signal_only` 只带 `workspace_id` / `since_seq` / `unread_count`，`mention_only` 在没被 @ 时连 ② 都不发（见 `moonchat-workspaces`）。
-- ⑥ 是唯一入口、⑦ 是唯一会话：agent 无法绕开 connector 直连 Turms，限流、offline、成员校验、来源标记都在这两处收口。
+## 凭据与身份
 
-## 数量关系
+- 归属者创建 agent 时拿到一次性的明文密钥；PG 只存哈希（`account_info.credential_hash`，`moonchat-biz-data`）。
+- `POST /api/agent/session`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。
+- 这条路与「归属者切换到自己名下的 agent 账号」是同一条签发路径（`moonchat-accounts`）；Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时在线。
+- **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能发消息。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。
 
-| 关系 | 基数 |
+## 收：全部会话，自己筛
+
+- agent 收到的是**该账号的全部会话**，包括归属者与别人的对话、以及它不该插手的群。平台不筛：没有工作区、没有推送档位、没有「只推它参与的会话」。
+- 所以 agent 的实现必须自己回答「这条消息归我管吗」。平台不管这个判断，也不把它写进任何配置。
+- 与真人的唯一差别是筛的手段：真人用眼睛，agent 用代码。
+- 归属者切进同一个账号发言时，agent 端点同样会收到——那本来就是这个账号说过的话。
+
+## 写：一个网关
+
+- **发言**：`POST /api/conversations/{type}/{id}/messages`，body 带正文。成功即 Turms 已落库并投递；失败带错误码，重试与否由 agent 自己决定。第一版没有结构化 `mentions`，`@` 只是正文里的字符（`moonchat-messaging`）。
+- **关系动作**：与真人同一套 `POST /api/friendships`、`GET /api/friendships?status=pending`、`POST /api/friendships/{id}`、`DELETE /api/friendships/{peer_account_id}`（`moonchat-friends`）。
+- **资料**：`GET /api/accounts/{account_id}`、改自己的名字。
+- 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `account_id`，没有第三个编号要给 agent 记。
+
+## 限流与来源
+
+| 项 | 规则 |
 | --- | --- |
-| agent 账号 ↔ Turms 用户 | 1 : 1（`account.id` 就是 Turms 用户 id） |
-| agent 账号 ↔ connector 持有的 Turms 会话 | 1 : 1，不是每工作区一条 |
-| agent 账号 ↔ agent 端点 | 1 : 1，建 agent 时填的那个 HTTPS 端点 |
-| agent 账号 ↔ 工作区 | 1 : N，全部复用同一条会话与同一个端点 |
+| 来源 | 由 REST 入口的凭据决定：账号密钥 → `agent`，登录 JWT → `owner`。只写进结构化日志，不写进消息，不作权限判定 |
+| 限流 | 只有 `agent` 来源进桶：**账号 → 会话**两级，逐级更小，超限直接拒绝；本人的发言不进任何 agent 桶 |
+| 为什么只限 agent | 真人是人，agent 是循环：一个出错的循环几秒钟就能发完真人一天的量 |
+| 桶在哪 | Biz 的 Redis 键空间，按 `(账号)` 与 `(账号, 会话)` 两级；重启归零，不需要持久化 |
+| 速率 | 具体值**未确认**；不凭空定，等真实流量 |
 
-## connector 模块（独立部署单元）
+好友申请只进账号级桶。限流命中只打日志，不建审计表（`moonchat-product` §5.3）。
 
-| 模块 | 职责 |
-| --- | --- |
-| `session-manager` | 为每个 agent 账号与 `moonchat-system` 维持一条 Turms 会话，负责重连与凭据更新 |
-| `workspace-resolver` | 把 `(agent 账号, 会话)` 解析成工作区、有效档位与 offline 状态，短时缓存 |
-| `dispatcher` | 从会话收到的消息里筛出要通知的 agent，按档位分支（全文 / 轻信号合并 / 只看 mention）签名投递 webhook，维护按工作区的投递记录与 60 秒计时 |
-| `ingress` | agent 的发送入口：校验、offline 检查、两级令牌桶、已参与会话校验、经会话发出 |
-| `pull` | agent 的只读出口：校验归属与 offline，经 Biz 与 `im-facade` 取该工作区的历史消息 |
-| `verify-client` | 向 Biz 校验 agent 归属与密钥状态，短时缓存 |
+## 与真人客户端的差异（全部）
 
-## 流程
+| 维度 | 真人客户端 | agent 端点 |
+| --- | --- | --- |
+| 凭据 | 登录 JWT | 账号密钥，换同一套 Turms 凭据 |
+| 限流 | 不进桶 | 账号 → 会话两级桶 |
+| 筛消息 | 人眼 | 代码 |
+| 其余 | 相同 | 相同 |
 
-**唤醒 agent**
-connector 作为该 agent 账号的在线会话直接收到 Turms 推送 → 解析出 `workspace_id` 与有效档位，offline 则丢弃 → 按档位分流：
+## 为什么删得掉上一版那一层
 
-- `push_all`：每条消息都带全文投递——agent 得先看到大家在聊什么，才谈得上自己判断要不要接话（成本由归属者自付）。
-- `signal_only`：只投轻信号，同一工作区同时最多一条未决信号，新消息只更新 `since_seq` 与 `unread_count` 并重置合并窗口（5 秒，未确认）；拉取成功后清除。
-- `mention_only`：只当消息的 mentions 命中该 agent 时才投递全文。
+上一版的四条车道里，**唤醒**与**拉取**做的都是同一件事：把 Turms 已经有的推送与历史，转发给一个不能直连 Turms 的 HTTP 端点。转发层存在的唯一理由，是 agent 端点当时被规定不能当 Turms 客户端。现在它可以，转发就失去了存在理由：
 
-三种档位都走同一次 HMAC 签名 POST → agent 立即回 2xx → 记一条工作区投递记录，并挂一个 60 秒到期的计时。
-
-**agent 拉取历史**
-agent 调 `GET /agent-workspaces/{id}/messages?since_seq=&limit=`（带 agent 密钥）→ 校验归属 → offline 则拒绝 → Biz → `im-facade` → Turms 历史查询 → 按 seq 升序返回。**全程只读**，可见范围与投递路径完全相同；它只补「已经在投递范围内的那一段」，不补进群之前的历史。
-
-**agent 说话（回复 / 主动发言）**
-agent 调 `POST /agent-messages`（带 agent 密钥）→ 校验归属 → 解析目标会话的工作区，offline 则拒绝 → 两级令牌桶（该账号 → 该工作区）→ 校验目标会话是该账号已参与的（群靠成员关系，私信靠已有会话）→ 用该账号的 Turms 会话发出 → 清掉投递计时。
-
-**无响应**
-60 秒内该 agent 没通过入口说话、归属者也没在该会话里说过话，connector 用平台系统账号 `moonchat-system` 在房间里发一条「agent 无响应」的系统消息——这也是它代发的唯一非 agent 身份内容。一对一会话里不发这条提示，状态只留给归属者看。
-
-**这条判据在档位上线后不成立（M2 前必须先改）**：现在的判据是「60 秒内没说话」，而 `mention_only` 的 agent 没被叫到本来就不该说话、`signal_only` 的 agent 可能还在等合并窗口——直接沿用会制造大量假无响应。M2 的定义应当是：**只有在该工作区确实发生过投递、且 agent 没有在 60 秒内产生任何动作**时才提示。
+| 上一版 | 现在 | 为什么能删 |
+| --- | --- | --- |
+| connector 每账号持一条 Turms 会话 | agent 自己持 | 同一个账号本来就是一条会话；谁持都一样 |
+| webhook 唤醒（要公网地址） | Turms 直接推给 agent 的会话 | 客户端拨出，不需要任何入向地址 |
+| 三档投递 + 5 秒合并 + `since_seq` 拉取 | 不需要；agent 收到全部，自己决定读什么 | 档位是在 webhook 载荷上裁剪出来的，没有转发就没有裁剪点 |
+| `/agent-*` 六个入口 | 与真人同一套 `/api/*` | 少了转发层，就不需要第二套接口面 |
+| 有界串行队列、丢最旧、`event id` 去重 | 不需要 | 没有转发就没有队列 |
+| 工作区（`(agent 账号, 会话)` 坐标） | 删除 | 它只承载投递设置，而投递设置不存在了 |
 
 ## 不变量
 
-- **agent 只有一条出口和一条会话**：`POST /agent-messages` 是唯一入口，connector 持有的那条 Turms 会话是唯一写出通道。
-- **限流只有一处**：入口处的两级桶（每个账号 → 每个工作区，逐级更小）。超限直接拒绝，不计入也不影响真人；本人的发言不进任何 agent 桶。全局桶推迟到 agent 数量成为真实问题时再做。
-- **私信只能回复**：agent 只能发往自己已参与的会话——群靠 Turms 成员校验，私信靠已有会话校验，不能凭空给陌生人开新私信。
-- **connector 不持有业务真相**：账号归属、密钥、工作区与 offline 都在 PG，它只缓存解析结果。
+- **发言只有一条服务端路径**：Biz 的写入网关。agent 与真人走同一处，校验、限流、来源标记都在那里收口。
+- **平台不为 agent 保存任何投递设置**：没有 webhook 地址、没有档位、没有工作区、没有订阅声明。
+- **平台不筛会话**：agent 看到它账号的全部会话，这是有意的；筛选是 agent 自己的责任。
+- **凭据只存哈希**，明文只在创建时返回一次；Turms 凭据签发即用，不落 PG。
+- **agent 只有一个关系动作**：发好友申请（需对方同意）。建群、拉人、移除成员只有真人能做。
+
+## 已知缺口
+
+**持 Turms 凭据的客户端可以直接对 Turms 发消息，绕过写入网关。** 具体后果：
+
+| 被绕过的东西 | 后果 | 绕不过的部分 |
+| --- | --- | --- |
+| 限流与来源标记 | 一个改过的 agent 能刷屏，日志上看不到「经网关」的记录 | — |
+| 私聊授权（非好友不能私聊） | Turms 不投影好友关系，配置成 `allowSendMessagesToStranger = true` 后它对私聊只查黑名单 | — |
+| 群消息的成员校验 | — | Turms 仍按投影的成员列表拒绝非成员 |
+
+这条缺口在真人侧本来就有（受信客户端之外的任何客户端都能这么干）；现在 agent 因为要收消息也拿到了同样的能力。两个方向都要先改 spec 才能动：
+
+1. **关掉客户端侧的写入**：写一个极小的 Turms 插件，拒绝所有客户端过来的 `CreateMessageRequest`，迫使写入只能走 Admin API。它无状态、不碰业务、不调 Biz，与「把 connector 做成插件」不是一回事。
+2. **接受缺口**：把它写进产品口径——治理只约束守规矩的实现，安全边界靠账号凭据本身。
 
 ## 已定的简化
 
-- **私信不给 agent 发起权**：agent 只能回复已有会话，发起新私信不是它的能力。
+- **不建 connector、不建 webhook、不建档位、不建工作区**：这四样是上一版「平台替 agent 转发」的产物。
+- **agent 收全部会话，自己筛**：平台不做会话级订阅与裁剪。
+- **写入多一跳 Biz**：Turms 不可用时发言直接失败，V1 不排队重试。
+- **不做 agent 专用的 SDK 或本地客户端**：agent 侧用现成的 Turms 客户端库（`turms-client-js` / `dart` / `kotlin` / `cpp` / `swift`）加 Biz 的 REST。
