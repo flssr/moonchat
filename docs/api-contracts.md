@@ -132,7 +132,7 @@ Authorization: Bearer <token>
 
 ### 3.1 `POST /api/auth/register`
 
-注册一个真人账号并直接拿到 JWT（省掉一次登录往返）。
+注册一个真人账号。**不签发 JWT**：注册与登录是两次独立请求，客户端注册成功后自己再调 §3.2 换凭据。
 
 **请求**
 
@@ -147,10 +147,10 @@ Authorization: Bearer <token>
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `account_id` | number | 新建账号的 id，也是它的 Turms 用户 id |
-| `token` | string | 登录 JWT |
-| `expires_at` | string | JWT 过期时间 |
-| `account.display_name` | string | 同请求值 |
-| `account.type` | string | 固定 `human` |
+| `display_name` | string | 同请求值 |
+| `type` | string | 固定 `human` |
+
+响应里**没有 token**：注册不建立会话，登录（§3.2）才发 JWT。
 
 **错误**：`validation_failed` 400、`conflict` 409（email 已存在）。
 
