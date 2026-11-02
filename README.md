@@ -81,6 +81,36 @@ docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinn
 
 镜像使用构建当时核对过的 digest，不跟随上游 `latest` 漂移。本阶段只搭建骨架，数据库迁移、注册登录、好友与投递接口都还没有实现。
 
+### Turms 冒烟（验证凭据与写入边界）
+
+`infra/turms/smoke` 是一个一次性脚本，验证 `docs/messaging-and-tunnel.md` 里「凭据与客户端权限」的四条断言：指定 id 建用户、Biz 签的 JWT 能登录、只授 `QUERY` 的凭据发不出消息、Admin 带 `senderId` 代发的消息真的会到客户端。
+
+```powershell
+# 1. 生成冒烟用的 HMAC 密钥（32 字节，已在 .gitignore 里）
+$key = "$PWD/infra/turms/secrets/jwt-hmac256.key"
+if (!(Test-Path $key)) {
+  New-Item -ItemType Directory -Force (Split-Path $key) | Out-Null
+  $bytes = New-Object byte[] 32
+  [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+  [IO.File]::WriteAllBytes($key, $bytes)
+}
+$env:MOONCHAT_JWT_SECRET_FILE = $key
+
+# 2. 带 JWT 认证覆盖启动 Turms（比默认多一个 -f）
+$env:ENV = 'dev'
+docker compose -f vendor/turms/docker-compose.standalone.yml `
+  -f infra/turms/pinned-images.compose.yaml `
+  -f infra/turms/jwt-identity.compose.yaml up -d --wait
+
+# 3. 构建仓库内自带的 Turms JS 客户端（只需一次），然后跑冒烟
+cd vendor/turms/turms-client-js; npm i; npm run build; cd ../../..
+cd infra/turms/smoke; npm i; npm run smoke
+```
+
+`infra/turms/jwt-identity.compose.yaml` 只用于这条冒烟路径：它把 `turms-gateway` 的 `identity-access-management.type` 改成 `jwt` 并挂入上面那个密钥文件，与其他配置无关。
+
+冒烟需要本地能拉到 `mongo:8.0.12-noble` 与三张 `ghcr.io/turms-im/*` 镜像；拉不到就先离线导入镜像再跑（本仓库不提供镜像源）。
+
 固定的 Turms 源码声明 Java 25，而 MoonChat 模块使用 Java 21。运行 Turms 使用预构建镜像，不需要本地编译它；只有修改并重新构建 Turms 源码时才需要额外安装 JDK 25。
 
 ## 目录约定
