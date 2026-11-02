@@ -376,13 +376,13 @@ create index account_room_deleted_at_idx
 
 ## 8. 待确认
 
-三项已经清掉（源码核对结果）：Admin API 能用指定 id 建用户，但**建群不能指定 id**（`AddGroupDTO` 没有 id）→ `turms_group_id` 必定由 Turms 生成后回填；`POST /messages` 能带 `senderId` 代发；Turms 默认的名字上限 20、正文上限 500 已进入接口约束。细节在 `moonchat-messaging` 的「要核对的 7 条」。
+只剩三件，且都不是表结构本身的事：
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| `account.id` 起始段是否与 Turms 内置 id 冲突 | identity 默认从 1 开始；Turms 的 admin 账号是另一套集合，不是 `user` | 运行时确认新建用户的 id 就是 `account.id`（`moonchat-messaging` 第 1 条） |
-| agent 密钥的 pepper 来源与轮换方式 | 已定密码用 bcrypt（cost 10 起）；pepper 还没定 | pepper 的存放与轮换没有外部依据，需在产品侧定一个值 |
-| 邮箱长度与格式细节 | DB 只保证非空与基本形状；名字上限已定 20（Turms 默认） | 邮箱没有外部约束可依，需自己定一个值 |
-| 两级限流桶的具体速率 | 暂定账号 60 次/分钟、会话 20 次/分钟，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
+| agent 密钥的 pepper 来源与轮换方式 | 密码已定 bcrypt（cost 10 起）；pepper 未定 | pepper 的存放与轮换没有外部依据，需在产品侧定一个值 |
 | 软删保留时长与 purge 频率 | 未定 | 两个数字必须有产品依据；确定前不写死 |
 | 索引是否够用 | 除主键、唯一约束和四个 `deleted_at` purge 索引外，只建 `account_owner_idx`；好友与群成员的有效行查询命中主表与反向表主键 | V1 单实例没有实测数据，等真实流量再补，不预建 |
+
+已经清掉的（源码核对与实测）：Admin API 能用指定 id 建用户、但**建群不能指定 id**（`AddGroupDTO` 没有 id）→ `turms_group_id` 必定由 Turms 生成后回填；`POST /messages` 能带 `senderId` 代发；建出来的用户 id 就是 `account.id`，Turms 的管理员账号在另一套集合里不占 id；名字上限 20（Turms 默认）、邮箱 254、密码 8..72 且不能纯数字。细节见 `moonchat-messaging` 的「要核对的 7 条」。
+
