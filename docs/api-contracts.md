@@ -14,7 +14,7 @@ depends-on:
 
 # Biz 业务接口契约（REST）
 
-**一句话**：Biz 对外只有 19 条 `/api/*` 路由——身份、好友、群与成员、发言；消息的读与投递一条都不在这里。
+**一句话**：Biz 对外只有 20 条 `/api/*` 路由——身份、好友、群与成员、发言；消息的读与投递一条都不在这里。
 
 ## 0. 这份文档管什么
 
@@ -48,13 +48,14 @@ Authorization: Bearer <token>
 
 | token 形态 | 谁用 | 网关判定 | 来源标记 |
 | --- | --- | --- | --- |
-| 登录 JWT（三段 base64url，Biz 自签自验） | 真人客户端（含归属者切进 agent 账号） | 验签 + 未过期 | `owner` |
+| 登录 JWT（三段 base64url，Biz 自签自验，**7 天**） | 真人客户端（含归属者切进 agent 账号） | 验签 + 未过期 | `owner` |
 | 账号密钥（agent 创建时拿到的那串明文） | agent 端点 | 算确定性 HMAC-SHA256 后按 `account_info.credential_hash` 反查账号 | `agent` |
 
 - **来源由凭据形态决定，不看请求体自报的任何字段**；它只进结构化日志与限流判定，不作权限判定（`moonchat-accounts`、`moonchat-agent-connection`）。
 - **两个不需要认证的路由**：`POST /api/auth/register`、`POST /api/auth/login`。
 - **一个两者都接受的路由**：`POST /api/sessions`——不带 JWT 且带 `account_key` 是 agent 换凭据；带 JWT 且带 `account_id` 是归属者切账号（§3.3）。
 - **登录 JWT ≠ Turms 凭据**：登录 JWT 只对 Biz 有效（认作 `owner` 来源）；Turms 凭据由 `POST /api/sessions` 单独签发，是一份 Turms 能验的 JWT，`statements` 只授 `QUERY`（§3.3）。两者都走同一个 `Authorization` 头。
+- **无感续期由两半组成**：登录 JWT 在过期前调 `POST /api/auth/refresh` 滑动续（§3.4）；Turms 凭据（12 小时）在过期前重调 `POST /api/sessions` 换新的（§3.3，可重复调用）。客户端只需一个定时器，不靠“碰运气刚好没过期”。
 - 冻结（`account_info.status = 'frozen'`）的账号：可登录、可读，**停写入与好友申请**（`account_frozen`）。
 
 ### 1.3 响应与错误
@@ -80,7 +81,7 @@ Authorization: Bearer <token>
 | `not_found` | 404 | 账号、群、好友关系、待处理申请不存在（含已写 `deleted_at` 的） |
 | `conflict` | 409 | 状态与请求冲突：已是好友、已在群里、申请已被处理、重复发起同类关系 |
 | `owner_cannot_leave` | 409 | 群主退群或移除自己（V1 没有转让，也没有解散群） |
-| `rate_limited` | 429 | agent 来源超过账号级或会话级桶（带 `Retry-After` 秒数，速率未确认） |
+| `rate_limited` | 429 | agent 来源超过账号级（暂定 60 次/分钟）或会话级（暂定 20 次/分钟）桶；两个数字写进配置，不是硬编码 |
 | `upstream_unavailable` | 503 | `im-facade` 没从 Turms 拿到确认（只在发言接口出现） |
 | `internal_error` | 500 | 未分类的服务端错误，响应里不带堆栈 |
 
@@ -103,7 +104,7 @@ Authorization: Bearer <token>
 
 ## 2. 接口总表
 
-19 条，一条动作只有一个入口。`来源` 列里 `owner` 指登录 JWT，`agent` 指账号密钥，`任意` 指两种都行。
+20 条，一条动作只有一个入口。`来源` 列里 `owner` 指登录 JWT，`agent` 指账号密钥，`任意` 指两种都行。
 
 | # | 方法与路径 | 用途 | 来源 | 读写的表 |
 | --- | --- | --- | --- | --- |
@@ -126,6 +127,7 @@ Authorization: Bearer <token>
 | 17 | `DELETE /api/rooms/{room_id}/members/me` | 退群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 18 | `DELETE /api/rooms/{room_id}/members/{account_id}` | 移除成员（仅群主） | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一服务端写入口） | 任意 | 不写 PG；读 `room_member` / `friendship`；经 `im-facade` 写 Turms |
+| 20 | `POST /api/auth/refresh` | 登录 JWT 滑动续期（无感续期的那一半） | 登录 JWT | 不写 PG |
 
 ---
 
@@ -139,8 +141,8 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 必填 | 约束 |
 | --- | --- | --- | --- |
-| `email` | string | 是 | trim + 转小写后唯一；含 `@` 且位置 > 1；长度上限未定（唯一没有外部约束可依的一项） |
-| `password` | string | 是 | 长度下限**未确认**；只存加盐慢哈希 |
+| `email` | string | 是 | trim + 转小写后唯一；含 `@` 且位置 > 1；**≤ 254**（RFC 上限） |
+| `password` | string | 是 | **8..72** 字符；**不能是纯数字**；只存 bcrypt 哈希。72 是 bcrypt 的硬上限，超过会被静默截断，必须在入口拦住 |
 | `display_name` | string | 是 | trim 后非空；≤ 20（与 Turms `max-name-length` 默认值一致，超了会被 Turms 拒） |
 
 **响应** `201`
@@ -203,8 +205,31 @@ Authorization: Bearer <token>
 
 - 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp` 与 `statements`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
 - **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。依据与前提（`type = jwt`、Turms 用户不存密码）在 `moonchat-messaging` 的「凭据与客户端权限」。
+- **有效期 12 小时**，客户端在过期前重调本接口（幂等读取，不创建任何会话状态）；过期后 Turms 会拒登录，重调即可。
 - `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权）。
 - Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时持同一账号的凭据。
+
+### 3.4 `POST /api/auth/refresh`
+
+登录 JWT 的滑动续期。**它只换登录凭据，不签发 Turms 凭据**——那一步永远走 §3.3。
+
+**请求**：无 body。凭据就是当前的登录 JWT。
+
+**响应** `200`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `token` | string | 新的登录 JWT，有效期从此刻起重算 7 天 |
+| `expires_at` | string | 新凭据的过期时间 |
+| `account.account_id` / `account.type` / `account.display_name` | number / string / string | 回显，省一次 `GET /api/accounts/mine` |
+
+**错误**：`unauthenticated` 401（当前 JWT 已过期/无效，或来源是账号密钥）、`account_frozen` 403。
+
+**副作用与不变量**
+
+- **无状态**：不写 PG、不存凭据记录，签发只由现有凭据 + 服务器密钥决定。
+- **滑动窗口**：每次续期都从“现在”重算 7 天，所以持续使用的客户端不会掉线；停用 7 天就要重新登录。
+- **账号密钥不能续**：agent 的凭据是归属者创建时发放的账号密钥（本身不变），没有过期与续期概念；它换 Turms 凭据走 §3.3。
 
 ---
 
@@ -454,7 +479,7 @@ Authorization: Bearer <token>
 | `not_friend` 403 | `dm` 且双方不是已成立好友（`friendship.status = 'accepted'` 且未 tombstone） |
 | `not_room_member` 403 | `room` 且调用者不是有效成员 |
 | `account_frozen` 403 | 调用者账号冻结 |
-| `rate_limited` 429 | `agent` 来源超账号级或会话级桶 |
+| `rate_limited` 429 | `agent` 来源超账号级（60/分钟）或会话级（20/分钟）桶，两个数字暂定、可配置 |
 | `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认 |
 
 **校验顺序**（与架构旅程一致，不许调换）：认证凭据 → 归属（凭据能不能代表这个账号）→ 会话解析（`type` / `id` 合法且目标存在）→ 授权事实（群成员 / 好友，现查 PG）→ 限流（只有 `agent` 来源进桶）→ 来源标记写日志 → 交出去。
@@ -506,16 +531,14 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 
 ## 10. 未确认
 
-已清掉的：Turms 凭据形态（JWT）、名字上限 20 与正文上限 500（取自 Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）。剩下这些：
+已清掉的：Turms 凭据形态（JWT）、名字 20 / 正文 500（Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）、邮箱 254 / 密码 8..72 且不能纯数字、登录 JWT 7 天 / Turms 12 小时、限流 60/20（暂定）。剩下这些：
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| Turms 凭据端到端能不能跑通 | 形态已定：Biz 签的 JWT（`sub` / `exp` / `statements`），Turms 配 `type = jwt` 验签 | 运行时跑一次登录，再用同一份凭据发一个 `CREATE_MESSAGE_REQUEST` 确认被拒；`gateway_url` 的取值（WS/WSS 路径）随部署定 |
+| Turms 凭据端到端能不能跑通 | 形态已定：Biz 签的 JWT（`sub` / `exp` / `statements`），Turms 配 `type = jwt` 验签 | 跑一遍 `infra/turms/smoke`；`gateway_url` 的取值随部署定 |
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
-| 邮箱长度上限与密码长度下限 | 未定 | 这两项没有外部约束可依，得给一个值；名字 20 已经有依据 |
-| 登录 JWT 与 Turms JWT 的有效期 | 响应里有 `expires_at`，值未定 | 需要与 Flutter Web 的会话体验一起定 |
 | 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |
 | 代发时的 `senderDeviceType` | Turms 接 `DeviceType` 枚举，但代发该填哪个值未定 | 影响推送与多端去重；等客户端接入后按实际设备定 |
-| 两级限流桶速率与 `Retry-After` 值 | 只定「账号 → 会话逐级更小」 | 必须等真实流量（`moonchat-agent-connection`） |
+| 两级限流速率 60/20 | 暂定值，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
 | 403 是否要进一步细分 | 现在 5 个 403 码 | 客户端接入后按实际分支再收窄或合并 |

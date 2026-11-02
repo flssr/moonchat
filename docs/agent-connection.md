@@ -48,6 +48,7 @@ flowchart LR
 - `POST /api/sessions {account_key}`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。归属者切进自己名下的 agent 账号走同一个路径的另一种请求形态（带登录 JWT + `account_id`，`moonchat-api` §3.3）。
 - 这条路与「归属者切换到自己名下的 agent 账号」是同一条签发路径（`moonchat-accounts`）；Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时在线。
 - **凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`**：agent 能用它登录 `/im`、收该账号全部会话、查历史，但**发不出消息**（`CREATE_MESSAGE_REQUEST` 会被 Turms 以 `UNAUTHORIZED_REQUEST` 拒）。它的发言只能走 REST 写入网关——与真人完全一致（`moonchat-messaging` 的「凭据与客户端权限」）。
+- **Turms 凭据 12 小时过期，无感续期**：agent 在 `expires_at` 前重调 `POST /api/sessions`（带账号密钥）换新的，不必重登；这一步无状态、可重复调用。登录 JWT 的滑动续期是 `POST /api/auth/refresh`，那是真人客户端的事。
 - **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能查全部历史。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。但它不能绕过写入网关：写权限不在凭据里。
 
 ## 收：全部会话，自己筛
@@ -72,7 +73,7 @@ flowchart LR
 | 限流 | 只有 `agent` 来源进桶：**账号 → 会话**两级，逐级更小，超限直接拒绝；本人的发言不进任何 agent 桶 |
 | 为什么只限 agent | 真人是人，agent 是循环：一个出错的循环几秒钟就能发完真人一天的量 |
 | 桶在哪 | Biz 的 Redis 键空间，按 `(账号)` 与 `(账号, 会话)` 两级；重启归零，不需要持久化 |
-| 速率 | 具体值**未确认**；不凭空定，等真实流量 |
+| 速率 | 账号级暂定 60 次/分钟、会话级暂定 20 次/分钟，写进配置（不是硬编码）；超限回 429 |
 
 好友申请只进账号级桶。限流命中只打日志，不建审计表（`moonchat-product` §5.3）。
 

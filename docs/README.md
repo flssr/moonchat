@@ -18,7 +18,7 @@
 | 6 | [`agent-connection.md`](agent-connection.md) | `moonchat-agent-connection` | module-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | agent 是它自己账号的一个 Turms 客户端；平台不给它专用转发层 | agent 怎么接入？发言走哪？限流与来源在哪收口？收全部会话的代价是什么？ |
 | 7 | [`deployment.md`](deployment.md) | `moonchat-deployment` | module-design | `moonchat-architecture` | `moonchat-messaging` | 业务只有一个进程：Biz 是无状态 REST，会话在客户端、限流桶在 Redis | 部署哪些单元？为什么不需要第二个业务进程？什么时候才拆？ |
 | 8 | [`biz-data-model.md`](biz-data-model.md) | `moonchat-biz-data` | submodule-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | biz 的 PostgreSQL 只有七张表，业务真相全在这里，消息与投递状态都不在 | 表怎么建？聚合边界在哪？哪些规则只能由应用层守？哪些表明确不建？ |
-| 9 | [`api-contracts.md`](api-contracts.md) | `moonchat-api` | module-design | `moonchat-architecture` | `moonchat-biz-data`、`moonchat-accounts`、`moonchat-friends`、`moonchat-messaging`、`moonchat-agent-connection` | Biz 对外只有 19 条 `/api/*` 路由：身份、好友、群与成员、发言，消息的读与投递一条都不在这里 | 有哪些接口？每条怎么认证、返回什么、错在哪？哪些动作明确不提供？每条接口读写了哪张表？ |
+| 9 | [`api-contracts.md`](api-contracts.md) | `moonchat-api` | module-design | `moonchat-architecture` | `moonchat-biz-data`、`moonchat-accounts`、`moonchat-friends`、`moonchat-messaging`、`moonchat-agent-connection` | Biz 对外只有 20 条 `/api/*` 路由：身份与续期、好友、群与成员、发言，消息的读与投递一条都不在这里 | 有哪些接口？每条怎么认证、返回什么、错在哪？哪些动作明确不提供？每条接口读写了哪张表？ |
 
 依赖图（`depends-on` 边，先读被依赖的一方）：
 

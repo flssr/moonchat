@@ -147,10 +147,10 @@ create table account_info (
 | `created_at` | `timestamptz` | 否 | 创建时间；默认 `now()`，审计用 |
 | `updated_at` | `timestamptz` | 否 | 更新时间；由应用写入，不建触发器 |
 
-- **一个账号只有一条主认证凭据**：真人用加盐慢哈希（Argon2id 或 bcrypt，算法与参数**未确认**），agent 用确定性 HMAC-SHA256 + 服务端 pepper（pepper 来源与轮换方式**未确认**）。
+- **一个账号只有一条主认证凭据**：真人用 **bcrypt**（Spring Security 的 `BCryptPasswordEncoder`，cost 10 起；上限 72 字节，接口层拦住超长密码），agent 用确定性 HMAC-SHA256 + 服务端 pepper（pepper 来源与轮换方式**未确认**）。
 - **类型不重复存**：真人或 agent 由 `account.type` 判断，`account_info` 不再加 `type` 列，避免两处类型不一致。
 - **agent 密钥必须可反查**：agent 带着明文密钥来，Biz 算出确定性哈希后按 `unique (credential_hash)` 定位账号；加盐慢哈希做不到这一点，只用于真人密码。
-- **哈希格式自带算法标记**：实现时在 `credential_hash` 中使用带方案前缀的编码，例如 Argon2id PHC 字符串与 `hmac-sha256$...`，以便以后迁移算法。
+- **哈希格式自带算法标记**：实现时在 `credential_hash` 中使用带方案前缀的编码，例如 `bcrypt$2a$...` 与 `hmac-sha256$...`，以便以后迁移算法（换 Argon2id 不需要改表）。
 - **名字改动的同步标记仍在 `account`**：改名时在同一事务写 `account_info.display_name` 并把 `account.turms_sync_state` 置回 `pending`。
 - **不做邮箱验证、找回密码或密钥轮换**（`moonchat-product` §5.3、`moonchat-agent-connection`）：没有验证时间、重置令牌或密钥历史列。
 - **没有回报地址列**：上一版的 `webhook_url` 已删除。agent 与真人一样用该账号的 Turms 凭据收消息，平台不需要任何入向地址（`moonchat-agent-connection`）。
@@ -344,7 +344,7 @@ create index account_room_deleted_at_idx
 | `dm` 的对端必须是已成立的好友 | `moonchat-friends`、`moonchat-messaging` | 这是决策时点的授权判断，不是存储约束；好友被删后旧行仍在是正常状态 |
 | `room` 会话要求调用方是 `room_member` | `moonchat-messaging` | 同上，属于授权事实判断 |
 | 写入网关的 `senderId` 必须来自入口凭据，不允许代他人发言 | `moonchat-messaging`、`moonchat-agent-connection` | 这是认证结果向写入路径的传递，不是存储约束 |
-| 名字长度上限、邮箱长度上限 | 名字上限 20（采用 Turms 默认 `max-name-length`，超出会被 Turms 拒）；邮箱上限未定 | 名字这个值来自 Turms，不是凭空定的；邮箱没有外部约束，需自己定 |
+| 名字、邮箱与密码的长度规则 | 名字 ≤ 20（Turms 默认）、邮箱 ≤ 254（RFC 上限）、密码 8..72 且不能纯数字（72 是 bcrypt 硬上限） | 名字来自 Turms；邮箱与密码是我们自己定的（腾讯系卡在 16 位且不能纯数字，我们更宽松） |
 | 冻结账号停写入、停好友申请 | `moonchat-agent-connection`、`moonchat-friends` | 读 `account_info.status` 的是写入网关与好友接口，不在写库路径上 |
 
 **一条硬底线**：上表任何一条都**不许**用「顺手加个表、加个缓存」来实现。授权事实一律现查 PG，因为「业务真相只在 PG」是整套设计的支点。
@@ -383,6 +383,6 @@ create index account_room_deleted_at_idx
 | `account.id` 起始段是否与 Turms 内置 id 冲突 | identity 默认从 1 开始；Turms 的 admin 账号是另一套集合，不是 `user` | 运行时确认新建用户的 id 就是 `account.id`（`moonchat-messaging` 第 1 条） |
 | 密码哈希算法与参数、agent 密钥的 pepper 来源 | 只定「密码加盐、密钥确定性哈希」 | 算法在接口实现前补充（HLD 已写明） |
 | 邮箱长度与格式细节 | DB 只保证非空与基本形状；名字上限已定 20（Turms 默认） | 邮箱没有外部约束可依，需自己定一个值 |
-| 两级限流桶的具体速率 | 只定「账号 → 会话逐级更小」 | 必须等真实流量，不凭空定 |
+| 两级限流桶的具体速率 | 暂定账号 60 次/分钟、会话 20 次/分钟，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
 | 软删保留时长与 purge 频率 | 未定 | 两个数字必须有产品依据；确定前不写死 |
 | 索引是否够用 | 除主键、唯一约束和四个 `deleted_at` purge 索引外，只建 `account_owner_idx`；好友与群成员的有效行查询命中主表与反向表主键 | V1 单实例没有实测数据，等真实流量再补，不预建 |
