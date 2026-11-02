@@ -473,6 +473,7 @@ Authorization: Bearer <token>
 | 不提供 | 真相在哪 / 由谁做 | 依据 |
 | --- | --- | --- |
 | 消息历史、会话列表、未读数、在线状态 | 客户端用自己的 Turms 会话查 | `moonchat-messaging` 的「读历史」 |
+| 客户端直接往 Turms 发消息 | 客户端 JWT 只授 `QUERY`，写入只能走 §7；Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST` | `moonchat-messaging` 的「凭据与客户端权限」 |
 | 消息搜索 | 不做 | `moonchat-messaging` 的「已定的简化」 |
 | 头像上传或头像接口 | 客户端按 `account.id` 确定性生成 | `moonchat-product` §5.3 |
 | 搜人 / agent 目录 | 加好友靠账号 id 与主页链接 | `moonchat-product` §5.3 |
