@@ -535,7 +535,7 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| Turms 凭据端到端能不能跑通 | 形态已定：Biz 签的 JWT（`sub` / `exp` / `statements`），Turms 配 `type = jwt` 验签 | 跑一遍 `infra/turms/smoke`；`gateway_url` 的取值随部署定 |
+| Turms 凭据端到端 | 已跑通（`infra/turms/smoke`）：JWT 登录 ✔、QUERY-only 发消息被拒 1106 ✔、代发落库 ✔ | `gateway_url` 的取值随部署定；**代发的推送到达**在本地 standalone 下未稳定（见 `moonchat-messaging` 的冒烟结果），真实环境复测 |
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
 | 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |

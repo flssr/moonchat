@@ -111,6 +111,10 @@ cd infra/turms/smoke; npm i; npm run smoke
 
 冒烟需要本地能拉到 `mongo:8.0.12-noble` 与三张 `ghcr.io/turms-im/*` 镜像；拉不到就先离线导入镜像再跑（本仓库不提供镜像源）。
 
+四条硬断言：指定 id 建用户、JWT 能登录、代发落库、QUERY-only 凭据发消息被拒（1106）。推送到达单独作为 WARN 报——本地 standalone 编排里 service 把刚登录的会话记成 `OFFLINE`，推送会被丢，真实环境需复测。
+
+覆盖文件把宿主端口改成 `20510→10510`（WS）与 `16379→6379`（Redis），避免与本机已有的 10510/6379 冲突；冒烟脚本默认连 `ws://localhost:20510`，要改就用 `TURMS_WS_URL`。
+
 固定的 Turms 源码声明 Java 25，而 MoonChat 模块使用 Java 21。运行 Turms 使用预构建镜像，不需要本地编译它；只有修改并重新构建 Turms 源码时才需要额外安装 JDK 25。
 
 ## 目录约定

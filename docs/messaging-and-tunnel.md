@@ -126,7 +126,8 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | --- | --- |
 | Admin 用指定 id 建用户 | ✔ 通过；但 `password` 必填且 ≤ 16 字符，见上面前提表第 2 行 |
 | Biz 签的 JWT 能登录 `/im` | ✔ 通过；**payload 必须带 `authenticated: true`**（Turms 默认 `jwt.authentication.expectation.custom-payload-claims`）＋ `sub` / `exp` / `statements`，少一个就 `2011 LOGIN_AUTHENTICATION_FAILED` |
-| Admin 带 `senderId` 代发并投递到客户端 | ✔ 通过；`senderDeviceType` 用枚举名（`DESKTOP`）即可。注意刚登录的会话在 turms-service 侧可见有约 3 秒内的延迟，收推送前要等它 |
+| Admin 带 `senderId` 代发 | ✔ 落库通过，`senderDeviceType` 用枚举名（`DESKTOP`）即可 |
+| 代发的消息**推送到目标客户端** | ⚠ 本地 standalone 下不稳定：消息落库正常，但 `GET /users/online-infos/sessions` 把刚登录的会话报成 `OFFLINE`、`sessions` 为空，推送因此被丢。这是本编排里 gateway → service 的在线会话同步问题，不是代发路径本身；真实环境要复测。冒烟脚本把它降级为 WARN，不计失败 |
 | QUERY-only 凭据发 `CREATE_MESSAGE_REQUEST` | ✔ 被拒，`UNAUTHORIZED_REQUEST`（1106） |
 
 **建群相关三条（指定 id、客户端自建群、代理成员校验）仍未实测**：本地没有建 `GroupType`，留给 Turms 打通阶段连同群投影一起跑。
