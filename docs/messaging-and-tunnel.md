@@ -84,7 +84,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
 
 **读历史**
-客户端用自己的 Turms 会话查，按 Turms 消息 id 做游标分页。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。
+客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻（Turms 的客户端查询只接受时间范围 + `maxCount` + `descending`，没有消息 id 范围参数）。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。
 
 ## 不变量
 
@@ -100,7 +100,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 
 | 缺口 | 后果 | 处置 |
 | --- | --- | --- |
-| ~~客户端能直连 Turms 发消息~~ | — | **已关闭**：JWT `statements` 只授 `QUERY`，Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST`；前提见「凭据与客户端权限」。运行时需确认这条拦截真的生效 |
+| ~~客户端能直连 Turms 发消息~~ | — | **已关闭且已实测**（`infra/turms/smoke`）：JWT `statements` 只授 `QUERY`，Turms 对 `CREATE_MESSAGE_REQUEST` 回 `UNAUTHORIZED_REQUEST`（1106）；前提见「凭据与客户端权限」 |
 | **Turms 不校验好友关系** | 好友校验只在写入网关；Turms 的私聊校验只剩黑名单（`allowSendMessagesToStranger = true`，Turms 默认值） | 客户端已无写入权限，非好友私聊只能经网关，由网关拒。不投影好友仍是有意的（见「群与成员的投影」） |
 | ~~客户端能自己建 Turms group~~ | 已无法新建 | JWT 不授 `GROUP` 的 CREATE；Turms 里仍可能残留历史游离群，群列表依旧不等于 PG 的 `room_info` |
 
@@ -113,14 +113,14 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | 1 | Admin API 能否用**指定 id** 建用户 | **能**：`AddUserDTO.id` → `userService.addUser(id, ...)` | 建出来的 Turms 用户 id 就是 `account.id` |
 | 2 | Admin API 能否用**指定 id** 建 group | **不能**：`AddGroupDTO` 没有 id 字段，`authAndCreateGroup` 也不收 id | 定案：由 Turms 生成 group id，回填 `room_info.turms_group_id` |
 | 3 | 能否禁止客户端自建 group | **能**：JWT 不授 `GROUP` 的 CREATE，`ClientRequestDispatcher` 直接拒 | 真正发一个 `CREATE_GROUP_REQUEST`，确认回 `UNAUTHORIZED_REQUEST` |
-| 4 | 能否禁止客户端侧的 `CreateMessageRequest` | **能**：同一机制，`MESSAGE` 的 CREATE 未授 | 同上，用 QUERY-only 凭据发一条消息，确认被拒 |
+| 4 | 能否禁止客户端侧的 `CreateMessageRequest` | **能**：同一机制，`MESSAGE` 的 CREATE 未授 | **已实测**：QUERY-only 凭据发消息回 1106，见下面的冒烟结果 |
 | 5 | **Admin API `POST /messages` 能否代发且带指定 `senderId` / `senderDeviceType`** | **能**：`CreateMessageDTO` 带 `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId` / `text` / `records`，还能指定 `messageId` | 确认落库与广播给双方所有在线端 |
 | 6 | 代发是否仍走 Turms 自己的成员与黑名单校验 | **是**：`MessageService.authAndSaveMessage` → `isAllowedToSendMessageToTarget`（群看投影成员，私聊看黑名单与目标状态） | 把某人移出群后，用他的 id 代发群消息应被拒 |
 | 7 | 客户端历史查询能否按消息 id 范围分页 | **不能**：`QueryMessagesRequest` 只有 `ids` / `fromIds` / `deliveryDateStart/End` / `maxCount` / `descending` | 客户端分页游标改用 `deliveryDate`（见「职责」里的消息标识一条） |
 
 三条配置项现在可以写定：`identity-access-management.type = jwt`（客户端凭据是 JWT）、`allowSendMessagesToStranger` 保持默认 `true`（好友校验只在网关）、`max-text-limit` 默认 500（与接口契约里的正文上限一致）。
 
-**本地 standalone 冒烟结果（`infra/turms/smoke`，4/4 通过）**：
+**本地 standalone 冒烟结果（`infra/turms/smoke`：4 条硬断言全过，1 条 WARN）**：
 
 | 验证项 | 结果 |
 | --- | --- |

@@ -109,7 +109,7 @@ create index account_owner_idx on account (owner_account_id) where owner_account
 | `created_at` | `timestamptz` | 否 | 创建时间；默认 `now()`，审计用 |
 | `updated_at` | `timestamptz` | 否 | 更新时间；由应用写入，不建触发器 |
 
-- **id 起始段**：identity 默认从 1 开始。Turms 内置账号（管理端登录的 `turms` 等）是否占用低 id **未实测**，Turms 打通阶段一并确认；若冲突，只给序列加 `start with`，不改表结构。
+- **id 起始段**：identity 默认从 1 开始。Turms 的管理员账号是另一套集合（`AdminConst` / `AdminService`），不占 `user` 的 id；实测用 `AddUserDTO.id` 建 900001 这类 id 也一切正常。若以后发现冲突，只给序列加 `start with`，不改表结构。
 - **头像不落库**：按账号 id 生成固定头像（`moonchat-product` §5.3），所以没有 `avatar` 列。
 - **冻结的写入口不在 V1 接口清单里**：`account_info.status` 存在是因为 spec 已经假设了「未冻结」这个判据；谁来冻结是平台运维动作，不是产品能力。
 
@@ -381,7 +381,7 @@ create index account_room_deleted_at_idx
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
 | `account.id` 起始段是否与 Turms 内置 id 冲突 | identity 默认从 1 开始；Turms 的 admin 账号是另一套集合，不是 `user` | 运行时确认新建用户的 id 就是 `account.id`（`moonchat-messaging` 第 1 条） |
-| 密码哈希算法与参数、agent 密钥的 pepper 来源 | 只定「密码加盐、密钥确定性哈希」 | 算法在接口实现前补充（HLD 已写明） |
+| agent 密钥的 pepper 来源与轮换方式 | 已定密码用 bcrypt（cost 10 起）；pepper 还没定 | pepper 的存放与轮换没有外部依据，需在产品侧定一个值 |
 | 邮箱长度与格式细节 | DB 只保证非空与基本形状；名字上限已定 20（Turms 默认） | 邮箱没有外部约束可依，需自己定一个值 |
 | 两级限流桶的具体速率 | 暂定账号 60 次/分钟、会话 20 次/分钟，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
 | 软删保留时长与 purge 频率 | 未定 | 两个数字必须有产品依据；确定前不写死 |

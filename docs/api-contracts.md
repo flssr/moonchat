@@ -22,7 +22,7 @@ depends-on:
 | --- | --- |
 | 路径、方法、认证、请求与响应字段、错误码、每条接口读写哪张表 | 业务规则从哪来（各 module spec）、表与列的 DDL（`moonchat-biz-data`） |
 | 「一个动作只有一条路由」这条纪律 | Turms 客户端 API（收消息、查历史，见 `moonchat-messaging`） |
-| 接口面明确不提供什么 | 限流桶的具体速率、JWT 有效期等未有依据的数字（见 §10） |
+| 接口面明确不提供什么 | 每个数字的依据（正文里逐个标了来源或「暂定」，汇总在 §10） |
 
 三条纪律：
 
@@ -126,7 +126,7 @@ Authorization: Bearer <token>
 | 16 | `POST /api/rooms/{room_id}/members` | 拉人进群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 17 | `DELETE /api/rooms/{room_id}/members/me` | 退群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 18 | `DELETE /api/rooms/{room_id}/members/{account_id}` | 移除成员（仅群主） | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
-| 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一服务端写入口） | 任意 | 不写 PG；读 `room_member` / `friendship`；经 `im-facade` 写 Turms |
+| 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一写入口） | 任意 | 不写 PG；读 `room_member` / `friendship`；经 `im-facade` 写 Turms |
 | 20 | `POST /api/auth/refresh` | 登录 JWT 滑动续期（无感续期的那一半） | 登录 JWT | 不写 PG |
 
 ---
@@ -159,7 +159,7 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
-- 同一事务写 `account`（`type = 'human'`）与 `account_info`（`credential_hash` 为 Argon2id/bcrypt，算法与参数未确认）。
+- 同一事务写 `account`（`type = 'human'`）与 `account_info`（`credential_hash` 为 bcrypt，cost 10 起）。
 - 之后经 `im-facade` 用**这个 id** 建 Turms 用户；失败则回滚 PG 行，已提交则标 `account.turms_sync_state = 'pending'` 重试（`moonchat-accounts` 的「创建顺序」）。
 - 注册不做邮箱验证（已定的简化），所以没有验证令牌相关字段。
 
@@ -401,7 +401,7 @@ Authorization: Bearer <token>
 | 查询参数 | 类型 | 默认 | 约束 |
 | --- | --- | --- | --- |
 | `page` | number | `1` | ≥ 1；offset 分页（PageHelper / MyBatis-Plus 直接支持） |
-| `size` | number | `50` | 1..100（两个数字**未确认**） |
+| `size` | number | `50` | 1..100（两个数字暂定，等真实群规模） |
 
 **响应** `200`
 
@@ -474,7 +474,7 @@ Authorization: Bearer <token>
 
 | code | 何时 |
 | --- | --- |
-| `validation_failed` 400 | `text` 空白或超长；`type` 不是 `room`/`dm` |
+| `validation_failed` 400 | `text` 空白或超长；`type` 不是 `room`/`dm`；`dm` 的 `id` 是调用者自己 |
 | `not_found` 404 | `dm` 的对端账号不存在；`room` 的 `room_id` 不存在 |
 | `not_friend` 403 | `dm` 且双方不是已成立好友（`friendship.status = 'accepted'` 且未 tombstone） |
 | `not_room_member` 403 | `room` 且调用者不是有效成员 |
@@ -488,7 +488,7 @@ Authorization: Bearer <token>
 
 - 通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `senderId`（上一步认证出的账号，**不接受请求体里自报的发送者**）、`senderDeviceType`、`senderIp`、`isGroupMessage`、`targetId`。
 - **PG 零写入**：消息只在 Turms，没有副本、没有发送记录表、没有审计表；来源与限流命中只进结构化日志。
-- 成功即「Turms 已落库并投递」。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
+- 成功（`201`）只保证「Turms 已落库并接下了投递」；是否真的到达对方在线端还取决于对方的会话在线状态（冒烟里观察到刚登录的会话有一段同步窗口，见 `moonchat-messaging` 的冒烟结果）。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
 - Turms 侧还会用它自己的投影再校验一次（群成员、黑名单）；两道闸都在，但好友校验只有 Biz 这一道（`allowSendMessagesToStranger = true`）。
 
 ---
@@ -506,6 +506,8 @@ Authorization: Bearer <token>
 | 解散群、群主转让、批量拉人 | V1 没有这些动作 | `moonchat-messaging` 的不变量 |
 | 临时会话（非好友私聊） | 入口本身不存在 | `moonchat-friends` 的「为什么不做临时会话」 |
 | 建群 / 拉人 / 移除成员的 agent 版本 | agent 只有一个关系动作：发好友申请 | `moonchat-agent-connection` 的不变量 |
+| 删账号 / 删 agent 账号 | V1 没有这个能力，账号行不删（`moonchat-biz-data` §2 的行生命周期） | `moonchat-product` §5.1 |
+| 登出 / 注销 | 客户端丢掉手上的 JWT 即可；服务端无状态，没有登出接口 | §3.4 的续期也是同样无状态的 |
 | 冻结账号、purge、对账 | 平台运维动作，不是产品能力 | `moonchat-biz-data` §4.1 |
 | 健康检查 | 已有 `spring-boot-starter-actuator`，不进业务契约 | `moonchat-biz/pom.xml` |
 
