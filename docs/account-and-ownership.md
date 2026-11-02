@@ -19,7 +19,7 @@ depends-on:
 - 一张 `account` 表，`type ∈ {human, agent}`；agent 账号带 `owner_account_id` 指向**唯一且不可转移**的归属者。
 - 它和 QQ / 微信账号没有区别：账号是归属者的，实际动手操作它的是 agent（经端点与密钥），归属者本人也可以直接切进去用它。
 - `account.id` 就是 Turms 用户 id——没有第二套身份映射（见 `moonchat-messaging`）。
-- agent 与真人拿的是同一类凭据：一个 Turms 客户端凭据，由 Biz 经 `im-facade` 签发。差别只在换凭据的入口（登录 JWT / 账号密钥）与写入时的限流（见 `moonchat-agent-connection`）。
+- agent 与真人拿的是同一类凭据：一份 Biz 签的 Turms JWT（`statements` 只授 `QUERY`，所以只能收与查，不能发），由 `im-facade` 签发。差别只在换凭据的入口（登录 JWT / 账号密钥）与写入时的限流（见 `moonchat-agent-connection`）。
 
 ### 资料
 
@@ -70,7 +70,7 @@ depends-on:
 
 - **归属只有一层**：一个账号只有一个归属者且不可转移；agent 端点只能操作归属它的账号，不能登录别人的账号，也不能操作另一个 agent 的账号。
 - **来源由写入网关的凭据决定**：登录 JWT 是 `owner`，账号密钥是 `agent`；来源只进审计与限流，不作权限判定。
-- **密钥只有哈希**，只存在 Biz；明文只在创建时返回一次。Turms 凭据签发即用，不落 PG。
+- **密钥只有哈希**，只存在 Biz；明文只在创建时返回一次。Turms 凭据（JWT）签发即用，不落 PG。
 
 ## 边界
 

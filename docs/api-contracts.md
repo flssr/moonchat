@@ -54,6 +54,7 @@ Authorization: Bearer <token>
 - **来源由凭据形态决定，不看请求体自报的任何字段**；它只进结构化日志与限流判定，不作权限判定（`moonchat-accounts`、`moonchat-agent-connection`）。
 - **两个不需要认证的路由**：`POST /api/auth/register`、`POST /api/auth/login`。
 - **一个两者都接受的路由**：`POST /api/sessions`——不带 JWT 且带 `account_key` 是 agent 换凭据；带 JWT 且带 `account_id` 是归属者切账号（§3.3）。
+- **登录 JWT ≠ Turms 凭据**：登录 JWT 只对 Biz 有效（认作 `owner` 来源）；Turms 凭据由 `POST /api/sessions` 单独签发，是一份 Turms 能验的 JWT，`statements` 只授 `QUERY`（§3.3）。两者都走同一个 `Authorization` 头。
 - 冻结（`account_info.status = 'frozen'`）的账号：可登录、可读，**停写入与好友申请**（`account_frozen`）。
 
 ### 1.3 响应与错误
@@ -138,9 +139,9 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 必填 | 约束 |
 | --- | --- | --- | --- |
-| `email` | string | 是 | trim + 转小写后唯一；含 `@` 且位置 > 1；长度上限**未确认** |
+| `email` | string | 是 | trim + 转小写后唯一；含 `@` 且位置 > 1；长度上限未定（唯一没有外部约束可依的一项） |
 | `password` | string | 是 | 长度下限**未确认**；只存加盐慢哈希 |
-| `display_name` | string | 是 | trim 后非空；长度上限**未确认** |
+| `display_name` | string | 是 | trim 后非空；≤ 20（与 Turms `max-name-length` 默认值一致，超了会被 Turms 拒） |
 
 **响应** `201`
 
@@ -192,7 +193,7 @@ Authorization: Bearer <token>
 | `display_name` | string | 该账号名字 |
 | `type` | string | `human` / `agent` |
 | `turms.user_id` | number | 等于 `account.id` |
-| `turms.credential` | string | `im-facade` 签发的 Turms 凭据 |
+| `turms.credential` | string | Biz 用与 Turms 共享的 HMAC 密钥签的 **JWT**；登录时当作 Turms 的 `password` 参数传给客户端 SDK |
 | `turms.gateway_url` | string | Turms 网关地址（WS/WSS） |
 | `expires_at` | string | 凭据有效期 |
 
@@ -200,8 +201,9 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
-- 凭据由 `im-facade` 签发，**不落 PG**（`moonchat-accounts`）。
-- `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权，没有临时凭据那一层）。
+- 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp` 与 `statements`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
+- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。依据与前提（`type = jwt`、Turms 用户不存密码）在 `moonchat-messaging` 的「凭据与客户端权限」。
+- `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权）。
 - Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时持同一账号的凭据。
 
 ---
@@ -218,7 +220,7 @@ Authorization: Bearer <token>
 
 ### 4.2 `POST /api/agent-accounts`
 
-**请求**：`display_name`（string，必填，trim 后非空）。
+**请求**：`display_name`（string，必填，trim 后非空，≤ 20）。
 
 **响应** `201`
 
@@ -238,7 +240,7 @@ Authorization: Bearer <token>
 
 ### 4.3 `PATCH /api/accounts/me`
 
-**请求**：`display_name`（string，必填，trim 后非空）。
+**请求**：`display_name`（string，必填，trim 后非空，≤ 20）。
 
 **响应** `200`：`account_id`、`display_name`、`updated_at`。
 
@@ -339,7 +341,7 @@ Authorization: Bearer <token>
 
 ### 6.1 `POST /api/rooms`
 
-**请求**：`name`（string，必填，trim 后非空；长度上限未确认）。
+**请求**：`name`（string，必填，trim 后非空，≤ 20）。Turms 侧对群名没有长度配置，这个值是我们自己定的（与账号名字对齐）。
 
 **响应** `201`：`room_id`、`name`、`owner_account_id`、`created_at`。
 
@@ -357,7 +359,7 @@ Authorization: Bearer <token>
 
 **响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`。
 
-**读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——Turms 里可能有客户端自建的游离群，它的群列表不等于业务列表（`moonchat-messaging` 的已知缺口）。
+**读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——客户端现在建不了新群，但 Turms 里仍可能有残留的游离群，它的群列表不等于业务列表（`moonchat-messaging` 的已知缺口）。
 
 ### 6.3 `GET /api/rooms/{room_id}`
 
@@ -424,7 +426,7 @@ Authorization: Bearer <token>
 
 ## 7. 发言：`POST /api/conversations/{type}/{id}/messages`
 
-**唯一服务端写入口**（`moonchat-messaging`、`architecture` 的「一条消息的旅程」）。
+**唯一的写入口**（`moonchat-messaging`、`architecture` 的「一条消息的旅程」）。客户端自己的 Turms 会话只授查询，**发不出消息**，所以用户从客户端发信就是直接调用这个接口。
 
 | 路径参数 | 取值 | 含义 |
 | --- | --- | --- |
@@ -433,13 +435,13 @@ Authorization: Bearer <token>
 
 没有第三个编号要给客户端记：私聊不是一对象 id，而是「我和他」。
 
-**请求**：`text`（string，必填，trim 后非空；长度上限未确认）。`@` 只是正文字符，不做结构化 mentions。
+**请求**：`text`（string，必填，trim 后非空；≤ 500 字符）。500 是 Turms `max-text-limit` 的默认上限，Biz 先拦一道，别让超长文本变成 Turms 的报错。`@` 只是正文字符，不做结构化 mentions。
 
 **响应** `201`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `message_id` | number | Turms 消息 id；客户端查历史的游标就是它 |
+| `message_id` | number | Turms 消息 id；稳定的消息标识。**不是分页游标**：Turms 客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，客户端往回翻用最早一条的 `sent_at` 做游标（`moonchat-messaging`） |
 | `conversation.type` / `conversation.id` | string / number | 回显 |
 | `sent_at` | string | Turms 落库时间 |
 
@@ -503,13 +505,16 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 
 ## 10. 未确认
 
+已清掉的：Turms 凭据形态（JWT）、名字上限 20 与正文上限 500（取自 Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）。剩下这些：
+
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| Turms 凭据的形态与字段（JWT / 密码、`gateway_url` 格式） | 响应结构已定，值形态未定 | Turms 打通阶段实测（`moonchat-messaging` 第 1、2 条）；签不出就改 §3.3 |
+| Turms 凭据端到端能不能跑通 | 形态已定：Biz 签的 JWT（`sub` / `exp` / `statements`），Turms 配 `type = jwt` 验签 | 运行时跑一次登录，再用同一份凭据发一个 `CREATE_MESSAGE_REQUEST` 确认被拒；`gateway_url` 的取值（WS/WSS 路径）随部署定 |
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
-| 密码长度下限、名字与邮箱长度上限、`text` 长度上限 | 只校验非空与基本形状 | `moonchat-product` 没给数字；接口层是它们该定的地方 |
-| JWT 有效期 | 响应里有 `expires_at`，值未定 | 需要与 Flutter Web 的会话体验一起定 |
+| 邮箱长度上限与密码长度下限 | 未定 | 这两项没有外部约束可依，得给一个值；名字 20 已经有依据 |
+| 登录 JWT 与 Turms JWT 的有效期 | 响应里有 `expires_at`，值未定 | 需要与 Flutter Web 的会话体验一起定 |
+| 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |
-| 发言 `senderDeviceType` 的取值 | 由 `im-facade` 代发时填 | 需要实测 Turms 是否接受服务端指定的设备类型 |
+| 代发时的 `senderDeviceType` | Turms 接 `DeviceType` 枚举，但代发该填哪个值未定 | 影响推送与多端去重；等客户端接入后按实际设备定 |
 | 两级限流桶速率与 `Retry-After` 值 | 只定「账号 → 会话逐级更小」 | 必须等真实流量（`moonchat-agent-connection`） |
 | 403 是否要进一步细分 | 现在 5 个 403 码 | 客户端接入后按实际分支再收窄或合并 |

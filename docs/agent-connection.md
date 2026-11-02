@@ -47,7 +47,8 @@ flowchart LR
 - 归属者创建 agent 时拿到一次性的明文密钥；PG 只存哈希（`account_info.credential_hash`，`moonchat-biz-data`）。
 - `POST /api/sessions {account_key}`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。归属者切进自己名下的 agent 账号走同一个路径的另一种请求形态（带登录 JWT + `account_id`，`moonchat-api` §3.3）。
 - 这条路与「归属者切换到自己名下的 agent 账号」是同一条签发路径（`moonchat-accounts`）；Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时在线。
-- **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能发消息。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。
+- **凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`**：agent 能用它登录 `/im`、收该账号全部会话、查历史，但**发不出消息**（`CREATE_MESSAGE_REQUEST` 会被 Turms 以 `UNAUTHORIZED_REQUEST` 拒）。它的发言只能走 REST 写入网关——与真人完全一致（`moonchat-messaging` 的「凭据与客户端权限」）。
+- **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能查全部历史。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。但它不能绕过写入网关：写权限不在凭据里。
 
 ## 收：全部会话，自己筛
 
@@ -105,20 +106,19 @@ flowchart LR
 - **凭据只存哈希**，明文只在创建时返回一次；Turms 凭据签发即用，不落 PG。
 - **agent 只有一个关系动作**：发好友申请（需对方同意）。建群、拉人、移除成员只有真人能做。
 
-## 已知缺口
+## 已知缺口：客户端写入的旁路已关闭
 
-**持 Turms 凭据的客户端可以直接对 Turms 发消息，绕过写入网关。** 具体后果：
+上一版这里写的是「持 Turms 凭据的客户端可以直连 Turms 发消息，绕过写入网关」。**这条已经关上了，而且不需要写插件**：客户端凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`，Turms 的 `ClientRequestDispatcher` 会对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST`。agent 与真人一样，只能经 `POST /api/conversations/{type}/{id}/messages` 发言。
 
-| 被绕过的东西 | 后果 | 绕不过的部分 |
-| --- | --- | --- |
-| 限流与来源标记 | 一个改过的 agent 能刷屏，日志上看不到「经网关」的记录 | — |
-| 私聊授权（非好友不能私聊） | Turms 不投影好友关系，配置成 `allowSendMessagesToStranger = true` 后它对私聊只查黑名单 | — |
-| 群消息的成员校验 | — | Turms 仍按投影的成员列表拒绝非成员 |
+| 曾经被绕过的东西 | 现在的执行点 |
+| --- | --- |
+| 限流与来源标记 | 写入网关；agent 来源进账号 → 会话两级桶 |
+| 私聊授权（非好友不能私聊） | 写入网关查 PG 的 `friendship`；Turms 那侧仍只查黑名单 |
+| 群消息的成员校验 | 两道：网关查 `room_member`，Turms 查投影成员 |
 
-这条缺口在真人侧本来就有（受信客户端之外的任何客户端都能这么干）；现在 agent 因为要收消息也拿到了同样的能力。两个方向都要先改 spec 才能动：
+关闭它靠的是三条前提（`moonchat-messaging` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户不存密码、客户端凭据只能从 `POST /api/sessions` 拿。**任何一条被部署成别的样子（例如把 type 改成 `noop`），这条路就重新打开**——所以它是部署约束，不是代码里可以“顺便”（假设）的东西。
 
-1. **关掉客户端侧的写入**：写一个极小的 Turms 插件，拒绝所有客户端过来的 `CreateMessageRequest`，迫使写入只能走 Admin API。它无状态、不碰业务、不调 Biz，与「把 connector 做成插件」不是一回事。
-2. **接受缺口**：把它写进产品口径——治理只约束守规矩的实现，安全边界靠账号凭据本身。
+剩下真实的残余风险：Turms 的 admin 凭据泄漏（那本来就能代任何人发言）与已发出但未过期的 JWT（有效期内仍然只授查询，危害限于读）。
 
 ## 已定的简化
 

@@ -105,13 +105,13 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 
 ## 五、已知缺口（与本台账相关）
 
-- **写入网关不是唯一写入路径**（`agent-connection.md`、`messaging-and-tunnel.md`）：持 Turms 凭据的客户端可以直连 Turms 写入，绕过限流、来源标记与非好友私聊校验；群消息仍由 Turms 的成员投影把关。真人与 agent 都在这条缺口里。
-- **Turms 被配置成不校验好友关系**（`allowSendMessagesToStranger = true`）：好友校验只在写入网关，这是「好友不投影」的直接代价。
-- **Turms 里可能有游离 group**（客户端自建）：平台不认，但 Turms 的群列表因此不等于 PG 的 `room_info` 表。
+- **客户端写入由 Turms 的 JWT 权限关闭**（`messaging-and-tunnel.md`）：客户端凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`，它发不出消息、也建不了 group。依赖三条部署前提（`type = jwt`、Turms 用户不存密码、凭据只从 `POST /api/sessions` 拿）；任一条被改，旁路就重新成立。
+- **Turms 不校验好友关系**（`allowSendMessagesToStranger` 默认 `true`）：好友校验只在写入网关，这是「好友不投影」的直接代价。客户端已无写入权限，非好友私聊只能经网关。
+- **Turms 里仍可能有残留的游离 group**：客户端已建不了新群，但 Turms 的群列表依旧不等于 PG 的 `room_info` 表。
 - **无响应提示不在第一版**；旧判据（依赖投递与档位）已不成立，重写口径在 `moonchat-product` §13。
 - **公开群的 Turms 只读能力未实测**，因此公开群与邀请链接被推迟。
-- **若干数字仍无依据**：P95 300ms、两级限流桶的具体速率。
-- **Admin API 能否以指定发送者代发消息未实测**（`messaging-and-tunnel.md` 的实测第 5 条）：整套写入路径建在这个假设上，不成立就要退回让客户端各自直发。
+- **若干数字仍无依据**：P95 300ms、两级限流桶的具体速率、邮箱长度上限、JWT 有效期。名字 20 与正文 500 已取得依据（Turms 默认值）。
+- **几条 Turms 能力已在源码核对，尚未端到端跑通**（`messaging-and-tunnel.md` 的「要核对的 7 条」）：代发、客户端权限拦截、客户端分页游标（只能按 `deliveryDate`）这类结论来自源码，仍要在真实部署上跑一遍。
 - **客户端还没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、群成员资料页都没描述；「非好友只见资料页」这类界面级规则目前只写在 `friends.md`，实现客户端前先回读它。
 - 具体处置规矩见 [`AGENTS.md`](../AGENTS.md) §5。
 

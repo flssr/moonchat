@@ -106,4 +106,4 @@ docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinn
 ## 参与协作
 
 - **人**：从上面的文档导航进入；改设计前先读 `docs/architecture.md` 的「四条边界硬规矩」与「跨模块不变量」。
-- **AI agent**：先读 [`AGENTS.md`](AGENTS.md)，它列了不可违反的边界、不该私自升级的「已定简化」，以及八处已知缺口（写入网关不是唯一写入路径、Turms 不校验好友关系、Admin API 代发未实测、若干数字无依据、无响应判据待重写、公开群未实测、Turms 里有游离 group、客户端还没有 spec）。
+- **AI agent**：先读 [`AGENTS.md`](AGENTS.md)，它列了不可违反的边界、不该私自升级的「已定简化」，以及已知缺口（客户端写入靠 JWT 权限关闭的三条部署前提、Turms 不校验好友关系、若干数字无依据、无响应判据待重写、公开群未实测、Turms 里有残留游离 group、客户端还没有 spec）。

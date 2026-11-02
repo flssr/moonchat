@@ -58,16 +58,16 @@ PG 先写 tombstone（`deleted_at`）+ 同事务镜像到反向表，超过保�
 
 拒绝申请同一条路径：状态枚举仍只有 `pending` / `accepted`，拒绝也写 `deleted_at`，对方可以再申请（V1 没有冷却期）。
 
-## 已知缺口
+## 授权执行点为什么站得住
 
-**写入网关不是唯一写入路径。** 「非好友不能私聊」由写入网关判 `friendship`，而 Turms 被配置成不校验好友关系（`allowSendMessagesToStranger = true`，见 `moonchat-messaging`）——它只查黑名单。所以任何持 Turms 凭据的客户端都能绕过网关，直接对 Turms 发消息给任意账号。
+「非好友不能私聊」只在写入网关判 `friendship`，Turms 侧不校验好友（`allowSendMessagesToStranger = true`，Turms 默认值）——它只查黑名单。这看起来像缺口，但**客户端拿不到写入权限**：Turms 凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`，`CREATE_MESSAGE_REQUEST` 会被 `UNAUTHORIZED_REQUEST` 拒。
 
-| 谁 | 现状 |
+| 谁 | 能不能绕过网关私聊非好友 |
 | --- | --- |
-| 真人客户端 | 正常实现只在好友列表与资料页提供私聊入口；改过的客户端可以直接发 |
-| agent 端点 | 因为收消息必须持 Turms 凭据，能力与改过的真人客户端相同 |
+| 真人客户端 | 不能：它的 Turms 会话发不出消息（`moonchat-messaging` 的「凭据与客户端权限」） |
+| agent 端点 | 不能：同一套签发路径、同一份 statements |
 
-修复方向只有两个，都要先改 spec：写一个极小的 Turms 插件拒绝客户端侧的 `CreateMessageRequest`（迫使写入只能走 Admin API），或把这条缺口写进产品口径当成本。细节与代价见 `moonchat-agent-connection` 的「已知缺口」。
+前提是 `identity-access-management.type = jwt` + Turms 用户不存密码 + 客户端凭据只能从 `POST /api/sessions` 拿；任一条被改，这条路就重新打开——这是部署约束，口径在 `moonchat-agent-connection`。客户端「只从好友列表与资料页进私聊」仍是体验层规则，不承担授权。
 
 ## 不变量
 

@@ -73,7 +73,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 | 边界 | 含意 | 常见误犯 |
 | --- | --- | --- |
-| **消息的唯一写入者是 Turms** | 服务端只有一个写入口：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`；客户端用自己账号的 Turms 会话写是已知旁路（`docs/agent-connection.md`） | 在别处新开一条发送通道，或让某个模块直写 Mongo |
+| **消息的唯一写入者是 Turms** | 服务端只有一个写入口：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`。客户端**不握写入权限**：它的 Turms JWT 只授 `QUERY`，`CREATE_MESSAGE_REQUEST` 会被 Turms 拒 | 在别处新开一条发送通道，或让某个模块直写 Mongo；或把客户端凭据改成 `ALLOW *` |
 | **`im-facade` 只有一支发送的手** | 它能建群、改成员投影、签发凭据、同步资料、代发消息；但这支手只对写入网关开放，且必须带 Biz 已认证的 `senderId`，不能代任意账号发言 | 为了「少一次往返」在业务代码里直接调 Admin API，或让 `im-facade` 自己判归属 |
 | **Biz 在写入进路上同步校验，不做投递** | 校验归属、授权、限流、来源就交出去；不参与投递，不订阅消息事件 | 让 Biz 订阅消息事件做计数 / 通知 / 审计 |
 | **身份只有一处真相** | `account.id` 就是 Turms 用户 id；归属关系本身就是授权，没有授权表、没有临时凭据、没有第二套映射 | 给 agent 单独建 `agent_user_mapping` 表 |
@@ -82,7 +82,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 另外四条容易踩的语义边界：
 
-- **私聊的授权是 PG 的好友关系**，执行点在写入网关，不在 Turms——它会配置成不校验好友（`allowSendMessagesToStranger = true`）。客户端入口规则（只从好友列表与资料页进）是体验层，不承担授权；改过的客户端直连 Turms 是已写明的缺口。
+- **私聊的授权是 PG 的好友关系**，执行点在写入网关，不在 Turms——它会配置成不校验好友（`allowSendMessagesToStranger = true`，Turms 默认值）。客户端入口规则（只从好友列表与资料页进）是体验层，不承担授权；非好友私聊只能落到网关被拒，因为客户端没有 Turms 写权限。
 - **来源标记（`agent` / `owner`）由写入网关入口的凭据决定**，只进结构化日志与限流，不作权限判定。Turms 的消息模型里**没有自定义属性字段**，所以来源不可能写进消息。
 - **平台不替 agent 筛消息**：agent 收到它账号的全部会话，自己判断哪条归它管。没有工作区、没有投递档位、没有 webhook。
 - **限流只在写入网关一处**（账号 → 会话两级，在 Biz 的 Redis 里），且只对 `agent` 来源生效；本人的发言不进任何 agent 桶。
@@ -111,7 +111,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 | agent 收它账号的全部会话，自己筛：没有工作区、没有投递档位、没有 webhook | `docs/agent-connection.md` |
 | 业务只有一个进程（`moonchat-biz`） | `docs/deployment.md` |
 | 不引入消息队列、不建投递队列：写入是同步 REST 调用 | `docs/deployment.md` |
-| 不关掉「客户端直连 Turms 写入」的旁路：治理只约束守规矩的实现 | `docs/agent-connection.md` |
+| 客户端写入由 Turms 的 JWT `statements` 关闭（只授 `QUERY`）：不需要 Turms 插件 | `docs/messaging-and-tunnel.md` |
 | 不做结构化 mentions：`@` 只在渲染层按正文识别 | `docs/messaging-and-tunnel.md` |
 | 不建审计表：来源、限流命中只打结构化日志 | `docs/goal-and-requirements.md` §5.3 |
 | 不做邮箱验证与找回密码：忘密码只能重建账号 | `docs/goal-and-requirements.md` §5.3 |
@@ -123,13 +123,13 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 ## 5. 已知缺口：动到相关代码前必须处理
 
-1. **写入网关不是唯一写入路径**（`docs/agent-connection.md`、`docs/messaging-and-tunnel.md`）：持 Turms 凭据的客户端（真人或 agent）都可以直连 Turms 写入，绕过限流、来源标记与非好友私聊校验。群消息仍由 Turms 的成员投影把关。V1 不关这条路（关上要写一支拒绝客户端 `CreateMessageRequest` 的 Turms 插件），但**代码里不得假装它已经关上**：任何限流/审计结论都要带上这个前提。
+1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/messaging-and-tunnel.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户不存密码、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
 2. **Turms 被配置成不校验好友关系**：`allowSendMessagesToStranger = true` 是这套设计成立的前提，不是可选项——好友从不投影进 Turms，设成 false 会拒掉所有私聊。好友校验只在写入网关。
 3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `docs/goal-and-requirements.md` §13 重写判据。
 4. **若干数字没有依据**：P95 300ms 沿用上一版且未经实测，两级限流桶的具体速率尚未确定。凭空引入一个阈值比留白更糟。
-5. **Admin API 能否以指定发送者代发消息未实测**（`docs/messaging-and-tunnel.md` 实测第 5 条）：整套写入路径建在这个假设上。不成立就要退回让客户端各自直发，那时 `architecture.md` 的写入路径要重写。
+5. **代发路径已源码确认，仍需端到端跑通**（`docs/messaging-and-tunnel.md` 的第 5、6 条）：Admin API 能带 `senderId` 代发，且仍走 Turms 自己的成员/黑名单校验。运行时确认「落库 + 广播」与「被移出群后立即被拒」两件事。
 6. **公开群的 Turms 只读能力未实测**：因此公开群与邀请链接被推迟，不要在 Turms 实测前把它们当可用能力去实现。
-7. **Turms 里可能有游离 group**（客户端自建）：平台不认（无授权、不进列表、不投递），但 Turms 的群列表因此不等于 PG 的 `room_info` 表。任何代码不得把 Turms 的群列表当业务列表，也不得反过来拿它做对账以外的判断。
+7. **Turms 里可能有残留的游离 group**：客户端已经建不了新群（JWT 不授 `GROUP` 的 CREATE），但历史上可能有。平台不认它们（无授权、不进列表、不投递），Turms 的群列表也因此不等于 PG 的 `room_info` 表。任何代码不得把 Turms 的群列表当业务列表。
 8. **客户端没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、成员资料页都未描述；界面级规则（非好友只见资料页、私聊入口只在好友列表）目前唯一出处是 `docs/friends.md`。实现客户端前先回读它，不要自己发明入口。
 
 ---

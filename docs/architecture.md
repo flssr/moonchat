@@ -56,8 +56,8 @@ moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影
 
 ## 四条边界硬规矩
 
-1. **消息只由隧道写入。** Turms 是消息存储与投递的唯一写入者。服务端要发一条消息，只有一条路：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`；客户端则用自己账号的 Turms 会话发。除此之外没有第三个写入者，任何模块不得直写 Mongo 的消息集合。
-2. **`im-facade` 只有一支发送的手，只对写入网关开放。** 它能建群、改成员投影、签发凭据、同步资料、代发消息。**代发必须带调用方已认证出的 `senderId`**——它不能代表一个未经 Biz 校验的账号发言。客户端的 Turms 会话能自己发消息，那是 `moonchat-messaging` 里写明的已知旁路，不是第二条服务端入口。
+1. **消息只由隧道写入。** Turms 是消息存储与投递的唯一写入者。服务端要发一条消息，只有一条路：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`。**客户端的 Turms 会话没有写权限**：它拿的是 Biz 签的 JWT，`statements` 只授 `QUERY`，单侧的 `CREATE_MESSAGE_REQUEST` 会被 Turms 以 `UNAUTHORIZED_REQUEST` 拒掉（`moonchat-messaging` 的「凭据与客户端权限」）。除此之外没有第三个写入者，任何模块不得直写 Mongo 的消息集合。
+2. **`im-facade` 只有一支发送的手，只对写入网关开放。** 它能建群、改成员投影、签发凭据、同步资料、代发消息。**代发必须带调用方已认证出的 `senderId`**——它不能代表一个未经 Biz 校验的账号发言。客户端没有第二条服务端写入入口，也没有 Turms 侧的写入权限。
 3. **Biz 不做投递、不订阅消息事件。** 它在写入进路上同步校验（归属、授权、限流、来源），校验完就交出去；不参与投递，不订阅消息事件做计数 / 通知 / 审计。
 4. **业务真相只在 PG。** 账号归属、唯一认证哈希、好友、群成员、群资料都在 PG；Turms 只保留投递必需的投影，客户端只持有可重建的本地状态。限流桶在 Biz 的 Redis 键空间里，是可重建的运行状态，不是业务真相。
 
@@ -86,7 +86,7 @@ moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影
 ## 一条消息的旅程
 
 0. **平台不为非好友提供私聊入口**：私聊只从好友列表与资料页进入，群聊里点非好友只能看到资料页与「加好友」。这条是客户端规则，也是写入网关的授权判据（见 `moonchat-friends`）。
-1. 写作者发言：真人客户端带登录 JWT、agent 端点带账号密钥，`POST /api/conversations/{type}/{id}/messages`。**这是唯一的服务端写入口**。
+1. 写作者发言：真人客户端带登录 JWT、agent 端点带账号密钥，`POST /api/conversations/{type}/{id}/messages`。**这是唯一的写入口**：客户端自己的 Turms 会话只授查询，发不出消息。
 2. Biz 的写入网关逐项校验：归属（这个凭据能不能代表这个账号）→ 会话（`room` 是 `room_info.id`，`dm` 是对端 `account_id`）→ 授权事实（群看 PG 的群成员，私聊看 PG 的好友关系）→ 限流（只有 agent 来源进「账号 → 会话」两级桶）→ 来源标记（写进结构化日志，不写进消息）。
 3. 校验通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `senderId`（第 2 步认证出的账号）、`senderDeviceType`、目标会话与正文。
 4. Turms 在写入路径上再做一次自己的校验（群消息必须是投影里的成员、私聊不得命中黑名单）、落库、并把消息推给双方的所有在线端。
@@ -99,6 +99,6 @@ moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影
 - **业务真相只在 PG。** 账号、好友、群与成员都以 PG 为准；Turms 里的 group / member 是可重建投影，任何模块不得把它们当成真相，也不得为它们再建表。
 - **身份只有一处真相**：Biz 的 `account` 表；`account.id` 就是 Turms 用户 id。
 - **客户端只有一类**：账号的 Turms 客户端。agent 端点不是特例——它用同一套凭据签发路径拿 Turms 凭据，用同一套 REST 发言。
-- **私聊的授权是 PG 的好友关系，执行点在写入网关**，不在 Turms，也不在客户端的入口规则。客户端的入口规则（只从好友列表与资料页进）是体验层，不承担授权；改过的客户端直连 Turms 仍是已知缺口（见 `moonchat-messaging` 与 `moonchat-friends`）。
+- **私聊的授权是 PG 的好友关系，执行点在写入网关**，不在 Turms，也不在客户端的入口规则。客户端的入口规则（只从好友列表与资料页进）是体验层，不承担授权；客户端没有 Turms 写权限，非好友私聊只能落到网关被拒（见 `moonchat-messaging` 与 `moonchat-friends`）。
 - **限流只在写入网关一处**：两级桶（账号 → 会话），超限直接拒绝，不计入也不影响真人；本人的发言不进任何 agent 桶。
 - **没有投递设置这一层**：平台没有 webhook、没有推送档位、没有工作区。agent 收到的是它账号的全部会话消息，怎么用由它自己决定。

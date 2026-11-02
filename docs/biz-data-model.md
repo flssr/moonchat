@@ -344,7 +344,7 @@ create index account_room_deleted_at_idx
 | `dm` 的对端必须是已成立的好友 | `moonchat-friends`、`moonchat-messaging` | 这是决策时点的授权判断，不是存储约束；好友被删后旧行仍在是正常状态 |
 | `room` 会话要求调用方是 `room_member` | `moonchat-messaging` | 同上，属于授权事实判断 |
 | 写入网关的 `senderId` 必须来自入口凭据，不允许代他人发言 | `moonchat-messaging`、`moonchat-agent-connection` | 这是认证结果向写入路径的传递，不是存储约束 |
-| 名字长度上限、邮箱长度上限 | `moonchat-product` 未定（**未确认**） | 阈值该定在接口层；DDL 目前只校验非空和基本邮箱形状 |
+| 名字长度上限、邮箱长度上限 | 名字上限 20（采用 Turms 默认 `max-name-length`，超出会被 Turms 拒）；邮箱上限未定 | 名字这个值来自 Turms，不是凭空定的；邮箱没有外部约束，需自己定 |
 | 冻结账号停写入、停好友申请 | `moonchat-agent-connection`、`moonchat-friends` | 读 `account_info.status` 的是写入网关与好友接口，不在写库路径上 |
 
 **一条硬底线**：上表任何一条都**不许**用「顺手加个表、加个缓存」来实现。授权事实一律现查 PG，因为「业务真相只在 PG」是整套设计的支点。
@@ -376,12 +376,13 @@ create index account_room_deleted_at_idx
 
 ## 8. 待确认
 
+三项已经清掉（源码核对结果）：Admin API 能用指定 id 建用户，但**建群不能指定 id**（`AddGroupDTO` 没有 id）→ `turms_group_id` 必定由 Turms 生成后回填；`POST /messages` 能带 `senderId` 代发；Turms 默认的名字上限 20、正文上限 500 已进入接口约束。细节在 `moonchat-messaging` 的「要核对的 7 条」。
+
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| `account.id` 起始段是否与 Turms 内置 id 冲突 | 用 identity 默认从 1 开始 | Turms 打通阶段实测（`moonchat-messaging` 的 6 条之一） |
+| `account.id` 起始段是否与 Turms 内置 id 冲突 | identity 默认从 1 开始；Turms 的 admin 账号是另一套集合，不是 `user` | 运行时确认新建用户的 id 就是 `account.id`（`moonchat-messaging` 第 1 条） |
 | 密码哈希算法与参数、agent 密钥的 pepper 来源 | 只定「密码加盐、密钥确定性哈希」 | 算法在接口实现前补充（HLD 已写明） |
-| 名字长度上限、邮箱格式细节 | DB 只保证非空 | `moonchat-product` 没给数字，等接口层与 Turms 实测后回填 |
+| 邮箱长度与格式细节 | DB 只保证非空与基本形状；名字上限已定 20（Turms 默认） | 邮箱没有外部约束可依，需自己定一个值 |
 | 两级限流桶的具体速率 | 只定「账号 → 会话逐级更小」 | 必须等真实流量，不凭空定 |
-| Admin API `POST /messages` 能否代发并带 `senderId` | 整套写入路径建在这个假设上 | Turms 打通阶段实测（`moonchat-messaging` 的 7 条之一） |
 | 软删保留时长与 purge 频率 | 未定 | 两个数字必须有产品依据；确定前不写死 |
 | 索引是否够用 | 除主键、唯一约束和四个 `deleted_at` purge 索引外，只建 `account_owner_idx`；好友与群成员的有效行查询命中主表与反向表主键 | V1 单实例没有实测数据，等真实流量再补，不预建 |
