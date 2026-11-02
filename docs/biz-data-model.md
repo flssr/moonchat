@@ -18,7 +18,7 @@ depends-on:
 
 | 本文管 | 本文不管 |
 | --- | --- |
-| 表、列、类型、约束、索引、迁移文件形态 | 接口契约（各 module spec）、V1 范围与验收（`moonchat-product`） |
+| 表、列、类型、约束、索引、迁移文件形态 | 接口契约（`moonchat-api`）、V1 范围与验收（`moonchat-product`） |
 | 聚合边界与聚合根 | Turms 里投影哪些字段（`moonchat-messaging`） |
 | 哪些规则只能由应用层守 | 写入网关的校验顺序与限流速率（`moonchat-agent-connection`） |
 
@@ -190,7 +190,7 @@ create index friendship_deleted_at_idx
 | `deleted_at` | `timestamptz` | 是 | 空表示有效；非空表示已拒绝或已删好友 |
 
 - **主表是唯一业务真相**：申请、同意、拒绝、软删先由这里确定结果，再在同一事务同步 `friendship_reverse`。
-- **`id` 保持稳定**：列表查询仍按账号定位关系，申请同意、拒绝和反向表关联使用 `id`。
+- **`id` 保持稳定**：列表查询仍按账号定位关系，反向表关联使用 `id`；对外的同意、拒绝与删除由 Biz 用 `peer_account_id` 定位到本行（`moonchat-api` §5），不把 `id` 交给客户端。
 - **小 id 查主表，授权也查主表**：查询好友列表时按账号在规范序中的位置选择表；判断两人是否好友时一律规范序后读 `friendship`。
 - **`requested_by` 用于区分收发申请**：待处理列表必须据此只返回发给当前账号的申请，并在同意或拒绝时校验操作方；该字段不能由两个账号 id 或状态推导。
 - **拒绝 = 软删**：状态枚举仍只有 `pending` / `accepted`，拒绝写 `deleted_at`；对方可以再申请，V1 没有冷却期也没有拉黑（拉黑在 V2）。

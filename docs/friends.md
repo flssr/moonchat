@@ -13,9 +13,11 @@ depends-on:
 
 **一句话**：好友关系是私聊的授权，它是 PG 里的一张表——隧道不知道它的存在，执行点在 Biz 的写入网关。
 
+> 接口契约（路径、请求与响应字段、错误码）在 `moonchat-api` §5；本文只写行为与不变量。
+
 ## 定义
 
-- `friendship`：一行表示一对好友（`id`、`account_id`、`peer_account_id`、`status ∈ {pending, accepted}`、`requested_by`、`created_at`），无向、不重复；两个账号 id 按小在大前的规范序存放，`requested_by` 区分谁发起的申请，应答与删除接口用的是 `id`。
+- `friendship`：一行表示一对好友（`id`、`account_id`、`peer_account_id`、`status ∈ {pending, accepted}`、`requested_by`、`created_at`），无向、不重复；两个账号 id 按小在大前的规范序存放，`requested_by` 区分谁发起的申请。**一对好友由两侧账号 id 唯一确定，所以接口面只用对端账号 id（`peer_account_id`）寻址**，`friendship.id` 只用于本表与反向表的关联（`moonchat-api` §5）。
 - **另有一张反向表 `friendship_reverse`**：同一关系按另一侧存一份，只为「按另一个账号 id 直接查出好友列表」，与主表在同一事务内双写、不参与任何授权判断。两张表的 DDL 在 `moonchat-biz-data`。
 - **好友是私聊的充分必要条件**：非好友之间不能私聊；成为好友即有私聊权，不需要再建别的记录。
 - 好友不带任何业务字段：没有备注、没有分组、没有亲密度。需要这些时再说，现在一个都不加。
@@ -43,7 +45,7 @@ depends-on:
 | --- | --- | --- | --- |
 | 发好友申请 | 真人客户端 / agent 端点 | `POST /api/friendships {peer_account_id}` | 对方账号存在且未冻结；agent 来源另进账号级桶 |
 | 待处理申请 | 真人客户端 / agent 端点 | `GET /api/friendships?status=pending` | 只返回发给该账号的 |
-| 同意 / 拒绝 | 真人客户端 / agent 端点 | `POST /api/friendships/{id}` | 申请人仍有有效账号 |
+| 同意 / 拒绝 | 真人客户端 / agent 端点 | `POST /api/friendships/{peer_account_id}` `{action}` | 申请人仍有有效账号；只有被申请方能应答 |
 | 删除好友 | 真人客户端 / agent 端点 | `DELETE /api/friendships/{peer_account_id}` | — |
 | 看资料页 | 真人客户端 / agent 端点 | `GET /api/accounts/{account_id}` | 只返回名字、账号 id、是否已是好友 |
 | 发私聊 | 写入网关 | 发言时查 `friendship` 是否 `accepted` | 非好友直接拒绝 |

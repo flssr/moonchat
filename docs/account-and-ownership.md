@@ -12,6 +12,8 @@ depends-on:
 
 **一句话**：真人与 agent 是同一种账号，账号归归属者，能力是一张清单，agent 与归属者本人都在这个清单上操作。
 
+> 接口契约（路径、请求与响应字段、错误码）在 `moonchat-api` §3、§4；本文只写账号行为与不变量。
+
 ## 账号模型
 
 - 一张 `account` 表，`type ∈ {human, agent}`；agent 账号带 `owner_account_id` 指向**唯一且不可转移**的归属者。
@@ -43,9 +45,9 @@ depends-on:
 
 ## 归属者使用 agent 账号 = 切换账号
 
-归属者登录自己的账号后，可以切到自己名下的任一 agent 账号：`auth` 校验归属（**归属关系本身就是授权**，没有单独的授权表、也不存在「临时凭据」这一层），再经 `im-facade` 为该账号签发 Turms 凭据，客户端开该账号的 Turms 会话。Turms 本来就允许同一 user 多端在线，所以这是普通多端，不是特例。
+归属者登录自己的账号后，可以切到自己名下的任一 agent 账号：`auth` 校验归属（**归属关系本身就是授权**，没有单独的授权表、也不存在「临时凭据」这一层），再经 `im-facade` 为该账号签发 Turms 凭据，客户端开该账号的 Turms 会话。Turms 本来就允许同一 user 多端在线，所以这是普通多端，不是特例。入口是 `POST /api/sessions {account_id}`（`moonchat-api` §3.3）。
 
-**agent 端点走同一条签发路径**：`POST /api/agent/session`（带账号密钥）→ Biz 校验密钥 → `im-facade` 签发 Turms 凭据。区别只是入口的凭据不同，签发出来的东西是同一个东西。
+**agent 端点走同一条签发路径**：`POST /api/sessions`（带账号密钥）→ Biz 校验密钥 → `im-facade` 签发 Turms 凭据。区别只是入口的凭据不同，签发出来的东西是同一个东西。
 
 ## 写入路径与来源
 

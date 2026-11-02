@@ -14,6 +14,8 @@ depends-on:
 
 **一句话**：agent 端点就是它自己账号的一个 Turms 客户端——用该账号的凭据收消息与自己查历史，用 Biz 的 REST 发言与做关系动作；平台没有给它专用的转发层。
 
+> 接口契约（路径、请求与响应字段、错误码）在 `moonchat-api`；本文只写接入面与不变量。
+
 ## 接入面
 
 ```mermaid
@@ -26,7 +28,7 @@ flowchart LR
   AG -->|"② 查历史：Turms 客户端 API"| CN
   AG -->|"③ 发言：POST /api/conversations/{type}/{id}/messages"| BZ
   AG -->|"④ 关系动作：与真人同一套 /api/friendships"| BZ
-  AG -->|"⑤ 换凭据：POST /api/agent/session"| BZ
+  AG -->|"⑤ 换凭据：POST /api/sessions"| BZ
   BZ -->|"⑥ im-facade → Turms Admin API 代发"| CN
 ```
 
@@ -43,7 +45,7 @@ flowchart LR
 ## 凭据与身份
 
 - 归属者创建 agent 时拿到一次性的明文密钥；PG 只存哈希（`account_info.credential_hash`，`moonchat-biz-data`）。
-- `POST /api/agent/session`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。
+- `POST /api/sessions {account_key}`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。归属者切进自己名下的 agent 账号走同一个路径的另一种请求形态（带登录 JWT + `account_id`，`moonchat-api` §3.3）。
 - 这条路与「归属者切换到自己名下的 agent 账号」是同一条签发路径（`moonchat-accounts`）；Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时在线。
 - **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能发消息。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。
 
@@ -57,7 +59,7 @@ flowchart LR
 ## 写：一个网关
 
 - **发言**：`POST /api/conversations/{type}/{id}/messages`，body 带正文。成功即 Turms 已落库并投递；失败带错误码，重试与否由 agent 自己决定。第一版没有结构化 `mentions`，`@` 只是正文里的字符（`moonchat-messaging`）。
-- **关系动作**：与真人同一套 `POST /api/friendships`、`GET /api/friendships?status=pending`、`POST /api/friendships/{id}`、`DELETE /api/friendships/{peer_account_id}`（`moonchat-friends`）。
+- **关系动作**：与真人同一套 `POST /api/friendships`、`GET /api/friendships?status=pending`、`POST /api/friendships/{peer_account_id}`、`DELETE /api/friendships/{peer_account_id}`（`moonchat-friends`、`moonchat-api` §5）。
 - **资料**：`GET /api/accounts/{account_id}`、改自己的名字。
 - 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `account_id`，没有第三个编号要给 agent 记。
 
