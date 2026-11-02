@@ -19,6 +19,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import TurmsClient from 'turms-client-js';
 
@@ -57,11 +58,27 @@ async function admin(method, urlPath, body) {
 
 function signTurmsJwt(secret, userId, ttl = '12h') {
     return jwt.sign(
-        // Turms 只认 statements 里的策略；不给 statements 登录会直接失败
-        { statements: [{ effect: 'ALLOW', actions: ['QUERY'], resources: ['*'] }] },
+        {
+            // Turms 默认期望 token 里有 authenticated=true（jwt.authentication.expectation.custom-payload-claims）
+            authenticated: true,
+            // 只授查询：没有 CREATE_MESSAGE_REQUEST 的权限
+            statements: [{ effect: 'ALLOW', actions: ['QUERY'], resources: ['*'] }],
+        },
         secret,
         { algorithm: 'HS256', subject: String(userId), expiresIn: ttl },
     );
+}
+
+async function waitUntilOnline(userId) {
+    const deadline = Date.now() + TIMEOUT_MS;
+    while (Date.now() < deadline) {
+        const body = await admin('GET', `/users/online-infos/sessions?ids=${userId}`);
+        if (Array.isArray(body?.data) && body.data.length > 0) {
+            return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    throw new Error(`超时：${userId} 的会话一直没在 turms-service 侧出现`);
 }
 
 function withTimeout(promise, label) {
@@ -82,9 +99,12 @@ async function main() {
         // 首次运行不存在，忽略
     }
 
-    // 1. 指定 id 建用户
-    const createdA = await admin('POST', '/users', { id: USER_A, name: 'smoke-a', isActive: true });
-    const createdB = await admin('POST', '/users', { id: USER_B, name: 'smoke-b', isActive: true });
+    // 1. 指定 id 建用户。
+    // Turms 的 AddUserDTO 要求 password 非空且 ≤ 16 字符（实测：rawPassword must not be null, 0..16），
+    // 而我们只用 JWT 登录，所以这里给一段随机密码，用完就丢——平台不保存也不分发它。
+    const throwawayPassword = () => crypto.randomBytes(12).toString('base64url');
+    const createdA = await admin('POST', '/users', { id: USER_A, name: 'smoke-a', isActive: true, password: throwawayPassword() });
+    const createdB = await admin('POST', '/users', { id: USER_B, name: 'smoke-b', isActive: true, password: throwawayPassword() });
     check('Admin 用指定 id 建用户', createdA?.data?.id === USER_A && createdB?.data?.id === USER_B,
         `A=${createdA?.data?.id} B=${createdB?.data?.id}`);
 
@@ -98,6 +118,10 @@ async function main() {
     await withTimeout(clientB.userService.login({ userId: String(USER_B), password: jwtB, deviceType: 'DESKTOP' }),
         'B 用 JWT 登录');
     check('JWT 能登录 turms-gateway', true, `user ${USER_B}`);
+
+    // 登录成功与「会话在 turms-service 侧可见」之间有一小段异步窗口：实测约 3 秒内可见。
+    // 不等就会消息落库但没人收，所以这里轮询在线会话而不是拍一个魔法 sleep。
+    await waitUntilOnline(USER_B);
 
     // 3. Admin 代发，客户端真的收到
     await admin('POST', '/messages', {
@@ -137,8 +161,11 @@ async function main() {
         }), 'A 尝试直连 Turms 发消息');
         rejectDetail = '未被拒绝（说明 statements 没生效）';
     } catch (error) {
-        rejected = error?.code === 1106;
-        rejectDetail = `code=${error?.code} reason=${error?.reason ?? error?.message}`;
+        // ResponseError 的 message 形如 "<requestId>:<code>:<reason>"，不同构建导出 code 的方式不一致，
+        // 所以两处都读。
+        const code = error?.code ?? Number((/:([0-9]+):/.exec(error?.message ?? '') || [])[1]);
+        rejected = code === 1106;
+        rejectDetail = `code=${code} message=${error?.message}`;
     }
     check('QUERY-only 凭据发不出消息（UNAUTHORIZED_REQUEST 1106）', rejected, rejectDetail);
 

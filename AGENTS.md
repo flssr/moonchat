@@ -123,7 +123,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 ## 5. 已知缺口：动到相关代码前必须处理
 
-1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/messaging-and-tunnel.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户不存密码、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
+1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/messaging-and-tunnel.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户的密码是平台不保存也不分发的随机值、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
 2. **Turms 被配置成不校验好友关系**：`allowSendMessagesToStranger = true` 是这套设计成立的前提，不是可选项——好友从不投影进 Turms，设成 false 会拒掉所有私聊。好友校验只在写入网关。
 3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `docs/goal-and-requirements.md` §13 重写判据。
 4. **若干数字没有依据**：P95 300ms 沿用上一版且未经实测，两级限流桶的具体速率尚未确定。凭空引入一个阈值比留白更糟。

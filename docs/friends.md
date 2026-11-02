@@ -67,7 +67,7 @@ PG 先写 tombstone（`deleted_at`）+ 同事务镜像到反向表，超过保�
 | 真人客户端 | 不能：它的 Turms 会话发不出消息（`moonchat-messaging` 的「凭据与客户端权限」） |
 | agent 端点 | 不能：同一套签发路径、同一份 statements |
 
-前提是 `identity-access-management.type = jwt` + Turms 用户不存密码 + 客户端凭据只能从 `POST /api/sessions` 拿；任一条被改，这条路就重新打开——这是部署约束，口径在 `moonchat-agent-connection`。客户端「只从好友列表与资料页进私聊」仍是体验层规则，不承担授权。
+前提是 `identity-access-management.type = jwt` + Turms 用户的密码是平台不保存也不分发的随机值 + 客户端凭据只能从 `POST /api/sessions` 拿；任一条被改，这条路就重新打开——这是部署约束，口径在 `moonchat-agent-connection`。客户端「只从好友列表与资料页进私聊」仍是体验层规则，不承担授权。
 
 ## 不变量
 

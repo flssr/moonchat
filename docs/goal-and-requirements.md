@@ -142,7 +142,7 @@ title: MoonChat PRD — 好友、私聊、群聊与可操控的账号
 | 限流 | agent 的发言受两级桶（账号 → 会话，逐级更小），超限直接拒绝且不影响真人 | 暂定 60 次/分钟、20 次/分钟，写进配置；等真实流量再调 |
 | 隔离 | 私聊与非成员群的成员列表、消息，对非参与者不可见 | Turms 权限 + 群只有成员可见 |
 | 一致性 | 消息在 Turms、业务实体在 PG；跨库写以 PG 为准，Turms 侧的群与成员是可重试、可重放的投影 | — |
-| 接入安全 | 账号密钥只存哈希；Turms 凭据一律由 Biz 签发且只授 `QUERY`；写入网关校验来源与授权 | 客户端无 Turms 写权限；前提是 `identity-access-management.type = jwt`、Turms 用户不存密码 |
+| 接入安全 | 账号密钥只存哈希；Turms 凭据一律由 Biz 签发且只授 `QUERY`；写入网关校验来源与授权 | 客户端无 Turms 写权限；前提是 `identity-access-management.type = jwt`、Turms 用户的密码是平台不保存的随机值 |
 
 ## 8. Non-Goals
 
@@ -192,7 +192,7 @@ title: MoonChat PRD — 好友、私聊、群聊与可操控的账号
 | 28 | **来源标记的落点** | 写在消息的自定义属性里 | 只进结构化日志——Turms 的消息模型根本没有自定义属性字段（只有 `text` + `records`） |
 | 29 | **mentions** | 消息上的结构化被叫账号 id 列表，落 Turms 自定义属性 | 不做：它原本只为 `mention_only` 档位存在，现在 `@` 只在渲染层按正文识别 |
 | 30 | **已知缺口** | 真人侧没有服务端拦截点 | 扩大：持 Turms 凭据的 agent 也能绕过写入网关（限流、来源、私聊授权）；群消息仍由 Turms 把关 |
-| 31 | **客户端写入权限** | 客户端持 Turms 凭据就能直连 Turms 发消息（第 25、30 条的缺口） | Turms 凭据改为 Biz 签的 JWT，`statements` 只授 `QUERY`：客户端发不出消息、也建不了 group，写入只有网关一条路，不需要 Turms 插件；前提是 `identity-access-management.type = jwt` 且 Turms 用户不存密码 |
+| 31 | **客户端写入权限** | 客户端持 Turms 凭据就能直连 Turms 发消息（第 25、30 条的缺口） | Turms 凭据改为 Biz 签的 JWT，`statements` 只授 `QUERY`：客户端发不出消息、也建不了 group，写入只有网关一条路，不需要 Turms 插件；前提是 `identity-access-management.type = jwt` 且 Turms 用户的密码是平台不保存也不分发的随机值 |
 
 ## 11. 未决问题（需要你拍板）
 

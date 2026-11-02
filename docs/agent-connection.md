@@ -117,7 +117,7 @@ flowchart LR
 | 私聊授权（非好友不能私聊） | 写入网关查 PG 的 `friendship`；Turms 那侧仍只查黑名单 |
 | 群消息的成员校验 | 两道：网关查 `room_member`，Turms 查投影成员 |
 
-关闭它靠的是三条前提（`moonchat-messaging` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户不存密码、客户端凭据只能从 `POST /api/sessions` 拿。**任何一条被部署成别的样子（例如把 type 改成 `noop`），这条路就重新打开**——所以它是部署约束，不是代码里可以“顺便”（假设）的东西。
+关闭它靠的是三条前提（`moonchat-messaging` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户的密码是平台不保存也不分发的随机值、客户端凭据只能从 `POST /api/sessions` 拿。**任何一条被部署成别的样子（例如把 type 改成 `noop`），这条路就重新打开**——所以它是部署约束，不是代码里可以“顺便”（假设）的东西。
 
 剩下真实的残余风险：Turms 的 admin 凭据泄漏（那本来就能代任何人发言）与已发出但未过期的 JWT（有效期内仍然只授查询，危害限于读）。
 

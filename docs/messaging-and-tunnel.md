@@ -44,7 +44,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | 前提 | 为什么 |
 | --- | --- |
 | `identity-access-management.type = jwt` | 配成 `noop` / `password` 时 JWT 与 statements 都不参与，客户端可以自证身份 |
-| Turms 用户不存密码 | Biz 只存自己的哈希；Turms 侧没有可登录口令，客户端拿不到 PASSWORD 模式的会话 |
+| Turms 用户的密码是一段**平台不保存也不分发**的随机值 | Turms 的 `AddUserDTO` 要求 `password` 非空且 ≤ 16 字符（实测），所以做不到“用户没有密码”；但这段随机值只有 Biz 建号时见过，客户端拿不到它，PASSWORD 模式的会话照样登不进去 |
 | 客户端凭据只能从 `POST /api/sessions` 拿 | 没有第二个签发点，也就没有第二种 statements |
 
 代价：客户端做不了 Turms 侧的写请求（已读回执、正在输入）。第一版不使用这些能力。
@@ -119,6 +119,17 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | 7 | 客户端历史查询能否按消息 id 范围分页 | **不能**：`QueryMessagesRequest` 只有 `ids` / `fromIds` / `deliveryDateStart/End` / `maxCount` / `descending` | 客户端分页游标改用 `deliveryDate`（见「职责」里的消息标识一条） |
 
 三条配置项现在可以写定：`identity-access-management.type = jwt`（客户端凭据是 JWT）、`allowSendMessagesToStranger` 保持默认 `true`（好友校验只在网关）、`max-text-limit` 默认 500（与接口契约里的正文上限一致）。
+
+**本地 standalone 冒烟结果（`infra/turms/smoke`，4/4 通过）**：
+
+| 验证项 | 结果 |
+| --- | --- |
+| Admin 用指定 id 建用户 | ✔ 通过；但 `password` 必填且 ≤ 16 字符，见上面前提表第 2 行 |
+| Biz 签的 JWT 能登录 `/im` | ✔ 通过；**payload 必须带 `authenticated: true`**（Turms 默认 `jwt.authentication.expectation.custom-payload-claims`）＋ `sub` / `exp` / `statements`，少一个就 `2011 LOGIN_AUTHENTICATION_FAILED` |
+| Admin 带 `senderId` 代发并投递到客户端 | ✔ 通过；`senderDeviceType` 用枚举名（`DESKTOP`）即可。注意刚登录的会话在 turms-service 侧可见有约 3 秒内的延迟，收推送前要等它 |
+| QUERY-only 凭据发 `CREATE_MESSAGE_REQUEST` | ✔ 被拒，`UNAUTHORIZED_REQUEST`（1106） |
+
+**建群相关三条（指定 id、客户端自建群、代理成员校验）仍未实测**：本地没有建 `GroupType`，留给 Turms 打通阶段连同群投影一起跑。
 
 ## 已定的简化
 

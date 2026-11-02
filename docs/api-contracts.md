@@ -203,8 +203,8 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
-- 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp` 与 `statements`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
-- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。依据与前提（`type = jwt`、Turms 用户不存密码）在 `moonchat-messaging` 的「凭据与客户端权限」。
+- 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp`、`statements` 与 `authenticated: true`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
+- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 `moonchat-messaging` 的「凭据与客户端权限」。
 - **有效期 12 小时**，客户端在过期前重调本接口（幂等读取，不创建任何会话状态）；过期后 Turms 会拒登录，重调即可。
 - `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权）。
 - Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时持同一账号的凭据。
@@ -539,6 +539,6 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
 | 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |
-| 代发时的 `senderDeviceType` | Turms 接 `DeviceType` 枚举，但代发该填哪个值未定 | 影响推送与多端去重；等客户端接入后按实际设备定 |
+| 代发时的 `senderDeviceType` | 已实测可用枚举名（`DESKTOP`）传 Admin API；**该填哪个值**仍未定 | 影响推送与多端去重；等客户端接入后按实际设备定 |
 | 两级限流速率 60/20 | 暂定值，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
 | 403 是否要进一步细分 | 现在 5 个 403 码 | 客户端接入后按实际分支再收窄或合并 |
