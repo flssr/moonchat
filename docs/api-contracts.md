@@ -194,6 +194,8 @@ Authorization: Bearer <token>
 | `account_id` | number | 凭据归属的账号 |
 | `display_name` | string | 该账号名字 |
 | `type` | string | `human` / `agent` |
+| `login_token` | string | **只在归属者切账号形态出现**：这个账号自己的登录 JWT（来源 `owner`）。没有它，切进去之后连 `/api` 都调不了 |
+| `login_expires_at` | string | 上面那份登录 JWT 的过期时间（7 天） |
 | `turms.user_id` | number | 等于 `account.id` |
 | `turms.credential` | string | Biz 用与 Turms 共享的 HMAC 密钥签的 **JWT**；登录时当作 Turms 的 `password` 参数传给客户端 SDK |
 | `turms.gateway_url` | string | Turms 网关地址（WS/WSS） |
@@ -203,6 +205,7 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
+- **归属者形态顺带发一份登录 JWT**：`login_token` 的 `sub` 就是切进去的那个账号，所以它接下来调 `/api` 时来源是 `owner` 而不是 `agent`——这正是「归属者切进 agent 账号能建群、能发言，且不进 agent 限流桶」的实现方式（§6 与 `moonchat-agent-connection`）。密钥形态**不发**登录 JWT：agent 端点不该有能力以 `owner` 来源写入。
 - 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp`、`statements` 与 `authenticated: true`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
 - **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 `moonchat-messaging` 的「凭据与客户端权限」。
 - **有效期 12 小时**，客户端在过期前重调本接口（幂等读取，不创建任何会话状态）；过期后 Turms 会拒登录，重调即可。
@@ -462,13 +465,15 @@ Authorization: Bearer <token>
 
 **请求**：`text`（string，必填，trim 后非空；≤ 500 字符）。500 是 Turms `max-text-limit` 的默认上限，Biz 先拦一道，别让超长文本变成 Turms 的报错。`@` 只是正文字符，不做结构化 mentions。
 
+**请求头**：`X-Device-Type`（可选，`desktop` / `browser` / `ios` / `android` / `others`，缺省 `desktop`）。它只映射成 Turms 的 `senderDeviceType`，不参与任何判定；枚举外取值回 `validation_failed`，`field` 就是这个头名。
+
 **响应** `201`
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `message_id` | number | Turms 消息 id；稳定的消息标识。**不是分页游标**：Turms 客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，客户端往回翻用最早一条的 `sent_at` 做游标（`moonchat-messaging`） |
+| `message_id` | number | **写入网关生成**的消息 id（随代发提交，Admin 不回传 id）；单调递增但不连续，也不保存任何历史 id。**不是分页游标**：Turms 客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，客户端往回翻用最早一条的 `sent_at` 做游标（`moonchat-messaging`） |
 | `conversation.type` / `conversation.id` | string / number | 回显 |
-| `sent_at` | string | Turms 落库时间 |
+| `sent_at` | string | 网关交出这一刻的时间；Turms 的 `deliveryDate` 与之差毫秒级 |
 
 **错误**
 
@@ -486,7 +491,7 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
-- 通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `senderId`（上一步认证出的账号，**不接受请求体里自报的发送者**）、`senderDeviceType`、`senderIp`、`isGroupMessage`、`targetId`。
+- 通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `id`（上一步生成的 message id）、`senderId`（上一步认证出的账号，**不接受请求体里自报的发送者**）、`senderDeviceType`（来自请求头）、`senderIp`（`X-Forwarded-For` 第一段，缺省 `remoteAddr`）、`isGroupMessage`、`targetId`。
 - **PG 零写入**：消息只在 Turms，没有副本、没有发送记录表、没有审计表；来源与限流命中只进结构化日志。
 - 成功（`201`）只保证「Turms 已落库并接下了投递」；是否真的到达对方在线端还取决于对方的会话在线状态（冒烟里观察到刚登录的会话有一段同步窗口，见 `moonchat-messaging` 的冒烟结果）。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
 - Turms 侧还会用它自己的投影再校验一次（群成员、黑名单）；两道闸都在，但好友校验只有 Biz 这一道（`allowSendMessagesToStranger = true`）。
@@ -533,7 +538,7 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 
 ## 10. 仍未定的事
 
-已清掉的：Turms 凭据形态（JWT）、名字 20 / 正文 500（Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）、邮箱 254 / 密码 8..72 且不能纯数字、登录 JWT 7 天 / Turms 12 小时、限流 60/20（暂定）。剩下这些：
+已清掉的：Turms 凭据形态（JWT）、名字 20 / 正文 500（Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）、邮箱 254 / 密码 8..72 且不能纯数字、登录 JWT 7 天 / Turms 12 小时、限流 60/20（暂定）、归属者切账号时附带登录 JWT、**消息 id 由网关生成**（Admin `POST /messages` 返回空 body，不回传 id）、`senderDeviceType` 由客户端声明（`X-Device-Type`）。剩下这些：
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
@@ -541,6 +546,5 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
 | 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |
-| 代发时的 `senderDeviceType` | 已实测可用枚举名（`DESKTOP`）传 Admin API；**该填哪个值**仍未定 | 影响推送与多端去重；等客户端接入后按实际设备定 |
 | 两级限流速率 60/20 | 暂定值，写进配置 | 必须等真实流量才能定下；现在只为了能测 429 分支 |
 | 403 是否要进一步细分 | 现在 5 个 403 码 | 客户端接入后按实际分支再收窄或合并 |

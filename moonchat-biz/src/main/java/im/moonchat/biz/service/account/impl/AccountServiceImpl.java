@@ -118,7 +118,11 @@ public class AccountServiceImpl implements AccountService {
         }
 
         TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId());
+        // 归属者切账号时顺带签一份该账号的登录 JWT：没有它，切进去之后连 /api 都调不了
+        LoginTokenService.Issued loginToken = keyShape ? null : loginTokens.issue(account.getId());
         return new AccountResponses.SessionResponse(account.getId(), info.getDisplayName(), account.getType(),
+                loginToken == null ? null : loginToken.token(),
+                loginToken == null ? null : loginToken.expiresAt(),
                 new AccountResponses.SessionResponse.Turms(account.getId(), credential.token(),
                         turmsProperties.gatewayUrl()),
                 credential.expiresAt());

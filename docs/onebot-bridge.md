@@ -56,7 +56,7 @@ flowchart LR
 | `self_id` | `account.id`（同时是 Turms 用户 id） |
 | 私聊 `user_id` | `dm` 会话对端的 `account_id` |
 | 群 `group_id` | `room` 会话的 `room_info.id`——**不是** `turms_group_id`，对外标识只有前者 |
-| `message_id` | Turms 消息 id（单调递增但不连续，只能在查询里当精确标识，不能拿差值算条数） |
+| `message_id` | 消息 id（网关生成、Turms 落库；单调递增但不连续，只能在查询里当精确标识，不能拿差值算条数） |
 | `message_seq` | 桥接层自己维护的每会话计数。Turms 没有每会话序号，消息 id 又不能当序号，所以这个字段只能是桥接进程自己的（重启归零） |
 | `sender.nickname` / `sender.card` | `account_info.display_name`。V1 没有群名片，两者同值 |
 

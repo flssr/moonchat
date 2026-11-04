@@ -2,6 +2,7 @@ package im.moonchat.biz.dto.account;
 
 import java.time.Instant;
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 /**
  * #1 #2 #3 #4 #5 #6 #7 #20 的响应体。这里是一张白名单：只放契约里写过的字段，
@@ -22,7 +23,13 @@ public final class AccountResponses {
     public record TokenResponse(String token, Instant expiresAt, AccountSummary account) {
     }
 
-    public record SessionResponse(long accountId, String displayName, String type, Turms turms, Instant expiresAt) {
+    /**
+     * #3：`turms` 是客户端连 `/im` 的凭据；`loginToken` 只在归属者切账号形态出现——拿到它才能以这个账号
+     * 调 `/api`（来源是 `owner`，不是 `agent`）。密钥形态不发登录 JWT：agent 端点不应该有能力以 owner 来源写入。
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record SessionResponse(long accountId, String displayName, String type, String loginToken,
+            Instant loginExpiresAt, Turms turms, Instant expiresAt) {
 
         /** `userId` 就是 `account_id`；`credential` 是 Turms 能验的 JWT，客户端当 password 传给 SDK。 */
         public record Turms(long userId, String credential, String gatewayUrl) {

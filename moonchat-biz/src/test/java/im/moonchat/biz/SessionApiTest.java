@@ -52,6 +52,48 @@ class SessionApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 归属者切进名下agent账号时顺带拿到该账号的登录JWT() throws Exception {
+        Caller me = newCaller();
+        Agent agent = newAgent(me, "小助手");
+
+        String body = mockMvc.perform(post("/api/sessions")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(me.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"account_id\":" + agent.accountId() + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.account_id").value(agent.accountId()))
+                .andExpect(jsonPath("$.login_token").exists())
+                .andExpect(jsonPath("$.login_expires_at").exists())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+
+        // 这份 JWT 是「那个 agent 账号」的登录凭据，sub 必须是它，来源因此是 owner
+        String loginToken = JsonPath.read(body, "$.login_token");
+        JWTClaimsSet claims = loginClaims(loginToken);
+        assertThat(claims.getSubject()).isEqualTo(Long.toString(agent.accountId()));
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/accounts/mine")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(loginToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].account_id").value(agent.accountId()));
+    }
+
+    @Test
+    void 账号密钥形态不发登录JWT() throws Exception {
+        Caller me = newCaller();
+        Agent agent = newAgent(me, "小助手");
+
+        mockMvc.perform(post("/api/sessions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"account_key":"%s"}
+                                """.formatted(agent.accountKey())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.login_token").doesNotExist())
+                .andExpect(jsonPath("$.login_expires_at").doesNotExist());
+    }
+
+    @Test
     void 归属者能换到名下agent账号的凭据() throws Exception {
         Caller me = newCaller();
         long agentId = insertAgent(me.accountId(), "小助手", Instant.now());

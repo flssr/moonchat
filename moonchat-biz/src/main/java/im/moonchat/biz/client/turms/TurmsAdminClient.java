@@ -4,6 +4,7 @@ import im.moonchat.biz.common.ApiException;
 import im.moonchat.biz.config.TurmsProperties;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -174,6 +175,38 @@ public class TurmsAdminClient {
                     .toBodilessEntity();
         } catch (RestClientException e) {
             log.warn("从 Turms 群里移除成员失败：turmsGroupId={} accountId={}", turmsGroupId, accountId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /**
+     * 代发消息：Admin `POST /messages`，带已认证的 `senderId`、设备类型与来源 IP。
+     * 消息 id 由写入网关生成后在这里一并提交（Admin 不回传 id），`isSystemMessage` 恒为 false。
+     * 返回后 Turms 仍会用自己的投影再校验一次（群成员、黑名单）。
+     */
+    public void sendMessage(long messageId, long senderId, String senderDeviceType, boolean groupMessage,
+            long targetId, String text, String senderIp) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("id", messageId);
+        body.put("senderId", senderId);
+        body.put("senderDeviceType", senderDeviceType);
+        body.put("isGroupMessage", groupMessage);
+        body.put("isSystemMessage", false);
+        body.put("targetId", targetId);
+        body.put("text", text);
+        if (senderIp != null) {
+            body.put("senderIp", senderIp);
+        }
+        try {
+            restClient.post()
+                    .uri("/messages")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            // 没拿到确认就回 503：Turms 可能已经落库，重试可能重复（不做幂等，已写的行为）
+            log.warn("代发消息失败：messageId={} senderId={} targetId={}", messageId, senderId, targetId, e);
             throw ApiException.upstreamUnavailable();
         }
     }

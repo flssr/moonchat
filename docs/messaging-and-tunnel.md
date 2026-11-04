@@ -17,7 +17,7 @@ parent: moonchat-architecture
 - **Turms 是传输引擎**：消息、会话、投递、在线状态都在它那儿（MongoDB / Redis），平台不 fork 它的存储层，也不往它塞业务字段。它同时是消息存储的**唯一写入者**。
 - **群与成员的真相在 PG**（`room_info` / `room_member`），Turms 里的 group / member 只是一份投影：群的 id、名字、所有者、成员列表。字段多一个都不放，可见性与成员变更历史一律不投影。
 - **好友不投影，且 Turms 被配置成不校验它**：`allowSendMessagesToStranger = true`。Turms 的私聊发送校验因此只看黑名单，好友关系由 Biz 的写入网关判定。若这项配置为 false，Turms 会去查它自己的 user relationship——而平台从不往那里投影好友，结果是所有私聊被拒。
-- **消息的标识就是 Turms 消息 id**：它单调递增但不连续，不能拿差值算条数，平台不另建每会话序号。但它**不是分页游标**：Turms 的客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，没有消息 id 范围参数（`QueryMessagesRequest`）。所以客户端往回翻历史用**最早一条的 `deliveryDate` 作游标**，消息 id 用于稳定标识与按 `ids` 精确查询。
+- **消息 id 由写入网关生成后随代发提交**（Admin `CreateMessageDTO.id`，Turms 直接拿它落库与投递）：它单调递增但不连续，平台不另建每会话序号。之所以不用 Turms 生成的 id，是因为 Admin `POST /messages` 返回空 body、不回传 id；发完回查一次会多一跳，并发下还会取错那一条。但它**不是分页游标**：Turms 的客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，没有消息 id 范围参数（`QueryMessagesRequest`）。所以客户端往回翻历史用**最早一条的 `deliveryDate` 作游标**，消息 id 用于稳定标识与按 `ids` 精确查询。
 - **账号即 Turms 用户**：`account.id` 就是 Turms 用户 id（见 `moonchat-accounts`），所以群成员、私聊、消息都落在同一个主体上，没有第二套身份映射。
 - `im-facade` 负责五件事：建群与改成员（投影）、签发 Turms 凭据、同步账号资料、**代发消息**。它是唯一允许调用 Turms 服务端 API 的模块。
 
@@ -81,7 +81,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 拉人、移除成员、退群都是 Biz 的写：先改 PG（`room_member`），再经 `im-facade` 把新成员列表投影进 Turms。投影失败可重试，以 PG 为准重算。
 
 **说话（唯一的写入路径）**
-客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
+客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → 生成消息 id → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`id` / `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
 
 **读历史**
 客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻（Turms 的客户端查询只接受时间范围 + `maxCount` + `descending`，没有消息 id 范围参数）。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。

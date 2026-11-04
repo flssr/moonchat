@@ -23,6 +23,9 @@ final class TestStack {
     /** 测试把账号级桶调到 3：429 分支不用跑 60 次请求；生产默认 60 在 application.yml 里。 */
     static final int ACCOUNT_RATE_PER_MINUTE = 3;
 
+    /** 会话级桶更小：先撞会话级才能验到「两级逐级更小」。 */
+    static final int CONVERSATION_RATE_PER_MINUTE = 2;
+
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
     static final RedisContainer REDIS = new RedisContainer(DockerImageName.parse("redis:8.0.3-alpine"));
     static final FakeTurmsAdmin TURMS_ADMIN = FakeTurmsAdmin.start();
@@ -47,6 +50,8 @@ final class TestStack {
         registry.add("moonchat.auth.jwt-secret", () -> LOGIN_JWT_SECRET);
         registry.add("moonchat.agent.key-pepper", () -> AGENT_KEY_PEPPER);
         registry.add("moonchat.limit.account-per-minute", () -> Integer.toString(ACCOUNT_RATE_PER_MINUTE));
+        registry.add("moonchat.limit.conversation-per-minute",
+                () -> Integer.toString(CONVERSATION_RATE_PER_MINUTE));
         // 重放器在测试里手动调，定时器拉长到一小时，避免它在断言中间插一脚
         registry.add("moonchat.turms.replay-interval", () -> "1h");
     }

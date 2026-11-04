@@ -96,7 +96,7 @@ graph LR
 
 ### S4 写入网关
 
-- **做什么**：#19，严格按 `moonchat-api` §7 的顺序建链：认证凭据 → 归属 → 会话解析 → 授权事实 → 限流 → 来源标记写日志 → 交给 `im-facade` 代发。
+- **做什么**：#19，严格按 `moonchat-api` §7 的顺序建链：认证凭据 → 归属 → 会话解析 → 授权事实 → 限流 → 来源标记写日志 → 交给 `im-facade` 代发。消息 id 由网关生成后随代发提交（Admin `POST /messages` 不回传 id），`X-Device-Type` 由客户端声明。
 - **边界**：PG 零写入；消息标识只用 Turms 消息 id；发送者只取自凭据，不接受请求体自报；`503` 只表示没拿到 Turms 的确认，不做幂等（`moonchat-api` §7 的已写行为）。
 - **结束条件**：两条授权拒绝（`not_friend` / `not_room_member`）、被移出群后的立即拒绝、`429` 不影响同账号真人、`503` 映射，各有一条测试。
 
@@ -114,7 +114,7 @@ graph LR
 | agent 示例端点 | 挂在 `infra/turms/smoke` 里扩，不新建目录 | 它和冒烟是同一件事（都用 `turms-client-js` 走真实 Turms），另建目录要多一套构建 |
 | 验证 | 每片配 Testcontainers 接口测试（PG 与 Redis 已在容器里跑通）；Turms 侧一律靠 smoke 脚本断言 | 片末判据必须可重跑，手验只作补充 |
 | 重放器 | 只在 S3 出现一次，最小版 | 见 S3 |
-| spec 回写 | S0 → `moonchat-messaging` 的缺口表与冒烟结果；S3 → 投影重放的口径；S5 → 客户端界面规则（与现有 spec 不符时先改 spec） | `AGENTS.md` §2「改行为 = 改 spec」 |
+| spec 回写 | S0 → `moonchat-messaging` 的缺口表与冒烟结果；S3 → 投影重放的口径；S4 → 消息 id 的产生、`sent_at` 的口径与 `X-Device-Type`；S5 → 客户端界面规则（与现有 spec 不符时先改 spec） | `AGENTS.md` §2「改行为 = 改 spec」 |
 
 ## 6. 片内不许做的事
 
