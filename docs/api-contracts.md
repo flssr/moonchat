@@ -253,13 +253,13 @@ Authorization: Bearer <token>
 | --- | --- | --- |
 | `account_id` | number | 新账号 id |
 | `display_name` | string | 同请求值 |
-| `account_key` | string | **明文密钥，只在这个响应里出现一次** |
+| `account_key` | string | **明文密钥，只在这个响应里出现一次**；形态是 UUIDv4（36 字符），库里只有它的确定性 HMAC-SHA256 + pepper 哈希 |
 
 **错误**：`validation_failed` 400、`forbidden` 403（来源是 agent：agent 不能再建 agent）。
 
 **副作用与不变量**
 
-- 同一事务写 `account`（`type = 'agent'`、`owner_account_id` = 调用者、`turms_sync_state = 'pending'`）与 `account_info`（`credential_hash` = HMAC-SHA256 + pepper，`email` 为空）。
+- 同一事务写 `account`（`type = 'agent'`、`owner_account_id` = 调用者、`turms_sync_state = 'pending'`）与 `account_info`（`credential_hash` = HMAC-SHA256 + pepper（`moonchat.agent.key-pepper`），`email` 为空）。
 - 之后建 Turms 用户，口径同 §3.1。
 - 新账号**不入群、不加好友**：建完就是一个孤立的账号，关系由后续动作建立。
 

@@ -97,6 +97,6 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 
 ## 6. 已知缺口
 
-- **两级限流桶的速率未定**（`moonchat-agent-connection`）。实现只用 Redis 的原子自增与过期，不需要额外脚本或限流库。
-- **agent 密钥的 pepper 未定**（`moonchat-biz-data` 的「只能由应用层守的规则」）：用 JCE 的 `HmacSHA256`，不引第三方包。
+- **两级限流桶的速率仍是暂定值**（`moonchat-agent-connection`）：账号级已落地为配置 `moonchat.limit.account-per-minute`（默认 60），会话级随 S4 的写入网关。实现只用 Redis 的原子自增与过期，不需要额外脚本或限流库。
+- **agent 密钥走 `moonchat.agent.key-pepper`**（`moonchat-biz-data` 的「只能由应用层守的规则」）：用 JCE 的 `HmacSHA256`，不引第三方包；pepper 无默认值，部署必须显式给出。
 - **镜像站与代理是机器级配置**：Maven 走阿里云镜像、Docker 走国内 registry mirror，都写在开发者的 `settings.xml` / `daemon.json` / `.testcontainers.properties` 里，仓库不承担、也不记录这些值的唯一副本。

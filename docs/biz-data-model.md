@@ -148,7 +148,7 @@ create table account_info (
 | `created_at` | `timestamptz` | 否 | 创建时间；默认 `now()`，审计用 |
 | `updated_at` | `timestamptz` | 否 | 更新时间；由应用写入，不建触发器 |
 
-- **一个账号只有一条主认证凭据**：真人用 **bcrypt**（Spring Security 的 `BCryptPasswordEncoder`，cost 10 起；上限 72 字节，接口层拦住超长密码），agent 用确定性 HMAC-SHA256 + 服务端 pepper（pepper 来源与轮换方式**未确认**）。
+- **一个账号只有一条主认证凭据**：真人用 **bcrypt**（Spring Security 的 `BCryptPasswordEncoder`，cost 10 起；上限 72 字节，接口层拦住超长密码），agent 用确定性 HMAC-SHA256 + 服务端 pepper（pepper 读 `moonchat.agent.key-pepper`，无默认值；**轮换方式未确认**——换 pepper 等于现有密钥全部失效）。
 - **类型不重复存**：真人或 agent 由 `account.type` 判断，`account_info` 不再加 `type` 列，避免两处类型不一致。
 - **agent 密钥必须可反查**：agent 带着明文密钥来，Biz 算出确定性哈希后按 `unique (credential_hash)` 定位账号；加盐慢哈希做不到这一点，只用于真人密码。
 - **哈希格式自带算法标记**：实现时在 `credential_hash` 中使用带方案前缀的编码，例如 `bcrypt$2a$...` 与 `hmac-sha256$...`，以便以后迁移算法（换 Argon2id 不需要改表）。
@@ -381,7 +381,7 @@ create index account_room_deleted_at_idx
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| agent 密钥的 pepper 来源与轮换方式 | 密码已定 bcrypt（cost 10 起）；pepper 未定 | pepper 的存放与轮换没有外部依据，需在产品侧定一个值 |
+| agent 密钥的 pepper 轮换方式 | pepper 的存放已定（`moonchat.agent.key-pepper`，无默认值）；明文密钥是 UUIDv4 | 轮换没有外部依据：换 pepper 会让现有 agent 密钥全部反查不到，V1 不做轮换 |
 | 软删保留时长与 purge 频率 | 未定 | 两个数字必须有产品依据；确定前不写死 |
 | 索引是否够用 | 除主键、唯一约束和四个 `deleted_at` purge 索引外，只建 `account_owner_idx`；好友与群成员的有效行查询命中主表与反向表主键 | V1 单实例没有实测数据，等真实流量再补，不预建 |
 

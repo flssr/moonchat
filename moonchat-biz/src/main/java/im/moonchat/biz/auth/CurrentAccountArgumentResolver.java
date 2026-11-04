@@ -38,6 +38,7 @@ public class CurrentAccountArgumentResolver implements HandlerMethodArgumentReso
         if (!parameter.isOptional()) {
             return CurrentAccount.class.equals(parameter.getParameterType());
         }
+        // Spring 7 的 nestedIfOptional() 对 Optional<T> 只返回自身，只能按泛型实参判
         Type generic = parameter.getNestedGenericParameterType();
         return generic instanceof ParameterizedType optional
                 && CurrentAccount.class.equals(optional.getActualTypeArguments()[0]);

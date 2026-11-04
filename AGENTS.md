@@ -21,7 +21,7 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）与 S1（身份底座）已完成并合入 `main`**——业务代码目前只有七张表的迁移与账号模块的五条路由（#1 注册、#2 登录、#3 换 Turms 凭据、#4 我的账号、#20 续期），好友、群与发言都还没有实现，下一步是 S2 关系。
+- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）与 S2（关系）已完成并合入 `main`**——七张表的迁移已建齐，接口到 12 条（身份 #1/#2/#3/#4/#20、关系 #5–#11，含 agent 账号与账号密钥、改名、资料页、好友四条与账号级限流桶），群、群成员与发言还没有实现，下一步是 S3 群与投影。
 - 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
@@ -166,14 +166,14 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 | 约定 | 内容 | 为什么 |
 | --- | --- | --- |
-| 分包 | 层 + 模块二级包：`controller/account`、`service/account` + `impl`、`mapper/account`、`dto/account`；`entity`、`client/turms`、`config`、`common`、`auth` 平铺 | 经典 Spring 分层，看类名就知道去哪找 |
+| 分包 | 层 + 模块二级包：`controller/account`、`service/account` + `impl`、`mapper/account`、`dto/account`，好友与待加限流同构（`friendship`）；不按接口拆包的组件放 `service/limiter`；`entity`、`client/turms`、`config`、`common`、`auth` 平铺 | 经典 Spring 分层，看类名就知道去哪找 |
 | service | 接口 + `impl` 两个文件 | 与团队习惯一致 |
 | 持久层 | MyBatis-Plus：`@TableName` 实体 + `extends BaseMapper`，条件用 Wrapper；不写裸 `JdbcClient`，不上 JPA | `docs/dependencies.md` |
 | 实体 | `@Data @Builder @NoArgsConstructor @AllArgsConstructor`；`account_info.credential_hash` 标 `@ToString.Exclude` | builder 给业务代码用，无参构造给 MyBatis 回填；哈希不能进日志 |
 | 响应 | 只走 `dto/*` 里的白名单 record，实体绝不出现在响应里 | 否则 `email`、`credential_hash` 会漏出去 |
 | 日志 | SLF4J 门面（`@Slf4j`）+ Logback，配置在 `logback-spring.xml`，根级别 `info` | 调到 `debug` 会让 MyBatis 把 SQL 参数（含哈希）打成明文 |
-| 配置 | 库与 Redis 用 Spring 原生键（yml 不落默认值）；自有配置只用 `moonchat.turms.*` / `moonchat.auth.*`；密钥不给默认值 | 部署必须显式给出 |
-| 认证 | 当前账号由 `HandlerMethodArgumentResolver` 解析，不写成过滤器 | 过滤器里的异常到不了 `@RestControllerAdvice`，401 会变 500 |
+| 配置 | 库与 Redis 用 Spring 原生键（yml 不落默认值）；自有配置按模块前缀：`moonchat.turms.*`、`moonchat.auth.*`、`moonchat.agent.*`（密钥与 pepper 不给默认值）、`moonchat.limit.*`（暂定速率可有默认值）；密钥一律不给默认值 | 部署必须显式给出 |
+| 认证 | 当前账号由 `HandlerMethodArgumentResolver` 解析，不写成过滤器；一个头装两种凭据（登录 JWT → `owner`、agent 账号密钥 → `agent`），靠形状分流；#3 用 `Optional<CurrentAccount>` 接不带认证头的密钥形态 | 过滤器里的异常到不了 `@RestControllerAdvice`，401 会变 500 |
 | 测试 | 接口测试用 Testcontainers（PG/Redis 真容器）+ JDK `HttpServer` 假 Turms Admin；Turms 侧结论由 `infra/turms/smoke` 的脚本断言 | 片末判据必须可重跑 |
 
 ---

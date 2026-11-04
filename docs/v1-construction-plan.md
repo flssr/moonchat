@@ -84,7 +84,7 @@ graph LR
 ### S2 关系
 
 - **做什么**：#5 建 agent 账号（`credential_hash` 用确定性 HMAC-SHA256 + pepper，明文密钥只在这个响应里出现）、#6 改名并同步 Turms、#7 资料页、#8–#11 好友四条；一个账号级限流桶，只给 `agent` 来源的好友申请用。
-- **边界**：不碰群。好友不投影进 Turms（`moonchat-messaging`），所以这一片没有任何 Admin 调用。
+- **边界**：不碰群，好友也不投影进 Turms（`moonchat-messaging`）——所以这一片没有任何**群 / 成员 / 会话**的 Admin 调用；Admin 只在建 agent 账号（建用户）与改名（`PUT /users`）两处出现，均与注册同口径（没确认就整笔回滚）。
 - **结束条件**：三条只能由应用层守的规则都能被测试断言到——规范序（小 id 在前）、双表单事务同写、拒绝写 tombstone 而不是新增枚举值。
 
 ### S3 群与投影
