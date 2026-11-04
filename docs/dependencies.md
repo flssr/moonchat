@@ -32,7 +32,7 @@ depends-on:
 
 | 来源 | 具体版本 |
 | --- | --- |
-| Spring Boot 4.1.2 BOM | Flyway 12.4.0、PostgreSQL 驱动 42.7.14、Lettuce 7.5.2、Spring Security 7.1.2、Log4j2 2.25.5、Lombok 1.18.48、Testcontainers 2.0.5、`com.redis:testcontainers-redis` 2.2.4 |
+| Spring Boot 4.1.2 BOM | Flyway 12.4.0、PostgreSQL 驱动 42.7.14、Lettuce 7.5.2、Spring Security 7.1.2、Lombok 1.18.48、Testcontainers 2.0.5、`com.redis:testcontainers-redis` 2.2.4 |
 
 Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 
@@ -46,7 +46,6 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 | 依赖 | 用在哪 | 依据 |
 | --- | --- | --- |
 | `spring-boot-starter-webmvc` | 20 条 `/api/*` 路由；调 Turms Admin API 的 `RestClient` 也来自它的 spring-web | `moonchat-api` |
-| `spring-boot-starter-log4j2` | 日志实现：代码只依赖 SLF4J 门面（`@Slf4j`），实现换成 Log4j2 不改一行业务代码；配置文件是 `log4j2-spring.xml` | 全项目日志（`moonchat-deployment` 单进程） |
 | `spring-boot-starter-validation` | 入口校验（密码 8..72 且不能纯数字、名字 ≤ 20、正文 ≤ 500） | `moonchat-api` §3.1 |
 | `spring-boot-starter-actuator` | 健康检查，不进业务契约 | `moonchat-api` §9 |
 | `spring-boot-starter-flyway` | `db/migration/V1__biz_schema.sql` 的执行者 | `moonchat-biz-data` §3 |
@@ -62,8 +61,6 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 - **`provided` + 插件里显式 `exclude`**：`provided` 只决定编译期可见性；`spring-boot-maven-plugin` 的 repackage 仍会把 provided 依赖打进 `BOOT-INF/lib`（实测 `lombok-1.18.48.jar` 就在里面），所以 pom 里显式把它排掉，产物里一行都不留。
 
 - **`spring-boot-starter-jdbc` 不单独声明**：Flyway 与 MyBatis-Plus 的 starter 都会把它带进来，重复写只是噪音。
-- **Logback 是排除掉的，不是漏了**：每个 starter 都经 `spring-boot-starter` 传递带入 `spring-boot-starter-logging`，所以在 `dependencyManagement` 里对 `spring-boot-starter` 排除一次，全模块一起生效（`dependency:tree` 里已无 logback）。
-- **日志只输出到控制台**：容器里日志走 stdout；落盘、轮转、采集属于部署侧。S4 的来源与限流命中要写成结构化日志，届时再决定要不要换 JSON 布局，现在不加那个依赖。
 - **持久层是 MyBatis-Plus**，不是 JPA 也不是裸 `JdbcClient`；分页、事务与 SQL 都走它。
 
 ## 3. 明确不加
