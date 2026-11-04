@@ -49,4 +49,9 @@ public class ApiException extends RuntimeException {
     public static ApiException upstreamUnavailable() {
         return new ApiException("upstream_unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Turms 没有确认这次请求", null);
     }
+
+    /** 只对 `agent` 来源的账号级限流桶（好友申请）；会话级桶随 S4 的写入网关。 */
+    public static ApiException rateLimited() {
+        return new ApiException("rate_limited", HttpStatus.TOO_MANY_REQUESTS, "请求太频繁，稍后再试", null);
+    }
 }

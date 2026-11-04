@@ -44,3 +44,6 @@ moonchat:
   agent:
     # agent 账号密钥的 HMAC pepper（docs/biz-data-model.md §4.2）：部署必须显式给出，不给默认值。
     key-pepper: ${MOONCHAT_AGENT_KEY_PEPPER}
+  limit:
+    # 只作用于 agent 来源的账号级桶（好友申请）；速率暂定，见 docs/agent-connection.md 的「限流与来源」。
+    account-per-minute: ${MOONCHAT_LIMIT_ACCOUNT_PER_MINUTE:60}

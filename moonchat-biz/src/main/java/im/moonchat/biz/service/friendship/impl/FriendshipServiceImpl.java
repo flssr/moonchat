@@ -13,6 +13,7 @@ import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.friendship.FriendshipMapper;
 import im.moonchat.biz.mapper.friendship.FriendshipReverseMapper;
 import im.moonchat.biz.service.friendship.FriendshipService;
+import im.moonchat.biz.service.limiter.AccountRateLimiter;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +38,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     private final FriendshipMapper friendshipMapper;
     private final FriendshipReverseMapper reverseMapper;
     private final AccountInfoMapper accountInfoMapper;
+    private final AccountRateLimiter accountRateLimiter;
 
     @Override
     public FriendshipResponses.ListResponse list(CurrentAccount me, String status) {
@@ -93,6 +95,11 @@ public class FriendshipServiceImpl implements FriendshipService {
         Friendship existing = findRow(lower, higher);
         if (existing != null && existing.getDeletedAt() == null) {
             throw ApiException.conflict(ACCEPTED.equals(existing.getStatus()) ? "已经是好友" : "已经有待处理的申请");
+        }
+
+        // 校验先于桶：429 只落在真正会被处理的申请上，不会盖住 404 / 409
+        if (me.source() == CurrentAccount.Source.AGENT) {
+            accountRateLimiter.check(meId);
         }
 
         OffsetDateTime now = OffsetDateTime.now();

@@ -20,6 +20,9 @@ final class TestStack {
     static final String LOGIN_JWT_SECRET = "test-login-jwt-secret-0123456789abcdef";
     static final String AGENT_KEY_PEPPER = "test-agent-key-pepper-0123456789abcdef";
 
+    /** 测试把账号级桶调到 3：429 分支不用跑 60 次请求；生产默认 60 在 application.yml 里。 */
+    static final int ACCOUNT_RATE_PER_MINUTE = 3;
+
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
     static final RedisContainer REDIS = new RedisContainer(DockerImageName.parse("redis:8.0.3-alpine"));
     static final FakeTurmsAdmin TURMS_ADMIN = FakeTurmsAdmin.start();
@@ -43,6 +46,7 @@ final class TestStack {
         registry.add("moonchat.turms.jwt-secret-file", () -> JWT_SECRET_FILE.toString());
         registry.add("moonchat.auth.jwt-secret", () -> LOGIN_JWT_SECRET);
         registry.add("moonchat.agent.key-pepper", () -> AGENT_KEY_PEPPER);
+        registry.add("moonchat.limit.account-per-minute", () -> Integer.toString(ACCOUNT_RATE_PER_MINUTE));
     }
 
     /** 与 turms-gateway 共享的那份密钥：32 字节，HS256 的最小长度。 */
