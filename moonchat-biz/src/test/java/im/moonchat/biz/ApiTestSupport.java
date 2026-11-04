@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -71,6 +72,23 @@ abstract class ApiTestSupport {
     }
 
     record Caller(long accountId, String token) {
+    }
+
+    /** 归属者建一个 agent：`accountKey` 就是 #3 密钥形态的凭据。 */
+    Agent newAgent(Caller owner, String displayName) throws Exception {
+        String body = mockMvc.perform(post("/api/agent-accounts")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"display_name":"%s"}
+                                """.formatted(displayName)))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        return new Agent(((Number) JsonPath.read(body, "$.account_id")).longValue(),
+                JsonPath.read(body, "$.account_key"));
+    }
+
+    record Agent(long accountId, String accountKey) {
     }
 
     String loginBody(String email, String password) throws Exception {

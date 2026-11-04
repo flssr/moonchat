@@ -11,6 +11,7 @@ import im.moonchat.biz.entity.Account;
 import im.moonchat.biz.entity.AccountInfo;
 import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.account.AccountMapper;
+import im.moonchat.biz.service.account.AccountKeyService;
 import im.moonchat.biz.service.account.AccountService;
 import im.moonchat.biz.service.account.CredentialHasher;
 import im.moonchat.biz.service.auth.LoginTokenService;
@@ -19,6 +20,9 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,11 +33,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class AccountServiceImpl implements AccountService {
 
     private static final String HUMAN = "human";
+    private static final String AGENT = "agent";
     private static final String FROZEN = "frozen";
 
     private final AccountMapper accountMapper;
     private final AccountInfoMapper accountInfoMapper;
     private final CredentialHasher hasher;
+    private final AccountKeyService accountKeys;
     private final TurmsAdminClient turmsAdmin;
     private final TurmsCredentialService turmsCredentials;
     private final LoginTokenService loginTokens;
@@ -51,28 +57,27 @@ public class AccountServiceImpl implements AccountService {
             throw ApiException.conflict("这个邮箱已经注册过");
         }
 
-        Account account = Account.builder()
-                .type(HUMAN)
-                .turmsSyncState("pending")
-                .build();
-        accountMapper.insert(account);
-
-        accountInfoMapper.insert(AccountInfo.builder()
-                .accountId(account.getId())
-                .displayName(request.displayName())
-                .email(request.email())
-                .credentialHash(hasher.hashPassword(request.password()))
-                .build());
-
-        turmsAdmin.createUser(account.getId(), request.displayName());
-
-        accountMapper.updateById(Account.builder()
-                .id(account.getId())
-                .turmsSyncState("synced")
-                .updatedAt(OffsetDateTime.now())
-                .build());
-
+        Account account = createAccount(HUMAN, null, request.email(), request.displayName(),
+                hasher.hashPassword(request.password()));
         return new AccountResponses.RegisterResponse(account.getId(), request.displayName(), HUMAN);
+    }
+
+    /**
+     * agent 账号与真人账号同构，只多一个不可转移的归属者（docs/account-and-ownership.md）；
+     * 明文密钥只在这个响应里出现一次，库里只有它的确定性哈希。
+     */
+    @Override
+    @Transactional
+    public AccountResponses.AgentAccountResponse createAgent(CurrentAccount me,
+            AccountRequests.DisplayNameRequest request) {
+        if (me.source() == CurrentAccount.Source.AGENT) {
+            throw ApiException.forbidden("agent 不能再建 agent");
+        }
+
+        String accountKey = UUID.randomUUID().toString();
+        Account account = createAccount(AGENT, me.accountId(), null, request.displayName(),
+                hasher.hashAccountKey(accountKey));
+        return new AccountResponses.AgentAccountResponse(account.getId(), request.displayName(), accountKey);
     }
 
     /** 账号不存在与密码错误返回同一个码，不给账号枚举留信号。 */
@@ -87,25 +92,23 @@ public class AccountServiceImpl implements AccountService {
         return tokenResponse(account.getId(), account.getType(), info.getDisplayName());
     }
 
-    /** 归属关系本身就是授权：没有授权表，也没有临时凭据。 */
+    /** 归属关系本身就是授权：没有授权表，也没有临时凭据。账号密钥形态只换密钥所属账号的凭据。 */
     @Override
-    public AccountResponses.SessionResponse issueSession(CurrentAccount me, AccountRequests.SessionRequest request) {
-        if (request.accountKey() != null) {
-            // 账号密钥形态要等 S2 建出 agent 账号与密钥才存在：此刻没有任何密钥能查到账号。
-            throw ApiException.unauthenticated();
+    public AccountResponses.SessionResponse issueSession(Optional<CurrentAccount> caller,
+            AccountRequests.SessionRequest request) {
+        boolean keyShape = request.accountKey() != null;
+        boolean idShape = request.accountId() != null;
+        // 无主体、两种都给、或密钥形态却带了认证头：都不是契约里的两种形态（§3.3）
+        if (keyShape == idShape || (keyShape && caller.isPresent())) {
+            throw ApiException.validationFailed(keyShape ? "account_key" : "account_id",
+                    keyShape ? "account_key 与 account_id 只能给一个" : "account_id 不能为空");
         }
-        if (request.accountId() == null) {
-            throw ApiException.validationFailed("account_id", "account_id 不能为空");
-        }
-        Account account = accountMapper.selectById(request.accountId());
-        if (account == null) {
-            throw ApiException.notFound("账号不存在");
-        }
-        long meId = me.accountId();
-        boolean mine = account.getId() == meId
-                || (account.getOwnerAccountId() != null && account.getOwnerAccountId() == meId);
-        if (!mine) {
-            throw ApiException.forbidden("这个账号不在你名下");
+
+        Account account;
+        if (keyShape) {
+            account = accountMapper.selectById(accountKeys.authenticate(request.accountKey()));
+        } else {
+            account = ownedAccount(caller.orElseThrow(ApiException::unauthenticated), request.accountId());
         }
         AccountInfo info = accountInfoMapper.selectById(account.getId());
         if (FROZEN.equals(info.getStatus())) {
@@ -159,8 +162,49 @@ public class AccountServiceImpl implements AccountService {
         return tokenResponse(account.getId(), account.getType(), info.getDisplayName());
     }
 
-    private AccountResponses.TokenResponse tokenResponse(long accountId, String type, String displayName) {
-        LoginTokenService.Issued token = loginTokens.issue(accountId);
+    /**
+     * 注册与建 agent 共用的一次建号：身份行 + 资料行 + Turms 用户 + 同步标记，
+     * 全部在调用方的事务里完成（失败整笔回滚）。
+     */
+    private Account createAccount(String type, Long ownerAccountId, String email, String displayName,
+            String credentialHash) {
+        Account account = Account.builder()
+                .type(type)
+                .ownerAccountId(ownerAccountId)
+                .turmsSyncState("pending")
+                .build();
+        accountMapper.insert(account);
+
+        accountInfoMapper.insert(AccountInfo.builder()
+                .accountId(account.getId())
+                .displayName(displayName)
+                .email(email)
+                .credentialHash(credentialHash)
+                .build());
+
+        turmsAdmin.createUser(account.getId(), displayName);
+
+        accountMapper.updateById(Account.builder()
+                .id(account.getId())
+                .turmsSyncState("synced")
+                .updatedAt(OffsetDateTime.now())
+                .build());
+        return account;
+    }
+
+    /** `account_id` 形态只能换自己或自己名下 agent 的凭据：归属关系本身就是授权。 */
+    private Account ownedAccount(CurrentAccount me, long accountId) {
+        Account account = accountMapper.selectById(accountId);
+        if (account == null) {
+            throw ApiException.notFound("账号不存在");
+        }
+        if (account.getId() != me.accountId() && !Objects.equals(account.getOwnerAccountId(), me.accountId())) {
+            throw ApiException.forbidden("这个账号不在你名下");
+        }
+        return account;
+    }
+
+    private AccountResponses.TokenResponse tokenResponse(long accountId, String type, String displayName) {        LoginTokenService.Issued token = loginTokens.issue(accountId);
         return new AccountResponses.TokenResponse(token.token(), token.expiresAt(),
                 new AccountResponses.AccountSummary(accountId, type, displayName));
     }

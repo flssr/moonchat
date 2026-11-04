@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.util.Locale;
 
 /**
- * #1 #2 #3 的请求体，校验规则见 docs/api-contracts.md §3。
+ * #1 #2 #3 #5 #6 的请求体，校验规则见 docs/api-contracts.md §3、§4。
  * 入口校验只在这里做一次，之后靠类型系统流转。
  */
 public final class AccountRequests {
@@ -47,6 +47,17 @@ public final class AccountRequests {
 
     /** #3 的两种形态恰好一种；"恰好一种" 由服务层判，缺字段要按契约回不同的码。 */
     public record SessionRequest(Long accountId, String accountKey) {
+    }
+
+    /** #5 建 agent、#6 改名：两条路由的请求体是同一个东西（只有一个名字）。 */
+    public record DisplayNameRequest(
+            @NotBlank(message = "名字不能为空")
+            @Size(max = 20, message = "名字最长 20 字符")
+            String displayName) {
+
+        public DisplayNameRequest {
+            displayName = displayName == null ? null : displayName.trim();
+        }
     }
 
     private static String normalizeEmail(String email) {

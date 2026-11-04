@@ -1,7 +1,11 @@
 package im.moonchat.biz.auth;
 
 import im.moonchat.biz.common.ApiException;
+import im.moonchat.biz.service.account.AccountKeyService;
 import im.moonchat.biz.service.auth.LoginTokenService;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
@@ -12,8 +16,13 @@ import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 
 /**
- * 把 `Authorization: Bearer <登录 JWT>` 解析成 {@link CurrentAccount}。
- * 不做成过滤器：解析失败要落到统一的失败体，而过滤器里的异常在 advice 之外。
+ * 把 `Authorization: Bearer <token>` 解析成 {@link CurrentAccount}。一个头装两种凭据：
+ * 登录 JWT（认作 `owner`）与 agent 账号密钥（认作 `agent`）。
+ *
+ * <p>参数写成 `Optional<CurrentAccount>` 时没有凭据不算失败——#3 的账号密钥形态就是不带认证头的
+ * （docs/api-contracts.md §3.3）；带了但验不过仍然回 `unauthenticated`。
+ *
+ * <p>不做成过滤器：解析失败要落到统一的失败体，而过滤器里的异常在 advice 之外。
  */
 @Component
 @RequiredArgsConstructor
@@ -22,19 +31,34 @@ public class CurrentAccountArgumentResolver implements HandlerMethodArgumentReso
     private static final String BEARER = "Bearer ";
 
     private final LoginTokenService loginTokens;
+    private final AccountKeyService accountKeys;
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
-        return CurrentAccount.class.equals(parameter.getParameterType());
+        if (!parameter.isOptional()) {
+            return CurrentAccount.class.equals(parameter.getParameterType());
+        }
+        Type generic = parameter.getNestedGenericParameterType();
+        return generic instanceof ParameterizedType optional
+                && CurrentAccount.class.equals(optional.getActualTypeArguments()[0]);
     }
 
     @Override
     public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer mavContainer,
             NativeWebRequest webRequest, WebDataBinderFactory binderFactory) {
+        boolean optional = parameter.isOptional();
         String header = webRequest.getHeader(HttpHeaders.AUTHORIZATION);
         if (header == null || !header.startsWith(BEARER)) {
+            if (optional) {
+                return Optional.empty();
+            }
             throw ApiException.unauthenticated();
         }
-        return new CurrentAccount(loginTokens.verify(header.substring(BEARER.length()).trim()));
+        String token = header.substring(BEARER.length()).trim();
+        // 两种凭据的形状不同：登录 JWT 是三段 base64url（带点），账号密钥是 UUID（不带点）。
+        CurrentAccount account = token.indexOf('.') > 0
+                ? new CurrentAccount(loginTokens.verify(token), CurrentAccount.Source.OWNER)
+                : new CurrentAccount(accountKeys.authenticate(token), CurrentAccount.Source.AGENT);
+        return optional ? Optional.of(account) : account;
     }
 }

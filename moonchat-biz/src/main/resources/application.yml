@@ -41,3 +41,6 @@ moonchat:
     # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
     jwt-secret: ${MOONCHAT_AUTH_JWT_SECRET}
     login-token-ttl: 7d
+  agent:
+    # agent 账号密钥的 HMAC pepper（docs/biz-data-model.md §4.2）：部署必须显式给出，不给默认值。
+    key-pepper: ${MOONCHAT_AGENT_KEY_PEPPER}

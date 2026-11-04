@@ -18,6 +18,7 @@ import org.testcontainers.utility.DockerImageName;
 final class TestStack {
 
     static final String LOGIN_JWT_SECRET = "test-login-jwt-secret-0123456789abcdef";
+    static final String AGENT_KEY_PEPPER = "test-agent-key-pepper-0123456789abcdef";
 
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
     static final RedisContainer REDIS = new RedisContainer(DockerImageName.parse("redis:8.0.3-alpine"));
@@ -41,6 +42,7 @@ final class TestStack {
         registry.add("moonchat.turms.admin-url", TURMS_ADMIN::baseUrl);
         registry.add("moonchat.turms.jwt-secret-file", () -> JWT_SECRET_FILE.toString());
         registry.add("moonchat.auth.jwt-secret", () -> LOGIN_JWT_SECRET);
+        registry.add("moonchat.agent.key-pepper", () -> AGENT_KEY_PEPPER);
     }
 
     /** 与 turms-gateway 共享的那份密钥：32 字节，HS256 的最小长度。 */
