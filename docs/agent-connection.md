@@ -127,3 +127,4 @@ flowchart LR
 - **agent 收全部会话，自己筛**：平台不做会话级订阅与裁剪。
 - **写入多一跳 Biz**：Turms 不可用时发言直接失败，V1 不排队重试。
 - **不做 agent 专用的 SDK 或本地客户端**：agent 侧用现成的 Turms 客户端库（`turms-client-js` / `dart` / `kotlin` / `cpp` / `swift`）加 Biz 的 REST。
+- **OneBot 11 只在 agent 侧桥接**：给现成 bot 框架（NoneBot2 / Koishi / LangBot）用的 OneBot 协议面由一个跑在 agent 侧的独立进程提供，映射与做不到的动作见 `moonchat-onebot-bridge`；平台不开协议面，`/api/*` 不因此多一条。

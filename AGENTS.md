@@ -21,7 +21,7 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 11 份 markdown spec：10 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。当前处于 V1 的 S0/S1 之间，业务行为尚未实现。
+- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。当前处于 V1 的 S0/S1 之间，业务行为尚未实现。
 - 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
@@ -111,6 +111,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 | 不做消息搜索 | `docs/messaging-and-tunnel.md` |
 | agent 只有好友申请一个关系动作：建群、移除成员只有真人能做 | `docs/friends.md` |
 | agent 收它账号的全部会话，自己筛：没有工作区、没有投递档位、没有 webhook | `docs/agent-connection.md` |
+| OneBot 11 只在 agent 侧桥接，平台不开协议面 | `docs/onebot-bridge.md` |
 | 业务只有一个进程（`moonchat-biz`） | `docs/deployment.md` |
 | 不引入消息队列、不建投递队列：写入是同步 REST 调用 | `docs/deployment.md` |
 | 客户端写入由 Turms 的 JWT `statements` 关闭（只授 `QUERY`）：不需要 Turms 插件 | `docs/messaging-and-tunnel.md` |

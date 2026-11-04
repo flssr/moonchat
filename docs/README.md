@@ -1,6 +1,6 @@
 # 文档台账（spec-graph index）
 
-本目录**放设计与导航**：11 份带 frontmatter 的 spec（10 份设计 + 1 份 task-spec 排施工顺序）+ 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
+本目录**放设计与导航**：12 份带 frontmatter 的 spec（11 份设计 + 1 份 task-spec 排施工顺序）+ 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
 
 **新增、删除或改名任何一份 spec，都必须同步更新这张表**——否则这张表会开始在无声处骗人。
 
@@ -20,7 +20,8 @@
 | 8 | [`biz-data-model.md`](biz-data-model.md) | `moonchat-biz-data` | submodule-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | biz 的 PostgreSQL 只有七张表，业务真相全在这里，消息与投递状态都不在 | 表怎么建？聚合边界在哪？哪些规则只能由应用层守？哪些表明确不建？ |
 | 9 | [`api-contracts.md`](api-contracts.md) | `moonchat-api` | module-design | `moonchat-architecture` | `moonchat-biz-data`、`moonchat-accounts`、`moonchat-friends`、`moonchat-messaging`、`moonchat-agent-connection` | Biz 对外只有 20 条 `/api/*` 路由：身份与续期、好友、群与成员、发言，消息的读与投递一条都不在这里 | 有哪些接口？每条怎么认证、返回什么、错在哪？哪些动作明确不提供？每条接口读写了哪张表？ |
 | 10 | [`dependencies.md`](dependencies.md) | `moonchat-dependencies` | submodule-design | `moonchat-architecture` | `moonchat-deployment`、`moonchat-biz-data`、`moonchat-accounts`、`moonchat-messaging` | biz 的 pom 只服务 PG、Redis、凭据的签与验、Turms Admin 的 HTTP 调用，其余一律不加 | 装了哪些包？版本从哪来？为什么明确不加某些框架？加依赖前先问什么？ |
-| 11 | [`v1-construction-plan.md`](v1-construction-plan.md) | `moonchat-v1-construction` | task-spec | `moonchat-product` | `moonchat-architecture`、`moonchat-messaging`、`moonchat-accounts`、`moonchat-friends`、`moonchat-api`、`moonchat-biz-data`、`moonchat-deployment`、`moonchat-dependencies` | V1 纵切成 S0–S5 六段，每段结束时都留下一个跑得起来、验得完的状态 | 先做哪一片？一片什么时候算结束？哪些事片内不许做？ |
+| 11 | [`onebot-bridge.md`](onebot-bridge.md) | `moonchat-onebot-bridge` | module-design | `moonchat-architecture` | `moonchat-agent-connection`、`moonchat-api` | OneBot 11 是 agent 侧一个可选的桥接进程，它自己当 Turms 客户端，平台不开协议面 | bot 框架怎么零改造接入？哪些动作平台不做？做不到的怎么回？ |
+| 12 | [`v1-construction-plan.md`](v1-construction-plan.md) | `moonchat-v1-construction` | task-spec | `moonchat-product` | `moonchat-architecture`、`moonchat-messaging`、`moonchat-accounts`、`moonchat-friends`、`moonchat-api`、`moonchat-biz-data`、`moonchat-deployment`、`moonchat-dependencies` | V1 纵切成 S0–S5 六段，每段结束时都留下一个跑得起来、验得完的状态 | 先做哪一片？一片什么时候算结束？哪些事片内不许做？ |
 
 依赖图（`depends-on` 边，先读被依赖的一方）：
 
@@ -32,6 +33,7 @@ graph TD
   AC["moonchat-accounts<br/>账号与归属"]
   F["moonchat-friends<br/>好友关系"]
   AG["moonchat-agent-connection<br/>agent 接入面"]
+  OB["moonchat-onebot-bridge<br/>OneBot 11 桥接"]
   D["moonchat-deployment<br/>部署与运行时"]
   BD["moonchat-biz-data<br/>biz 数据模型与表结构"]
   API["moonchat-api<br/>REST 接口契约"]
@@ -42,6 +44,9 @@ graph TD
   A --> AC
   A --> F
   A --> AG
+  A --> OB
+  AG --> OB
+  API --> OB
   A --> D
   M --> AC
   M --> F
