@@ -57,7 +57,7 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 | `spring-security-crypto` | 只取 `BCryptPasswordEncoder`（cost 10 起，`bcrypt$` 前缀入 `credential_hash`） | `moonchat-biz-data` |
 | `lombok`（`provided`） | 实体的 getter/setter（`@Getter`/`@Setter`）、组件的构造器注入（`@RequiredArgsConstructor`）、日志字段（`@Slf4j`） | 不承担行为，只消掉模板代码；唯一一个指不回 spec 的依赖，见 §5 |
 
-- **实体不开 `@Data`**：`@Data` 会生成 `toString`，`account_info` 的 `credential_hash` 就可能被一次日志打成明文；只开 `@Getter`/`@Setter` 就够消掉手写。
+- **实体用经典四件套**：`@Data` + `@Builder` + `@NoArgsConstructor` + `@AllArgsConstructor`——MyBatis-Plus 靠无参构造 + setter 回填，业务代码用 builder 构造。代价是 `@Data` 的 `toString` 会把字段全打出来，所以 `account_info.credential_hash` 上单独加了 `@ToString.Exclude`，否则一次 `log.info("{}", info)` 就把哈希打成明文。
 - **`provided` + 插件里显式 `exclude`**：`provided` 只决定编译期可见性；`spring-boot-maven-plugin` 的 repackage 仍会把 provided 依赖打进 `BOOT-INF/lib`（实测 `lombok-1.18.48.jar` 就在里面），所以 pom 里显式把它排掉，产物里一行都不留。
 
 - **`spring-boot-starter-jdbc` 不单独声明**：Flyway 与 MyBatis-Plus 的 starter 都会把它带进来，重复写只是噪音。

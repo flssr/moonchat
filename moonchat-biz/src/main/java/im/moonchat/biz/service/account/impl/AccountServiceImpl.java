@@ -51,25 +51,26 @@ public class AccountServiceImpl implements AccountService {
             throw ApiException.conflict("这个邮箱已经注册过");
         }
 
-        Account account = new Account();
-        account.setType(HUMAN);
-        account.setTurmsSyncState("pending");
+        Account account = Account.builder()
+                .type(HUMAN)
+                .turmsSyncState("pending")
+                .build();
         accountMapper.insert(account);
 
-        AccountInfo info = new AccountInfo();
-        info.setAccountId(account.getId());
-        info.setDisplayName(request.displayName());
-        info.setEmail(request.email());
-        info.setCredentialHash(hasher.hashPassword(request.password()));
-        accountInfoMapper.insert(info);
+        accountInfoMapper.insert(AccountInfo.builder()
+                .accountId(account.getId())
+                .displayName(request.displayName())
+                .email(request.email())
+                .credentialHash(hasher.hashPassword(request.password()))
+                .build());
 
         turmsAdmin.createUser(account.getId(), request.displayName());
 
-        Account synced = new Account();
-        synced.setId(account.getId());
-        synced.setTurmsSyncState("synced");
-        synced.setUpdatedAt(OffsetDateTime.now());
-        accountMapper.updateById(synced);
+        accountMapper.updateById(Account.builder()
+                .id(account.getId())
+                .turmsSyncState("synced")
+                .updatedAt(OffsetDateTime.now())
+                .build());
 
         return new AccountResponses.RegisterResponse(account.getId(), request.displayName(), HUMAN);
     }

@@ -4,16 +4,21 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.OffsetDateTime;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 /**
  * `account_info` 表：一个账号的名字、状态与唯一认证哈希（docs/biz-data-model.md §4.2）。
  * `credentialHash` 与 `email` 只在本层与持久层之间流转，任何响应都要走 dto 里的白名单字段；
- * 因此这里不开 toString——否则一次 `log.info("{}", info)` 就把哈希打进日志了。
+ * `@Data` 生成的 toString 会把哈希带出去，所以在那一列上单独排掉。
  */
-@Getter
-@Setter
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @TableName("account_info")
 public class AccountInfo {
 
@@ -27,6 +32,7 @@ public class AccountInfo {
 
     private String email;
 
+    @ToString.Exclude
     private String credentialHash;
 
     private OffsetDateTime createdAt;
