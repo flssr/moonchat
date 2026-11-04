@@ -1,6 +1,6 @@
 # 文档台账（spec-graph index）
 
-本目录**放设计与导航**：9 份带 frontmatter 的 spec + 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
+本目录**放设计与导航**：10 份带 frontmatter 的 spec + 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
 
 **新增、删除或改名任何一份 spec，都必须同步更新这张表**——否则这张表会开始在无声处骗人。
 
@@ -19,6 +19,7 @@
 | 7 | [`deployment.md`](deployment.md) | `moonchat-deployment` | module-design | `moonchat-architecture` | `moonchat-messaging` | 业务只有一个进程：Biz 是无状态 REST，会话在客户端、限流桶在 Redis | 部署哪些单元？为什么不需要第二个业务进程？什么时候才拆？ |
 | 8 | [`biz-data-model.md`](biz-data-model.md) | `moonchat-biz-data` | submodule-design | `moonchat-architecture` | `moonchat-accounts`、`moonchat-friends`、`moonchat-messaging` | biz 的 PostgreSQL 只有七张表，业务真相全在这里，消息与投递状态都不在 | 表怎么建？聚合边界在哪？哪些规则只能由应用层守？哪些表明确不建？ |
 | 9 | [`api-contracts.md`](api-contracts.md) | `moonchat-api` | module-design | `moonchat-architecture` | `moonchat-biz-data`、`moonchat-accounts`、`moonchat-friends`、`moonchat-messaging`、`moonchat-agent-connection` | Biz 对外只有 20 条 `/api/*` 路由：身份与续期、好友、群与成员、发言，消息的读与投递一条都不在这里 | 有哪些接口？每条怎么认证、返回什么、错在哪？哪些动作明确不提供？每条接口读写了哪张表？ |
+| 10 | [`dependencies.md`](dependencies.md) | `moonchat-dependencies` | submodule-design | `moonchat-architecture` | `moonchat-deployment`、`moonchat-biz-data`、`moonchat-accounts`、`moonchat-messaging` | biz 的 pom 只服务 PG、Redis、凭据的签与验、Turms Admin 的 HTTP 调用，其余一律不加 | 装了哪些包？版本从哪来？为什么明确不加某些框架？加依赖前先问什么？ |
 
 依赖图（`depends-on` 边，先读被依赖的一方）：
 
@@ -33,6 +34,7 @@ graph TD
   D["moonchat-deployment<br/>部署与运行时"]
   BD["moonchat-biz-data<br/>biz 数据模型与表结构"]
   API["moonchat-api<br/>REST 接口契约"]
+  DEP["moonchat-dependencies<br/>依赖清单与版本依据"]
 
   P --> A
   A --> M
@@ -56,6 +58,11 @@ graph TD
   F --> API
   M --> API
   AG --> API
+  A --> DEP
+  DEP --> D
+  DEP --> BD
+  DEP --> AC
+  DEP --> M
 ```
 
 ---
@@ -65,7 +72,7 @@ graph TD
 | 你要做什么 | 顺序 |
 | --- | --- |
 | 只想看懂产品 | 1 |
-| 准备实现 V1 | 1（范围与验收）→ 2 → 3 → 4 → 5 → 6 → 7 → 8（动手写迁移前先看表结构）→ 9（写 Controller 前先看接口契约） |
+| 准备实现 V1 | 1（范围与验收）→ 2 → 3 → 4 → 5 → 6 → 7 → 8（动手写迁移前先看表结构）→ 9（写 Controller 前先看接口契约）→ 10（改 pom 前先看依赖清单） |
 | 只碰某个模块 | 先读它的 `depends-on`，再读它自己；涉及边界时回读 2 的「三条边界硬规矩」与「跨模块不变量」 |
 | 判断一个想法是不是越界 | 1（§5 范围 + §8 Non-Goals）→ 2（跨模块不变量） |
 
@@ -86,7 +93,7 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 ---
 ```
 
-- 顶层树：`moonchat-product` → `moonchat-architecture` → 6 份 module-design（消息、账号、好友、agent 接入、部署、REST 接口契约），外加挂在架构下的 1 份 submodule-design（`moonchat-biz-data`，把各模块的业务真相落成 PG 表结构）。
+- 顶层树：`moonchat-product` → `moonchat-architecture` → 6 份 module-design（消息、账号、好友、agent 接入、部署、REST 接口契约），外加挂在架构下的 2 份 submodule-design（`moonchat-biz-data` 把各模块的业务真相落成 PG 表结构；`moonchat-dependencies` 把它落成 pom 里的包与版本）。
 - `depends-on` 表示**读它与改它前必须先理解的上游**，不是调用关系。
 - 正文第一行固定是 `**一句话**：…` 定位句；改模块职责时这句与上表都要同步改。
 
@@ -99,7 +106,7 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 3. **新增 spec 时同时做三件事**：建文件 → 填齐 frontmatter 并挂好 `parent` / `depends-on` → 更新本文档「一、台账」与依赖图。
 4. **临时笔记不进仓库**：计划写进对话内 TODO，草稿留在对话里；`NOTES.md` / `TODO.md` / `plan.md` 出现在任何目录都算污染。
 5. **只登记已定稿的 spec**。还在讨论中的内容不进台账——台账的用途是「这里有什么」，不是「这里可能有什么」。
-6. **`deliverables/` 放对外交付稿，不是 spec**：目前一份 `deliverables/MoonChat_V1_HLD.md`（V1 概要设计稿，源于 spec 重写前的三档投递 / connector / 工作区设计）。它没有 frontmatter、不进 `docs/`、不参与 spec-graph，**也不作为设计依据**；与本文档登记的 9 份 spec 冲突时以 spec 为准。
+6. **`deliverables/` 放对外交付稿，不是 spec**：目前一份 `deliverables/MoonChat_V1_HLD.md`（V1 概要设计稿，源于 spec 重写前的三档投递 / connector / 工作区设计）。它没有 frontmatter、不进 `docs/`、不参与 spec-graph，**也不作为设计依据**；与本文档登记的 10 份 spec 冲突时以 spec 为准。
 
 ---
 
