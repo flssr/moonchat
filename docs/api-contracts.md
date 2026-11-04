@@ -82,7 +82,7 @@ Authorization: Bearer <token>
 | `conflict` | 409 | 状态与请求冲突：已是好友、已在群里、申请已被处理、重复发起同类关系 |
 | `owner_cannot_leave` | 409 | 群主退群或移除自己（V1 没有转让，也没有解散群） |
 | `rate_limited` | 429 | agent 来源超过账号级（暂定 60 次/分钟）或会话级（暂定 20 次/分钟）桶；两个数字写进配置，不是硬编码 |
-| `upstream_unavailable` | 503 | `im-facade` 没从 Turms 拿到确认（只在发言接口出现） |
+| `upstream_unavailable` | 503 | `im-facade` 没从 Turms 拿到确认（发言与注册建用户两处） |
 | `internal_error` | 500 | 未分类的服务端错误，响应里不带堆栈 |
 
 ### 1.4 值约定
@@ -155,12 +155,12 @@ Authorization: Bearer <token>
 
 响应里**没有 token**：注册不建立会话，登录（§3.2）才发 JWT。
 
-**错误**：`validation_failed` 400、`conflict` 409（email 已存在）。
+**错误**：`validation_failed` 400、`conflict` 409（email 已存在）、`upstream_unavailable` 503（建 Turms 用户失败）。
 
 **副作用与不变量**
 
-- 同一事务写 `account`（`type = 'human'`）与 `account_info`（`credential_hash` 为 bcrypt，cost 10 起）。
-- 之后经 `im-facade` 用**这个 id** 建 Turms 用户；失败则回滚 PG 行，已提交则标 `account.turms_sync_state = 'pending'` 重试（`moonchat-accounts` 的「创建顺序」）。
+- 同一事务写 `account`（`type = 'human'`）与 `account_info`（`credential_hash` 为 bcrypt，cost 10 起），并在**同一事务内**经 `im-facade` 用**这个 id** 建 Turms 用户；拿到确认才把 `account.turms_sync_state` 置 `synced`。
+- 建 Turms 用户失败就整笔回滚（连同账号行），不留孤儿账号；不落 `pending`、也没有后台重试——重试是客户端重发一次注册（`moonchat-accounts` 的「创建顺序」）。
 - 注册不做邮箱验证（已定的简化），所以没有验证令牌相关字段。
 
 ### 3.2 `POST /api/auth/login`

@@ -91,7 +91,6 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 
 ## 6. 已知缺口
 
-- **MyBatis-Plus 这个选择目前只记录在本文**：`moonchat-biz-data` §3 只写了 Flyway、PG 驱动与迁移路径，没写持久层。要么把它补进那份 spec，要么承认本文是它的唯一出处。
 - **两级限流桶的速率未定**（`moonchat-agent-connection`）。实现只用 Redis 的原子自增与过期，不需要额外脚本或限流库。
 - **agent 密钥的 pepper 未定**（`moonchat-biz-data` 的「只能由应用层守的规则」）：用 JCE 的 `HmacSHA256`，不引第三方包。
 - **镜像站与代理是机器级配置**：Maven 走阿里云镜像、Docker 走国内 registry mirror，都写在开发者的 `settings.xml` / `daemon.json` / `.testcontainers.properties` 里，仓库不承担、也不记录这些值的唯一副本。

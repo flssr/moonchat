@@ -1,6 +1,10 @@
 spring:
   application:
     name: moonchat-biz
+  # 库与 Redis 用 Spring 原生键（SPRING_DATASOURCE_* / SPRING_DATA_REDIS_*），
+  # 不在 yml 里落默认值：接口测试由 @DynamicPropertySource 注入容器地址。
+  jackson:
+    property-naming-strategy: SNAKE_CASE
 
 server:
   port: ${MOONCHAT_BIZ_PORT:8080}
@@ -15,3 +19,27 @@ management:
 info:
   app:
     name: moonchat-biz
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 结果直接映射到 record 的规范构造器（mapper 方法返回 record）。
+    arg-name-based-constructor-auto-mapping: true
+
+# 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/account-and-ownership.md。
+moonchat:
+  turms:
+    # Turms Admin REST（建用户 / 建群 / 代发）。本地编排固定 turms/turms。
+    admin-url: ${MOONCHAT_TURMS_ADMIN_URL:http://localhost:8510}
+    admin-username: ${MOONCHAT_TURMS_ADMIN_USERNAME:turms}
+    admin-password: ${MOONCHAT_TURMS_ADMIN_PASSWORD:turms}
+    # 客户端连 /im 的地址：生产是反代域名下的 /im，本地跳过是复用冒烟覆盖文件的 20510。
+    gateway-url: ${MOONCHAT_TURMS_GATEWAY_URL:ws://localhost:20510}
+    # 与 turms-gateway 共享的 HMAC 密钥文件（Turms 只支持从文件读密钥）。
+    jwt-secret-file: ${MOONCHAT_JWT_SECRET_FILE}
+    # 客户端 Turms 凭据时长，界面契约见 docs/api-contracts.md §3.3。
+    credential-ttl: 12h
+  auth:
+    # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
+    jwt-secret: ${MOONCHAT_AUTH_JWT_SECRET}
+    login-token-ttl: 7d

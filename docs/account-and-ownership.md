@@ -34,10 +34,12 @@ depends-on:
 `account.id` 由 **Biz 生成**，不是 Turms 分配：
 
 1. 注册（或建 agent）时 Biz 生成 id，写 PG 的 `account` 行。
-2. 再经 `im-facade` 用**这个 id** 建 Turms 用户（带名字）。
-3. 第二步失败就回滚 PG 行；若已提交则标成待同步并重试。
+2. 在同一事务内经 `im-facade` 用**这个 id** 建 Turms 用户（带名字）。
+3. 第二步失败就回滚整笔（连同 `account` 行），不留孤儿账号；拿到确认后把 `turms_sync_state` 置 `synced` 才提交。
 
-这样注册失败不会留下没有业务的 Turms 孤儿用户。若 Turms 的 Admin API 实测不接受指定 id，就退回「先建 Turms 用户、拿到 id 再写 PG」——此时 id 的值由 Turms 给，但身份真相仍在 PG。这条回退在 Turms 打通阶段实测后再落进本文件。
+这样注册失败不会留下没有业务的 Turms 孤儿用户。Admin API 接受指定 id 已在 `infra/turms/smoke` 实测通过（`account.id` 就是建出来的 Turms 用户 id）；剩下的反向情形是「Turms 建成功但 PG 提交失败」，它会留下一个没有业务行的 Turms 用户，概率极低且无害，不为它加补偿逻辑。
+
+**id 从哪里开始**不是本模块的自由：`account.id` 就是 Turms 用户 id，必须避开 Turms 已有用户的号段，起始值写在迁移里（`moonchat-biz-data` §4.1）。
 
 ## 账号主页
 

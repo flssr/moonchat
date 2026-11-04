@@ -80,7 +80,7 @@ $env:ENV = 'dev'
 docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinned-images.compose.yaml up
 ```
 
-镜像使用构建当时核对过的 digest，不跟随上游 `latest` 漂移。本阶段只搭建骨架，数据库迁移、注册登录、好友与投递接口都还没有实现。
+镜像使用构建当时核对过的 digest，不跟随上游 `latest` 漂移。当前进度：**S1 身份底座**已跑通（三个迁移文件建齐七张表、注册登录、换 Turms 凭据、续期）；好友、群与发言接口还没有实现。
 
 ### Turms 冒烟（验证凭据、写入与群投影边界）
 
@@ -117,6 +117,34 @@ cd infra/turms/smoke; npm i; npm run smoke
 覆盖文件把宿主端口改成 `20510→10510`（WS）与 `16379→6379`（Redis），避免与本机已有的 10510/6379 冲突；冒烟脚本默认连 `ws://localhost:20510`，要改就用 `TURMS_WS_URL`。
 
 固定的 Turms 源码声明 Java 25，而 MoonChat 模块使用 Java 21。运行 Turms 使用预构建镜像，不需要本地编译它；只有修改并重新构建 Turms 源码时才需要额外安装 JDK 25。
+
+### 身份链路（S1 片末判据）
+
+`infra/turms/smoke/identity.mjs` 在真 Turms + 真 Biz + 真 PG 上把「注册 → 登录 → `/api/sessions` → `turms-client-js` 登录 `/im`」跑一遍，同时核对 `account.id` 就是 Turms 用户 id（从 Turms 那侧查）、QUERY-only 凭据发不出消息（1106）、续期后还是同一个账号。
+
+它需要一个长期存在的库（接口测试用的是 Testcontainers 的临时库）：
+
+```powershell
+# 1. 起一个开发用的 PG
+docker run -d --name moonchat-biz-dev-pg -e POSTGRES_DB=moonchat `
+  -e POSTGRES_USER=moonchat -e POSTGRES_PASSWORD=moonchat `
+  -p 15432:5432 postgres:17-alpine
+
+# 2. 跑 Biz：库走 Spring 原生键，两个密钥没有默认值，必须由环境给出
+$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/moonchat'
+$env:SPRING_DATASOURCE_USERNAME = 'moonchat'
+$env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
+$env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"  # 与 turms-gateway 共用同一份
+$env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'                   # 登录 JWT 自签自验，与 Turms 密钥相互独立
+.\mvnw.cmd -pl moonchat-biz spring-boot:run
+
+# 3. 另一个终端跑身份链路
+cd infra/turms/smoke; npm run identity
+```
+
+Biz 的自有配置只有两组：`moonchat.turms.*`（Admin 地址与凭据、`/im` 网关地址、共享密钥文件、凭据时长）与 `moonchat.auth.*`（登录 JWT 密钥与时长）；库与 Redis 用 Spring 原生键（`SPRING_DATASOURCE_*`、`SPRING_DATA_REDIS_*`），yml 里不写默认值。
+
+脚本不清理它建的东西：V1 没有删账号的能力，每跑一次会留下一个账号行与一个 Turms 用户。
 
 ## 目录约定
 
