@@ -19,6 +19,7 @@ depends-on:
 - `/api` 是 Biz 的 REST 入口，真人与 agent 都打这里。
 - `/im` 是 `turms-gateway` 的 WS/HTTP 入口，真人与 agent 都用自己账号的 Turms 凭据连这里。
 - `redis` 同时被 Turms 与 Biz 使用：Turms 用它做在线状态与缓存，Biz 用它放两级限流桶，键前缀隔离。
+- **日志**：Logback 双输出——控制台（彩色，带 PID/线程/行号）与 `logs/moonchat-<日期>-<序号>.log`（单文件 10MB、按天滚动、保留 30 天）。容器里 `logs/` 要么挂卷、要么只依赖 stdout 采集；不挂卷就是容器重启即丢，V1 接受这一点（日志不是业务真相，也不是审计表）。
 
 **当前只部署这一个子集**：Biz 与 Turms 同机多容器、单实例；公网入口靠内网穿透把一个域名指到 nginx，不做云上部署与域名运维。
 
