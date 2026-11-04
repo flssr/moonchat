@@ -12,5 +12,7 @@ public record TurmsProperties(
         String adminPassword,
         String gatewayUrl,
         Path jwtSecretFile,
-        Duration credentialTtl) {
+        Duration credentialTtl,
+        /** 群投影重放器的扫描间隔（30 秒，未确认）：失败的群最多晚这么久收敛。 */
+        Duration replayInterval) {
 }

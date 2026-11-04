@@ -37,6 +37,8 @@ moonchat:
     jwt-secret-file: ${MOONCHAT_JWT_SECRET_FILE}
     # 客户端 Turms 凭据时长，界面契约见 docs/api-contracts.md §3.3。
     credential-ttl: 12h
+    # 群投影重放器的扫描间隔（未确认：只为了「失败的群最多晚半分钟收敛」）。
+    replay-interval: ${MOONCHAT_TURMS_REPLAY_INTERVAL:30s}
   auth:
     # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
     jwt-secret: ${MOONCHAT_AUTH_JWT_SECRET}

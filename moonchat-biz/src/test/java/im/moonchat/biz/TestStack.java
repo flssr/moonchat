@@ -47,6 +47,8 @@ final class TestStack {
         registry.add("moonchat.auth.jwt-secret", () -> LOGIN_JWT_SECRET);
         registry.add("moonchat.agent.key-pepper", () -> AGENT_KEY_PEPPER);
         registry.add("moonchat.limit.account-per-minute", () -> Integer.toString(ACCOUNT_RATE_PER_MINUTE));
+        // 重放器在测试里手动调，定时器拉长到一小时，避免它在断言中间插一脚
+        registry.add("moonchat.turms.replay-interval", () -> "1h");
     }
 
     /** 与 turms-gateway 共享的那份密钥：32 字节，HS256 的最小长度。 */

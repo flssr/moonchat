@@ -41,6 +41,21 @@ public class ApiException extends RuntimeException {
         return new ApiException("not_found", HttpStatus.NOT_FOUND, message, null);
     }
 
+    /** `dm` 会话的对端不是已成立的好友：好友校验只在写入网关（docs/friends.md）。 */
+    public static ApiException notFriend() {
+        return new ApiException("not_friend", HttpStatus.FORBIDDEN, "只有好友之间才能私聊", null);
+    }
+
+    /** 调用者不是该群的有效成员：授权事实现查 `room_member`，不看投影。 */
+    public static ApiException notRoomMember() {
+        return new ApiException("not_room_member", HttpStatus.FORBIDDEN, "你不是这个群的成员", null);
+    }
+
+    /** 群主退群或移除自己：V1 没有转让，也没有解散群。 */
+    public static ApiException ownerCannotLeave() {
+        return new ApiException("owner_cannot_leave", HttpStatus.CONFLICT, "群主不能退群，V1 也不能转让群", null);
+    }
+
     public static ApiException conflict(String message) {
         return new ApiException("conflict", HttpStatus.CONFLICT, message, null);
     }

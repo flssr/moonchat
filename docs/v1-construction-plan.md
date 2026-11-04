@@ -91,7 +91,7 @@ graph LR
 
 - **做什么**：#12–#18；`im-facade` 的 createGroup 与 full reconcile；最小重放器。
 - **重放器最小版**：扫 `turms_sync_state = 'pending'` 的记录，按 PG 重算一次投影。不做退避曲线、不做告警、不做分布式互斥——V1 单实例起步（`moonchat-deployment`）。扫描间隔写进配置并标（未确认）。
-- **边界**：投影失败不回滚 PG 的业务写；`turms_group_id` 由 Turms 生成后回填，不由 Biz 指定（`moonchat-messaging`「要核对的 7 条」第 2 条）。
+- **边界**：投影失败不回滚 PG 的业务写；投影跑在**事务提交之后**（回滚的群不该出现在 Turms 里）；`turms_group_id` 由 Turms 生成后回填，不由 Biz 指定（`moonchat-messaging`「要核对的 7 条」第 2 条）。
 - **结束条件**：拉人、退群、移除之后，Turms 的成员集合与 `room_member` 的有效行逐条一致。
 
 ### S4 写入网关
