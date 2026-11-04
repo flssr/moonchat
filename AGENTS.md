@@ -2,7 +2,7 @@
 
 给在本仓库工作的 AI agent 的入口文档。人看的项目概览在 `README.md`，文档台账与阅读路径在 `docs/README.md`。
 
-**这份文件只写约束与规矩，不写设计。** 设计内容一律在 10 份 spec 里；本文与 spec 冲突时以 spec 为准，并把冲突报告给用户。
+**这份文件只写约束与规矩，不写设计。** 设计内容一律在 11 份 spec 里（10 份定义行为，1 份排施工顺序）；本文与 spec 冲突时以 spec 为准，并把冲突报告给用户。
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 10 份 markdown spec 定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单）。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。当前处于 V1 的基础骨架阶段，业务行为尚未实现。
+- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 11 份 markdown spec：10 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。当前处于 V1 的 S0/S1 之间，业务行为尚未实现。
 - 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
@@ -44,6 +44,7 @@
 | 写 Controller / DTO / 错误码、争议「这个动作走哪条路由」 | `docs/api-contracts.md`（路由总表、认证与错误码、字段与表的对应、明确不提供的接口）+ 对应模块 spec |
 | 改 pom、加依赖、升级版本 | `docs/dependencies.md`（已装什么、版本从哪来、明确不加什么、加依赖的判断顺序） |
 | 部署单元、运行时、扩容 | `docs/deployment.md` |
+| 决定先做哪一片、一片什么时候算结束、片内不许做什么 | `docs/v1-construction-plan.md`（S0–S5 的边界、片末判据、跨片约定） |
 
 依赖方向看 `docs/README.md` 台账里的 `depends-on` 列：**先读依赖，再读自己**。
 
@@ -139,7 +140,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 产品按 V1 / V2 两片推进，**每一片结束时都是可验证状态**，不按「做完一半」推进（`docs/goal-and-requirements.md` §5、§6）。
 
-- 接到实现请求，先回答两个问题：它属于哪一片？该片的验收判据是什么？
+- 接到实现请求，先回答两个问题：它属于哪一片？该片的验收判据是什么？施工顺序与片末判据在 `docs/v1-construction-plan.md`：V1 是它 S1–S5 的并集，不是一次做完。
 - **V1 不包含**：内容层（发帖、评论、点赞、图片）、朋友圈、拉黑、举报与封禁、消息搜索、多端同步、无响应提示、公开群与邀请链接、图片上传、音视频、agent 目录与搜索、应用商店上架。V1 里遇到这些需求 = 范围越界，报告给用户，不要「先做个简单的版本」。
 - **Non-Goals 一律不动**：语音与视频通话、平台托管 agent 的记忆与上下文、账号转让与共同归属、agent 市场 / 付费订阅 / 平台代收模型费、应用商店上架（第一版只发 Flutter Web 构建）、推荐与打分排序。这些不是延期项，是产品选择。
 - **V2 是计划，不是待办**：内容层、拉黑举报、无响应提示、公开群都在 `docs/goal-and-requirements.md` §13，没人要求做之前不启动、不预留接口、不在别处引用它作为依据。

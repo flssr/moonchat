@@ -4,7 +4,7 @@
 
 MoonChat 的地基和 QQ / 微信完全一样：注册一个账号、加好友、一对一私聊、拉好友建群。区别只有一条——**账号会暴露一组能力**（发消息、加好友、建群……），这些能力除了归属者本人，还能被一个跑在用户自己服务里的 agent 调用。于是 agent 不是插件、不是命令，而是通讯录里一个真的账号。
 
-> **当前状态：V1 基础骨架。** `docs/` 下 10 份 spec 已定稿（V1 / V2 两片，含 REST 接口契约）；设计上只有 `moonchat-biz` 一个业务进程，业务闭环尚未实现。
+> **当前状态：V1 基础骨架。** `docs/` 下 11 份 spec 已定稿（10 份设计 + 1 份施工切片，含 REST 接口契约）；设计上只有 `moonchat-biz` 一个业务进程，业务闭环尚未实现。
 
 ---
 
@@ -25,7 +25,7 @@ MoonChat 的地基和 QQ / 微信完全一样：注册一个账号、加好友�
 | **V1 社交骨架** | 注册登录 → 加好友 → 一对一私聊 → 建群拉人 → 建 agent 账号并加为好友 → 真人聊天 → agent 作为客户端收到消息 → 它自己决定何时回话 | agent 作为通讯录里的一个账号，人和它长期共处有没有意思 |
 | **V2 计划** | 内容层（发帖、朋友圈、图片）、拉黑与举报、无响应提示、公开群与邀请链接 | — |
 
-V1 的范围与验收判据见 `docs/goal-and-requirements.md` §5、§6；V2 只是计划，不是待办。
+V1 的范围与验收判据见 `docs/goal-and-requirements.md` §5、§6；V2 只是计划，不是待办。V1 内部再按 S0–S5 六段纵切推进，每段的交付边界、片末判据与跨片约定见 [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md)。
 
 ## 技术栈
 
@@ -45,6 +45,7 @@ V1 的范围与验收判据见 `docs/goal-and-requirements.md` §5、§6；V2 �
 | [`docs/goal-and-requirements.md`](docs/goal-and-requirements.md) | **PRD**：定位、能力清单、V1 范围与验收、Non-Goals、指标、V2 计划 |
 | [`docs/architecture.md`](docs/architecture.md) | 分层、拓扑、模块表、边界硬规矩、数据归属、一条消息的旅程、跨模块不变量 |
 | [`docs/biz-data-model.md`](docs/biz-data-model.md) | **biz 的 DDD 表结构**：聚合边界、七张表的 DDL、字段语义、只能由应用层守的规则、明确不建的表 |
+| [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md) | **V1 施工切片**：S0–S5 各片的交付边界、片末判据、顺序自由度和片内禁止项 |
 | [`AGENTS.md`](AGENTS.md) | **给 AI agent 的协作规则**：硬边界、已定简化、范围纪律、文档与提交规范、交付前自检 |
 
 **第一次读，建议顺序**：`docs/goal-and-requirements.md` → `docs/architecture.md` → 你关心的那个模块。
@@ -127,14 +128,14 @@ cd infra/turms/smoke; npm i; npm run smoke
 ├── moonchat-biz/      # 业务层启动模块
 ├── infra/             # 本地与部署基础设施配置
 ├── vendor/            # 固定到上游提交的外部工程
-├── deliverables/      # 对外交付稿（V1 HLD），不是 spec，设计依据仍是 docs/ 下的 10 份
+├── deliverables/      # 对外交付稿（V1 HLD），不是 spec，设计依据仍是 docs/ 下的 11 份
 └── docs/
     ├── README.md      # 文档台账与阅读路径
-    └── *.md           # 10 份 spec（设计内容）
+    └── *.md           # 11 份 spec（10 份设计 + 1 份施工切片）
 ```
 
 - **根目录的持久 markdown 只有 `README.md` 与 `AGENTS.md`**，不放设计内容。
-- **10 份 spec 全在 `docs/` 下**，一份文件一个模块，靠 frontmatter 的 `id` / `type` 被 spec-graph 索引（`moonchat-product` 为根，`moonchat-architecture` 为其子，各 module-design 挂在架构之下，`moonchat-biz-data` 把它们的业务真相落成 PG 表结构，`moonchat-api` 把同一批真相落成对外路由，`moonchat-dependencies` 把它们落成 pom 里的包与版本）。
+- **11 份 spec 全在 `docs/` 下**，一份文件一个模块，靠 frontmatter 的 `id` / `type` 被 spec-graph 索引（`moonchat-product` 为根，`moonchat-architecture` 为其子，各 module-design 挂在架构之下，`moonchat-biz-data` 把它们的业务真相落成 PG 表结构，`moonchat-api` 把同一批真相落成对外路由，`moonchat-dependencies` 把它们落成 pom 里的包与版本，`moonchat-v1-construction` 只排施工顺序）。
 - **不在任何目录放临时文件**：不写 `NOTES.md`、`TODO.md`、`plan.md`。新增 spec 必须同时登记到 `docs/README.md` 的台账。
 
 ## 参与协作
