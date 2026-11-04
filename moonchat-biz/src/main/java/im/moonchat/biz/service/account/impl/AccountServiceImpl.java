@@ -15,6 +15,7 @@ import im.moonchat.biz.service.account.AccountKeyService;
 import im.moonchat.biz.service.account.AccountService;
 import im.moonchat.biz.service.account.CredentialHasher;
 import im.moonchat.biz.service.auth.LoginTokenService;
+import im.moonchat.biz.service.friendship.FriendshipService;
 import im.moonchat.biz.service.turms.TurmsCredentialService;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ public class AccountServiceImpl implements AccountService {
     private final AccountInfoMapper accountInfoMapper;
     private final CredentialHasher hasher;
     private final AccountKeyService accountKeys;
+    private final FriendshipService friendships;
     private final TurmsAdminClient turmsAdmin;
     private final TurmsCredentialService turmsCredentials;
     private final LoginTokenService loginTokens;
@@ -150,6 +152,17 @@ public class AccountServiceImpl implements AccountService {
                 .build());
 
         return new AccountResponses.RenameResponse(me.accountId(), request.displayName(), now.toInstant());
+    }
+
+    /** 资料页只返回名字、账号 id、是否已是好友；`type`、`email`、归属与时间列一概不出门。 */
+    @Override
+    public AccountResponses.ProfileResponse profile(CurrentAccount me, long accountId) {
+        AccountInfo info = accountInfoMapper.selectById(accountId);
+        if (info == null) {
+            throw ApiException.notFound("账号不存在");
+        }
+        return new AccountResponses.ProfileResponse(accountId, info.getDisplayName(),
+                friendships.areFriends(me.accountId(), accountId));
     }
 
     /** 自己排第一，名下的 agent 按创建时间升序。 */
