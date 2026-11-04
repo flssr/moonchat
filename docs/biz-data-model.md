@@ -152,7 +152,7 @@ create table account_info (
 - **类型不重复存**：真人或 agent 由 `account.type` 判断，`account_info` 不再加 `type` 列，避免两处类型不一致。
 - **agent 密钥必须可反查**：agent 带着明文密钥来，Biz 算出确定性哈希后按 `unique (credential_hash)` 定位账号；加盐慢哈希做不到这一点，只用于真人密码。
 - **哈希格式自带算法标记**：实现时在 `credential_hash` 中使用带方案前缀的编码，例如 `bcrypt$2a$...` 与 `hmac-sha256$...`，以便以后迁移算法（换 Argon2id 不需要改表）。
-- **名字改动的同步标记仍在 `account`**：改名时在同一事务写 `account_info.display_name` 并把 `account.turms_sync_state` 置回 `pending`。
+- **名字改动的同步标记仍在 `account`**：改名时在同一事务写 `account_info.display_name` 并把 `account.turms_sync_state` 写为 `synced`；Turms 没确认就整笔回滚，所以这列不会因为改名而停在 `pending`（`moonchat-api` §4.3）。
 - **不做邮箱验证、找回密码或密钥轮换**（`moonchat-product` §5.3、`moonchat-agent-connection`）：没有验证时间、重置令牌或密钥历史列。
 - **没有回报地址列**：上一版的 `webhook_url` 已删除。agent 与真人一样用该账号的 Turms 凭据收消息，平台不需要任何入向地址（`moonchat-agent-connection`）。
 

@@ -122,6 +122,36 @@ public class AccountServiceImpl implements AccountService {
                 credential.expiresAt());
     }
 
+    /**
+     * 名字只是展示，不参与任何判定；但 Turms 那边也存了一份，所以要同步。
+     * 同步失败就整笔回滚（名字与状态都不变），不留永远 `pending` 的账号。
+     */
+    @Override
+    @Transactional
+    public AccountResponses.RenameResponse rename(CurrentAccount me, AccountRequests.DisplayNameRequest request) {
+        AccountInfo info = accountInfoMapper.selectById(me.accountId());
+        if (FROZEN.equals(info.getStatus())) {
+            throw ApiException.accountFrozen();
+        }
+
+        OffsetDateTime now = OffsetDateTime.now();
+        accountInfoMapper.updateById(AccountInfo.builder()
+                .accountId(me.accountId())
+                .displayName(request.displayName())
+                .updatedAt(now)
+                .build());
+
+        turmsAdmin.updateUserName(me.accountId(), request.displayName());
+
+        accountMapper.updateById(Account.builder()
+                .id(me.accountId())
+                .turmsSyncState("synced")
+                .updatedAt(now)
+                .build());
+
+        return new AccountResponses.RenameResponse(me.accountId(), request.displayName(), now.toInstant());
+    }
+
     /** 自己排第一，名下的 agent 按创建时间升序。 */
     @Override
     public AccountResponses.MineResponse mine(CurrentAccount me) {

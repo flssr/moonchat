@@ -23,6 +23,9 @@ public interface AccountService {
     /** #5 建 agent 账号：同一事务写身份与资料，再用这个 id 建 Turms 用户，返回一次性明文密钥。 */
     AccountResponses.AgentAccountResponse createAgent(CurrentAccount me, AccountRequests.DisplayNameRequest request);
 
+    /** #6 改本账号名字：同一事务写库并在事务内同步 Turms，没拿到确认就整笔回滚。 */
+    AccountResponses.RenameResponse rename(CurrentAccount me, AccountRequests.DisplayNameRequest request);
+
     /** #20 登录 JWT 滑动续期。 */
     AccountResponses.TokenResponse refresh(CurrentAccount me);
 }

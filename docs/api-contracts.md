@@ -269,9 +269,9 @@ Authorization: Bearer <token>
 
 **响应** `200`：`account_id`、`display_name`、`updated_at`。
 
-**错误**：`validation_failed` 400、`account_frozen` 403。
+**错误**：`validation_failed` 400、`account_frozen` 403、`upstream_unavailable` 503（经 `im-facade` 同步名字失败）。
 
-**副作用**：同一事务写 `account_info.display_name` 并把 `account.turms_sync_state` 置回 `pending`；随后经 `im-facade` 同步名字进 Turms。
+**副作用**：同一事务写 `account_info.display_name` 并写 `account.turms_sync_state = 'synced'`，事务内经 `im-facade` 同步名字进 Turms；同步失败**整笔回滚**——名字与同步状态都不变，回 `503`，与 §3.1 注册建用户同口径，不留永远挂 `pending` 的账号。
 
 ### 4.4 `GET /api/accounts/{account_id}`
 

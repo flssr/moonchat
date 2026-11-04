@@ -51,6 +51,24 @@ public class TurmsAdminClient {
         }
     }
 
+    /**
+     * 改名同步：Admin `PUT /users?ids=`（`UpdateUserDTO` 只带 name，别的字段留空即不改）。
+     * 没拿到确认就抛 503，调用方的事务连同名字一起回滚（docs/api-contracts.md §4.3）。
+     */
+    public void updateUserName(long accountId, String displayName) {
+        try {
+            restClient.put()
+                    .uri(uri -> uri.path("/users").queryParam("ids", accountId).build())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("name", displayName))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("同步名字进 Turms 失败：accountId={}", accountId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
     private static String throwawayPassword() {
         byte[] bytes = new byte[9];
         RANDOM.nextBytes(bytes);
