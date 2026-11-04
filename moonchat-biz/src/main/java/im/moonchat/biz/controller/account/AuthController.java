@@ -1,6 +1,9 @@
-package im.moonchat.biz.account;
+package im.moonchat.biz.controller.account;
 
 import im.moonchat.biz.auth.CurrentAccount;
+import im.moonchat.biz.dto.account.AccountRequests;
+import im.moonchat.biz.dto.account.AccountResponses;
+import im.moonchat.biz.service.account.AccountService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,26 +17,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AccountService accounts;
+    private final AccountService accountService;
 
-    AuthController(AccountService accounts) {
-        this.accounts = accounts;
+    public AuthController(AccountService accountService) {
+        this.accountService = accountService;
     }
 
     /** 注册不签发 JWT：注册与登录是两次独立请求。 */
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public AccountDtos.RegisterResponse register(@Valid @RequestBody AccountDtos.RegisterRequest request) {
-        return accounts.register(request);
+    public AccountResponses.RegisterResponse register(
+            @Valid @RequestBody AccountRequests.RegisterRequest request) {
+        return accountService.register(request);
     }
 
     @PostMapping("/login")
-    public AccountDtos.TokenResponse login(@Valid @RequestBody AccountDtos.LoginRequest request) {
-        return accounts.login(request);
+    public AccountResponses.TokenResponse login(@Valid @RequestBody AccountRequests.LoginRequest request) {
+        return accountService.login(request);
     }
 
     @PostMapping("/refresh")
-    public AccountDtos.TokenResponse refresh(CurrentAccount me) {
-        return accounts.refresh(me);
+    public AccountResponses.TokenResponse refresh(CurrentAccount me) {
+        return accountService.refresh(me);
     }
 }

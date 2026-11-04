@@ -1,6 +1,8 @@
-package im.moonchat.biz.account;
+package im.moonchat.biz.controller.account;
 
 import im.moonchat.biz.auth.CurrentAccount;
+import im.moonchat.biz.dto.account.AccountResponses;
+import im.moonchat.biz.service.account.AccountService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,14 +12,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/accounts")
 public class AccountController {
 
-    private final AccountService accounts;
+    private final AccountService accountService;
 
-    AccountController(AccountService accounts) {
-        this.accounts = accounts;
+    public AccountController(AccountService accountService) {
+        this.accountService = accountService;
     }
 
     @GetMapping("/mine")
-    public AccountDtos.MineResponse mine(CurrentAccount me) {
-        return accounts.mine(me);
+    public AccountResponses.MineResponse mine(CurrentAccount me) {
+        return accountService.mine(me);
     }
 }

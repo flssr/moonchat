@@ -1,19 +1,17 @@
-package im.moonchat.biz.account;
+package im.moonchat.biz.dto.account;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
-import java.time.Instant;
-import java.util.List;
 import java.util.Locale;
 
 /**
- * #1 #2 #3 #4 #20 的请求与响应体，字段与校验规则见 docs/api-contracts.md §3、§4。
+ * #1 #2 #3 的请求体，校验规则见 docs/api-contracts.md §3。
  * 入口校验只在这里做一次，之后靠类型系统流转。
  */
-public final class AccountDtos {
+public final class AccountRequests {
 
-    private AccountDtos() {
+    private AccountRequests() {
     }
 
     public record RegisterRequest(
@@ -49,26 +47,6 @@ public final class AccountDtos {
 
     /** #3 的两种形态恰好一种；"恰好一种" 由服务层判，缺字段要按契约回不同的码。 */
     public record SessionRequest(Long accountId, String accountKey) {
-    }
-
-    public record AccountSummary(long accountId, String type, String displayName) {
-    }
-
-    public record RegisterResponse(long accountId, String displayName, String type) {
-    }
-
-    /** #2 与 #20 的形状一致：token + 过期时间 + 账号回显。 */
-    public record TokenResponse(String token, Instant expiresAt, AccountSummary account) {
-    }
-
-    public record SessionResponse(long accountId, String displayName, String type, Turms turms, Instant expiresAt) {
-
-        /** `userId` 就是 `account_id`；`credential` 是 Turms 能验的 JWT，客户端当 password 传给 SDK。 */
-        public record Turms(long userId, String credential, String gatewayUrl) {
-        }
-    }
-
-    public record MineResponse(List<AccountSummary> items) {
     }
 
     private static String normalizeEmail(String email) {

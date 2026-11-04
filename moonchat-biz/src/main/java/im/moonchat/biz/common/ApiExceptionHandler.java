@@ -1,4 +1,4 @@
-package im.moonchat.biz.web;
+package im.moonchat.biz.common;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** 把领域异常与入口校验失败收敛成 docs/api-contracts.md §1.3 的固定失败体。 */
 @RestControllerAdvice
-class ApiExceptionHandler {
+public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 

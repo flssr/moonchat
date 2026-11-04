@@ -23,8 +23,6 @@ info:
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
-    # 结果直接映射到 record 的规范构造器（mapper 方法返回 record）。
-    arg-name-based-constructor-auto-mapping: true
 
 # 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/account-and-ownership.md。
 moonchat:

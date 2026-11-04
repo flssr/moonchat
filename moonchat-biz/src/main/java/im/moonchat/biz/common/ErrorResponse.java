@@ -1,4 +1,4 @@
-package im.moonchat.biz.web;
+package im.moonchat.biz.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 

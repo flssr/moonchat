@@ -1,4 +1,4 @@
-package im.moonchat.biz.account;
+package im.moonchat.biz.service.account;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;

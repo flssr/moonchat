@@ -1,6 +1,7 @@
 package im.moonchat.biz.auth;
 
-import im.moonchat.biz.web.ApiException;
+import im.moonchat.biz.common.ApiException;
+import im.moonchat.biz.service.auth.LoginTokenService;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -20,7 +21,7 @@ public class CurrentAccountArgumentResolver implements HandlerMethodArgumentReso
 
     private final LoginTokenService loginTokens;
 
-    CurrentAccountArgumentResolver(LoginTokenService loginTokens) {
+    public CurrentAccountArgumentResolver(LoginTokenService loginTokens) {
         this.loginTokens = loginTokens;
     }
 

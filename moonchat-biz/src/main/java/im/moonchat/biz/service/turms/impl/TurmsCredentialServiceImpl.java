@@ -1,4 +1,4 @@
-package im.moonchat.biz.imfacade;
+package im.moonchat.biz.service.turms.impl;
 
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
@@ -6,6 +6,8 @@ import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import im.moonchat.biz.config.TurmsProperties;
+import im.moonchat.biz.service.turms.TurmsCredentialService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -15,14 +17,10 @@ import java.time.temporal.ChronoUnit;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
-/**
- * im-facade 的签发那一支手：给客户端签 Turms 能验的 JWT。
- * 用与 turms-gateway 共享的 HMAC 密钥签，payload 见 docs/api-contracts.md §3.3。
- */
-@Component
-public class TurmsCredentialSigner {
+@Service
+public class TurmsCredentialServiceImpl implements TurmsCredentialService {
 
     /** 只授查询：客户端能登录、收推送、查历史，但发不出消息、也建不了 group。 */
     private static final List<Map<String, Object>> QUERY_ONLY = List.of(
@@ -31,7 +29,7 @@ public class TurmsCredentialSigner {
     private final MACSigner signer;
     private final Duration ttl;
 
-    TurmsCredentialSigner(TurmsProperties properties) {
+    public TurmsCredentialServiceImpl(TurmsProperties properties) {
         try {
             this.signer = new MACSigner(Files.readAllBytes(properties.jwtSecretFile()));
         } catch (IOException e) {
@@ -42,6 +40,7 @@ public class TurmsCredentialSigner {
         this.ttl = properties.credentialTtl();
     }
 
+    @Override
     public Credential sign(long accountId) {
         Instant expiresAt = Instant.now().plus(ttl).truncatedTo(ChronoUnit.SECONDS);
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
@@ -58,8 +57,5 @@ public class TurmsCredentialSigner {
             throw new IllegalStateException("签 Turms 凭据失败", e);
         }
         return new Credential(jwt.serialize(), expiresAt);
-    }
-
-    public record Credential(String token, Instant expiresAt) {
     }
 }

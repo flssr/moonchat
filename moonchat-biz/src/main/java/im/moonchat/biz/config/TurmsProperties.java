@@ -1,4 +1,4 @@
-package im.moonchat.biz.imfacade;
+package im.moonchat.biz.config;
 
 import java.nio.file.Path;
 import java.time.Duration;

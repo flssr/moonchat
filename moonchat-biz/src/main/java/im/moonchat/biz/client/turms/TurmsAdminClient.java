@@ -1,6 +1,7 @@
-package im.moonchat.biz.imfacade;
+package im.moonchat.biz.client.turms;
 
-import im.moonchat.biz.web.ApiException;
+import im.moonchat.biz.common.ApiException;
+import im.moonchat.biz.config.TurmsProperties;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
@@ -20,7 +21,7 @@ public class TurmsAdminClient {
 
     private final RestClient restClient;
 
-    TurmsAdminClient(TurmsProperties properties) {
+    public TurmsAdminClient(TurmsProperties properties) {
         this.restClient = RestClient.builder()
                 .baseUrl(properties.adminUrl())
                 .defaultHeaders(headers -> headers.setBasicAuth(properties.adminUsername(), properties.adminPassword()))

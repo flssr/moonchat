@@ -1,4 +1,4 @@
-package im.moonchat.biz.auth;
+package im.moonchat.biz.config;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
