@@ -21,7 +21,7 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。当前处于 V1 的 S0/S1 之间，业务行为尚未实现。
+- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）与 S1（身份底座）已完成并合入 `main`**——业务代码目前只有七张表的迁移与账号模块的五条路由（#1 注册、#2 登录、#3 换 Turms 凭据、#4 我的账号、#20 续期），好友、群与发言都还没有实现，下一步是 S2 关系。
 - 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
@@ -130,7 +130,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 2. **Turms 被配置成不校验好友关系**：`allowSendMessagesToStranger = true` 是这套设计成立的前提，不是可选项——好友从不投影进 Turms，设成 false 会拒掉所有私聊。好友校验只在写入网关。
 3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `docs/goal-and-requirements.md` §13 重写判据。
 4. **若干数字没有依据**：P95 300ms 沿用上一版且未经实测，两级限流桶的具体速率尚未确定。凭空引入一个阈值比留白更糟。
-5. **代发路径已源码确认，仍需端到端跑通**（`docs/messaging-and-tunnel.md` 的第 5、6 条）：Admin API 能带 `senderId` 代发，且仍走 Turms 自己的成员/黑名单校验。运行时确认「落库 + 广播」与「被移出群后立即被拒」两件事。
+5. ~~**代发路径需端到端跑通**~~：**S0 已实测**（`infra/turms/smoke` 10 条硬断言）——Admin 带 `senderId` 代发能落库、能推到在线端，被移出群的账号代发回 `403` / `5009`。结论已回写 `docs/messaging-and-tunnel.md`，余下的只对 S4 有约束的面已写在那份 spec 的「已知缺口」里。
 6. **公开群的 Turms 只读能力未实测**：因此公开群与邀请链接被推迟，不要在 Turms 实测前把它们当可用能力去实现。
 7. **Turms 里可能有残留的游离 group**：客户端已经建不了新群（JWT 不授 `GROUP` 的 CREATE），但历史上可能有。平台不认它们（无授权、不进列表、不投递），Turms 的群列表也因此不等于 PG 的 `room_info` 表。任何代码不得把 Turms 的群列表当业务列表。
 8. **客户端没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、成员资料页都未描述；界面级规则（非好友只见资料页、私聊入口只在好友列表）目前唯一出处是 `docs/friends.md`。实现客户端前先回读它，不要自己发明入口。
@@ -160,7 +160,25 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 ---
 
-## 8. 提交规范
+## 8. 实现约定（代码形状）
+
+这一节不是设计（设计在 `docs/`），是 S1 落地时定下的代码形状。它决定下一个改这块代码的人怎么找文件，改之前先跟用户确认。
+
+| 约定 | 内容 | 为什么 |
+| --- | --- | --- |
+| 分包 | 层 + 模块二级包：`controller/account`、`service/account` + `impl`、`mapper/account`、`dto/account`；`entity`、`client/turms`、`config`、`common`、`auth` 平铺 | 经典 Spring 分层，看类名就知道去哪找 |
+| service | 接口 + `impl` 两个文件 | 与团队习惯一致 |
+| 持久层 | MyBatis-Plus：`@TableName` 实体 + `extends BaseMapper`，条件用 Wrapper；不写裸 `JdbcClient`，不上 JPA | `docs/dependencies.md` |
+| 实体 | `@Data @Builder @NoArgsConstructor @AllArgsConstructor`；`account_info.credential_hash` 标 `@ToString.Exclude` | builder 给业务代码用，无参构造给 MyBatis 回填；哈希不能进日志 |
+| 响应 | 只走 `dto/*` 里的白名单 record，实体绝不出现在响应里 | 否则 `email`、`credential_hash` 会漏出去 |
+| 日志 | SLF4J 门面（`@Slf4j`）+ Logback，配置在 `logback-spring.xml`，根级别 `info` | 调到 `debug` 会让 MyBatis 把 SQL 参数（含哈希）打成明文 |
+| 配置 | 库与 Redis 用 Spring 原生键（yml 不落默认值）；自有配置只用 `moonchat.turms.*` / `moonchat.auth.*`；密钥不给默认值 | 部署必须显式给出 |
+| 认证 | 当前账号由 `HandlerMethodArgumentResolver` 解析，不写成过滤器 | 过滤器里的异常到不了 `@RestControllerAdvice`，401 会变 500 |
+| 测试 | 接口测试用 Testcontainers（PG/Redis 真容器）+ JDK `HttpServer` 假 Turms Admin；Turms 侧结论由 `infra/turms/smoke` 的脚本断言 | 片末判据必须可重跑 |
+
+---
+
+## 9. 提交规范
 
 跟随仓库现有风格（`git log` 只有几条中文陈述句）：
 
@@ -171,7 +189,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 ---
 
-## 9. 交付前自检
+## 10. 交付前自检
 
 - [ ] 改动是否触犯 §3 的任何一条硬边界（尤其：有没有给群或好友建表）？
 - [ ] 是否把 §4 的某条「已定的简化」顺手升级了？
@@ -180,5 +198,6 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 - [ ] frontmatter 完整、`id` 未改、`parent` / `depends-on` 指向存在的 id？
 - [ ] 新引入的数字有没有依据或「（未确认）」标记？
 - [ ] 有没有新建临时 markdown，或在根目录多出不承担构建/仓库配置职责的 markdown 文件？
+- [ ] 代码形状是否仍符合 §8（分包、实体注解、DTO 白名单、日志级别、配置命名）？
 
 无法自行判断时，**停下来问用户**，不要用「先做一个合理版本」代替决定。

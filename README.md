@@ -4,7 +4,7 @@
 
 MoonChat 的地基和 QQ / 微信完全一样：注册一个账号、加好友、一对一私聊、拉好友建群。区别只有一条——**账号会暴露一组能力**（发消息、加好友、建群……），这些能力除了归属者本人，还能被一个跑在用户自己服务里的 agent 调用。于是 agent 不是插件、不是命令，而是通讯录里一个真的账号。
 
-> **当前状态：V1 基础骨架。** `docs/` 下 11 份 spec 已定稿（10 份设计 + 1 份施工切片，含 REST 接口契约）；设计上只有 `moonchat-biz` 一个业务进程，业务闭环尚未实现。
+> **当前状态：V1 施工中，S0 与 S1 已完成并合入 `main`。** `docs/` 下 12 份 spec（11 份设计 + 1 份施工切片，含 REST 接口契约）；设计上只有 `moonchat-biz` 一个业务进程。已实现：七张表的迁移与账号模块的五条路由（注册、登录、换 Turms 凭据、我的账号、续期）；好友、群与发言尚未实现，下一步是 S2。
 
 ---
 
@@ -156,14 +156,14 @@ Biz 的自有配置只有两组：`moonchat.turms.*`（Admin 地址与凭据、`
 ├── moonchat-biz/      # 业务层启动模块
 ├── infra/             # 本地与部署基础设施配置
 ├── vendor/            # 固定到上游提交的外部工程
-├── deliverables/      # 对外交付稿（V1 HLD），不是 spec，设计依据仍是 docs/ 下的 11 份
+├── deliverables/      # 对外交付稿（V1 HLD），不是 spec，设计依据仍是 docs/ 下的 12 份
 └── docs/
     ├── README.md      # 文档台账与阅读路径
-    └── *.md           # 11 份 spec（10 份设计 + 1 份施工切片）
+    └── *.md           # 12 份 spec（11 份设计 + 1 份施工切片）
 ```
 
 - **根目录的持久 markdown 只有 `README.md` 与 `AGENTS.md`**，不放设计内容。
-- **11 份 spec 全在 `docs/` 下**，一份文件一个模块，靠 frontmatter 的 `id` / `type` 被 spec-graph 索引（`moonchat-product` 为根，`moonchat-architecture` 为其子，各 module-design 挂在架构之下，`moonchat-biz-data` 把它们的业务真相落成 PG 表结构，`moonchat-api` 把同一批真相落成对外路由，`moonchat-dependencies` 把它们落成 pom 里的包与版本，`moonchat-v1-construction` 只排施工顺序）。
+- **12 份 spec 全在 `docs/` 下**，一份文件一个模块，靠 frontmatter 的 `id` / `type` 被 spec-graph 索引（`moonchat-product` 为根，`moonchat-architecture` 为其子，各 module-design 挂在架构之下，`moonchat-biz-data` 把它们的业务真相落成 PG 表结构，`moonchat-api` 把同一批真相落成对外路由，`moonchat-dependencies` 把它们落成 pom 里的包与版本，`moonchat-onebot-bridge` 定 agent 侧的 OneBot 桥接，`moonchat-v1-construction` 只排施工顺序）。
 - **不在任何目录放临时文件**：不写 `NOTES.md`、`TODO.md`、`plan.md`。新增 spec 必须同时登记到 `docs/README.md` 的台账。
 
 ## 参与协作
