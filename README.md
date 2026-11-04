@@ -82,9 +82,9 @@ docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinn
 
 镜像使用构建当时核对过的 digest，不跟随上游 `latest` 漂移。本阶段只搭建骨架，数据库迁移、注册登录、好友与投递接口都还没有实现。
 
-### Turms 冒烟（验证凭据与写入边界）
+### Turms 冒烟（验证凭据、写入与群投影边界）
 
-`infra/turms/smoke` 是一个一次性脚本，验证 `docs/messaging-and-tunnel.md` 里「凭据与客户端权限」的四条断言：指定 id 建用户、Biz 签的 JWT 能登录、只授 `QUERY` 的凭据发不出消息、Admin 带 `senderId` 代发的消息真的会到客户端。
+`infra/turms/smoke` 验证 `docs/messaging-and-tunnel.md` 的运行时结论：指定 id 建用户、JWT 登录、QUERY-only 拒绝、私聊代发落库与推送、Admin 建群并回填 group id、成员集合一致、群消息推送，以及被移出群的账号代发被拒。
 
 ```powershell
 # 1. 生成冒烟用的 HMAC 密钥（32 字节，已在 .gitignore 里）
@@ -112,7 +112,7 @@ cd infra/turms/smoke; npm i; npm run smoke
 
 冒烟需要本地能拉到 `mongo:8.0.12-noble` 与三张 `ghcr.io/turms-im/*` 镜像；拉不到就先离线导入镜像再跑（本仓库不提供镜像源）。
 
-四条硬断言：指定 id 建用户、JWT 能登录、代发落库、QUERY-only 凭据发消息被拒（1106）。推送到达单独作为 WARN 报——本地 standalone 编排里 service 把刚登录的会话记成 `OFFLINE`，推送会被丢，真实环境需复测。
+脚本共 10 条硬断言。本地 standalone 的 turms-service 默认缓存用户会话状态 60 秒；登录后立即查询可能先拿到缓存的 `OFFLINE`。脚本会等到状态真正变为 `AVAILABLE` 再发送，因此一次完整运行约一分钟。默认 `GroupType` 0 已满足邀请制、成员可见、guest 不可发言。
 
 覆盖文件把宿主端口改成 `20510→10510`（WS）与 `16379→6379`（Redis），避免与本机已有的 10510/6379 冲突；冒烟脚本默认连 `ws://localhost:20510`，要改就用 `TURMS_WS_URL`。
 

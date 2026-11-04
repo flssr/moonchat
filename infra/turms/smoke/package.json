@@ -2,7 +2,7 @@
   "name": "moonchat-turms-smoke",
   "private": true,
   "type": "module",
-  "description": "Turms 端到端冒烟：验证 docs/messaging-and-tunnel.md「凭据与客户端权限」一节的三条前提",
+  "description": "Turms 端到端冒烟：验证用户、JWT、代发边界与群投影",
   "scripts": {
     "smoke": "node smoke.mjs"
   },

@@ -103,6 +103,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | ~~客户端能直连 Turms 发消息~~ | — | **已关闭且已实测**（`infra/turms/smoke`）：JWT `statements` 只授 `QUERY`，Turms 对 `CREATE_MESSAGE_REQUEST` 回 `UNAUTHORIZED_REQUEST`（1106）；前提见「凭据与客户端权限」 |
 | **Turms 不校验好友关系** | 好友校验只在写入网关；Turms 的私聊校验只剩黑名单（`allowSendMessagesToStranger = true`，Turms 默认值） | 客户端已无写入权限，非好友私聊只能经网关，由网关拒。不投影好友仍是有意的（见「群与成员的投影」） |
 | ~~客户端能自己建 Turms group~~ | 已无法新建 | JWT 不授 `GROUP` 的 CREATE；Turms 里仍可能残留历史游离群，群列表依旧不等于 PG 的 `room_info` |
+| **turms-service 默认缓存用户会话状态 60 秒** | 若在会话注册前先查询，本地 standalone 会先缓存 `OFFLINE`，消息虽已落库但推送最多延迟到缓存过期 | 冒烟等待状态真正变为 `AVAILABLE`；S4 还需验证登录后立即走写入网关的路径 |
 
 ## Turms 打通阶段要核对的 7 条
 
@@ -111,26 +112,29 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 | # | 要核对什么 | 已定结论（源码） | 运行时仍需确认 |
 | --- | --- | --- | --- |
 | 1 | Admin API 能否用**指定 id** 建用户 | **能**：`AddUserDTO.id` → `userService.addUser(id, ...)` | 建出来的 Turms 用户 id 就是 `account.id` |
-| 2 | Admin API 能否用**指定 id** 建 group | **不能**：`AddGroupDTO` 没有 id 字段，`authAndCreateGroup` 也不收 id | 定案：由 Turms 生成 group id，回填 `room_info.turms_group_id` |
+| 2 | Admin API 能否用**指定 id** 建 group | **不能**：`AddGroupDTO` 没有 id 字段，`authAndCreateGroup` 也不收 id | **已实测**：Admin 建 group 成功并返回 Turms 生成的 id，供 `room_info.turms_group_id` 回填 |
 | 3 | 能否禁止客户端自建 group | **能**：JWT 不授 `GROUP` 的 CREATE，`ClientRequestDispatcher` 直接拒 | 真正发一个 `CREATE_GROUP_REQUEST`，确认回 `UNAUTHORIZED_REQUEST` |
 | 4 | 能否禁止客户端侧的 `CreateMessageRequest` | **能**：同一机制，`MESSAGE` 的 CREATE 未授 | **已实测**：QUERY-only 凭据发消息回 1106，见下面的冒烟结果 |
-| 5 | **Admin API `POST /messages` 能否代发且带指定 `senderId` / `senderDeviceType`** | **能**：`CreateMessageDTO` 带 `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId` / `text` / `records`，还能指定 `messageId` | 确认落库与广播给双方所有在线端 |
-| 6 | 代发是否仍走 Turms 自己的成员与黑名单校验 | **是**：`MessageService.authAndSaveMessage` → `isAllowedToSendMessageToTarget`（群看投影成员，私聊看黑名单与目标状态） | 把某人移出群后，用他的 id 代发群消息应被拒 |
+| 5 | **Admin API `POST /messages` 能否代发且带指定 `senderId` / `senderDeviceType`** | **能**：`CreateMessageDTO` 带 `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId` / `text` / `records`，还能指定 `messageId` | **已实测**：私聊与群消息均落库，并推送到在线端 |
+| 6 | 代发是否仍走 Turms 自己的成员与黑名单校验 | **是**：`MessageService.authAndSaveMessage` → `isAllowedToSendMessageToTarget`（群看投影成员，私聊看黑名单与目标状态） | **已实测**：账号被移出群后，用它的 id 代发群消息返回 `403` / `5009` |
 | 7 | 客户端历史查询能否按消息 id 范围分页 | **不能**：`QueryMessagesRequest` 只有 `ids` / `fromIds` / `deliveryDateStart/End` / `maxCount` / `descending` | 客户端分页游标改用 `deliveryDate`（见「职责」里的消息标识一条） |
 
 三条配置项现在可以写定：`identity-access-management.type = jwt`（客户端凭据是 JWT）、`allowSendMessagesToStranger` 保持默认 `true`（好友校验只在网关）、`max-text-limit` 默认 500（与接口契约里的正文上限一致）。
 
-**本地 standalone 冒烟结果（`infra/turms/smoke`：4 条硬断言全过，1 条 WARN）**：
+**本地 standalone 冒烟结果（`infra/turms/smoke`：10 条硬断言全过）**：
 
 | 验证项 | 结果 |
 | --- | --- |
 | Admin 用指定 id 建用户 | ✔ 通过；但 `password` 必填且 ≤ 16 字符，见上面前提表第 2 行 |
 | Biz 签的 JWT 能登录 `/im` | ✔ 通过；**payload 必须带 `authenticated: true`**（Turms 默认 `jwt.authentication.expectation.custom-payload-claims`）＋ `sub` / `exp` / `statements`，少一个就 `2011 LOGIN_AUTHENTICATION_FAILED` |
 | Admin 带 `senderId` 代发 | ✔ 落库通过，`senderDeviceType` 用枚举名（`DESKTOP`）即可 |
-| 代发的消息**推送到目标客户端** | ⚠ 本地 standalone 下不稳定：消息落库正常，但 `GET /users/online-infos/sessions` 把刚登录的会话报成 `OFFLINE`、`sessions` 为空，推送因此被丢。这是本编排里 gateway → service 的在线会话同步问题，不是代发路径本身；真实环境要复测。冒烟脚本把它降级为 WARN，不计失败 |
+| 私聊与群消息**推送到在线端** | ✔ 通过；脚本先等到会话状态为 `AVAILABLE` 再发送。本地 turms-service 默认缓存会话状态 60 秒，登录后立即首查可能先缓存 `OFFLINE` |
 | QUERY-only 凭据发 `CREATE_MESSAGE_REQUEST` | ✔ 被拒，`UNAUTHORIZED_REQUEST`（1106） |
+| Admin 建 group | ✔ 通过；返回 Turms 生成的 group id |
+| 成员集合与投影一致 | ✔ 通过；建群自动加入 creator，再加入第二个成员后集合一致 |
+| 被移出群的账号再次代发 | ✔ 被拒，`403` / `5009` |
 
-**建群相关三条（指定 id、客户端自建群、代理成员校验）仍未实测**：本地没有建 `GroupType`，留给 Turms 打通阶段连同群投影一起跑。
+建群使用默认 `GroupType` 0；它的配置已是邀请制、成员可见、guest 不可发言，无需在冒烟里另建类型。客户端发 `CREATE_GROUP_REQUEST` 的拒绝仍按源码结论执行。
 
 ## 已定的简化
 
