@@ -32,6 +32,20 @@ class MineApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 建出来的agent出现在我的账号列表里() throws Exception {
+        Caller me = newCaller();
+        Agent agent = newAgent(me, "小助手");
+
+        mockMvc.perform(get("/api/accounts/mine")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(me.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].account_id").value(me.accountId()))
+                .andExpect(jsonPath("$.items[1].account_id").value(agent.accountId()))
+                .andExpect(jsonPath("$.items[1].type").value("agent"))
+                .andExpect(jsonPath("$.items[1].display_name").value("小助手"));
+    }
+
+    @Test
     void 没有凭据返回未认证() throws Exception {
         mockMvc.perform(get("/api/accounts/mine"))
                 .andExpect(status().isUnauthorized())
