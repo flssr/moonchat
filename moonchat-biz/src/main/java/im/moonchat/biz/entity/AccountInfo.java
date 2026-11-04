@@ -4,11 +4,16 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.OffsetDateTime;
+import lombok.Getter;
+import lombok.Setter;
 
 /**
  * `account_info` 表：一个账号的名字、状态与唯一认证哈希（docs/biz-data-model.md §4.2）。
- * `credentialHash` 与 `email` 只在本层与持久层之间流转，任何响应都要走 dto 里的白名单字段。
+ * `credentialHash` 与 `email` 只在本层与持久层之间流转，任何响应都要走 dto 里的白名单字段；
+ * 因此这里不开 toString——否则一次 `log.info("{}", info)` 就把哈希打进日志了。
  */
+@Getter
+@Setter
 @TableName("account_info")
 public class AccountInfo {
 
@@ -27,60 +32,4 @@ public class AccountInfo {
     private OffsetDateTime createdAt;
 
     private OffsetDateTime updatedAt;
-
-    public Long getAccountId() {
-        return accountId;
-    }
-
-    public void setAccountId(Long accountId) {
-        this.accountId = accountId;
-    }
-
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getCredentialHash() {
-        return credentialHash;
-    }
-
-    public void setCredentialHash(String credentialHash) {
-        this.credentialHash = credentialHash;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(OffsetDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
 }

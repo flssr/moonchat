@@ -4,8 +4,15 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.time.OffsetDateTime;
+import lombok.Getter;
+import lombok.Setter;
 
-/** `account` 表：身份与归属（docs/biz-data-model.md §4.1）。不存资料，也不参与授权判定。 */
+/**
+ * `account` 表：身份与归属（docs/biz-data-model.md §4.1）。不存资料，也不参与授权判定。
+ * 只开 getter/setter：不生成 toString/equals，免得实体被顺手打进日志。
+ */
+@Getter
+@Setter
 @TableName("account")
 public class Account {
 
@@ -22,52 +29,4 @@ public class Account {
     private OffsetDateTime createdAt;
 
     private OffsetDateTime updatedAt;
-
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public String getType() {
-        return type;
-    }
-
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    public Long getOwnerAccountId() {
-        return ownerAccountId;
-    }
-
-    public void setOwnerAccountId(Long ownerAccountId) {
-        this.ownerAccountId = ownerAccountId;
-    }
-
-    public String getTurmsSyncState() {
-        return turmsSyncState;
-    }
-
-    public void setTurmsSyncState(String turmsSyncState) {
-        this.turmsSyncState = turmsSyncState;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(OffsetDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
 }

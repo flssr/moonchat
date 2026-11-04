@@ -32,7 +32,7 @@ depends-on:
 
 | 来源 | 具体版本 |
 | --- | --- |
-| Spring Boot 4.1.2 BOM | Flyway 12.4.0、PostgreSQL 驱动 42.7.14、Lettuce 7.5.2、Spring Security 7.1.2、Testcontainers 2.0.5、`com.redis:testcontainers-redis` 2.2.4 |
+| Spring Boot 4.1.2 BOM | Flyway 12.4.0、PostgreSQL 驱动 42.7.14、Lettuce 7.5.2、Spring Security 7.1.2、Lombok 1.18.48、Testcontainers 2.0.5、`com.redis:testcontainers-redis` 2.2.4 |
 
 Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 
@@ -55,6 +55,10 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 | `spring-boot-starter-data-redis` | 「账号 → 会话」两级限流桶（键前缀与 Turms 隔离） | `moonchat-agent-connection` |
 | `nimbus-jose-jwt` | 签登录 JWT（7 天）与 Turms 凭据（12 小时、`statements` 只授 `QUERY`），并验自己的登录 JWT | `moonchat-accounts`、`moonchat-api` §3.3 |
 | `spring-security-crypto` | 只取 `BCryptPasswordEncoder`（cost 10 起，`bcrypt$` 前缀入 `credential_hash`） | `moonchat-biz-data` |
+| `lombok`（`provided`） | 实体的 getter/setter（`@Getter`/`@Setter`）、组件的构造器注入（`@RequiredArgsConstructor`）、日志字段（`@Slf4j`） | 不承担行为，只消掉模板代码；唯一一个指不回 spec 的依赖，见 §5 |
+
+- **实体不开 `@Data`**：`@Data` 会生成 `toString`，`account_info` 的 `credential_hash` 就可能被一次日志打成明文；只开 `@Getter`/`@Setter` 就够消掉手写。
+- **`provided` + 插件里显式 `exclude`**：`provided` 只决定编译期可见性；`spring-boot-maven-plugin` 的 repackage 仍会把 provided 依赖打进 `BOOT-INF/lib`（实测 `lombok-1.18.48.jar` 就在里面），所以 pom 里显式把它排掉，产物里一行都不留。
 
 - **`spring-boot-starter-jdbc` 不单独声明**：Flyway 与 MyBatis-Plus 的 starter 都会把它带进来，重复写只是噪音。
 - **持久层是 MyBatis-Plus**，不是 JPA 也不是裸 `JdbcClient`；分页、事务与 SQL 都走它。
@@ -88,6 +92,8 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 2. Boot BOM 管不管它？管就不写版本。
 3. 能不能被一个已有的 starter 传递带入？（`starter-jdbc` 就是这样被省掉的）
 4. 只为用一个类而引入整条框架的，降级到单模块——`spring-security-crypto` 而不是 `starter-security`，nimbus 而不是 Spring Security OAuth2。
+
+**唯一例外是 Lombok**：它不承担任何行为，加它的理由是「不手写 getter/setter 与构造器」，不是某份 spec 的一句话。这类纯模板代码依赖单独看：`provided`、无运行时影响、不进产物。除此之外仍按上面四条走。
 
 ## 6. 已知缺口
 

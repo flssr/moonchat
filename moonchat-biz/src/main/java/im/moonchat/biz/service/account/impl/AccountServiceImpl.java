@@ -20,10 +20,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@RequiredArgsConstructor
 public class AccountServiceImpl implements AccountService {
 
     private static final String HUMAN = "human";
@@ -35,19 +37,7 @@ public class AccountServiceImpl implements AccountService {
     private final TurmsAdminClient turmsAdmin;
     private final TurmsCredentialService turmsCredentials;
     private final LoginTokenService loginTokens;
-    private final String turmsGatewayUrl;
-
-    public AccountServiceImpl(AccountMapper accountMapper, AccountInfoMapper accountInfoMapper,
-            CredentialHasher hasher, TurmsAdminClient turmsAdmin, TurmsCredentialService turmsCredentials,
-            LoginTokenService loginTokens, TurmsProperties turmsProperties) {
-        this.accountMapper = accountMapper;
-        this.accountInfoMapper = accountInfoMapper;
-        this.hasher = hasher;
-        this.turmsAdmin = turmsAdmin;
-        this.turmsCredentials = turmsCredentials;
-        this.loginTokens = loginTokens;
-        this.turmsGatewayUrl = turmsProperties.gatewayUrl();
-    }
+    private final TurmsProperties turmsProperties;
 
     /**
      * 同一事务写 `account` 与 `account_info`，并在事务内用这个 id 建 Turms 用户；
@@ -123,7 +113,8 @@ public class AccountServiceImpl implements AccountService {
 
         TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId());
         return new AccountResponses.SessionResponse(account.getId(), info.getDisplayName(), account.getType(),
-                new AccountResponses.SessionResponse.Turms(account.getId(), credential.token(), turmsGatewayUrl),
+                new AccountResponses.SessionResponse.Turms(account.getId(), credential.token(),
+                        turmsProperties.gatewayUrl()),
                 credential.expiresAt());
     }
 

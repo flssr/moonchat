@@ -1,11 +1,13 @@
 package im.moonchat.biz.common;
 
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 /**
  * 契约里的失败响应（docs/api-contracts.md §1.3）：code 是客户端唯一该分流的东西，
  * message 给人看，validation_failed 额外带 field。
  */
+@Getter
 public class ApiException extends RuntimeException {
 
     private final String code;
@@ -46,17 +48,5 @@ public class ApiException extends RuntimeException {
     /** im-facade 没从 Turms 拿到确认；注册建用户与发言两处都会用到。 */
     public static ApiException upstreamUnavailable() {
         return new ApiException("upstream_unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Turms 没有确认这次请求", null);
-    }
-
-    public String code() {
-        return code;
-    }
-
-    public HttpStatus status() {
-        return status;
-    }
-
-    public String field() {
-        return field;
     }
 }

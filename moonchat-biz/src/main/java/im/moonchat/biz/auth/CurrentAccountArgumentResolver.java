@@ -2,6 +2,7 @@ package im.moonchat.biz.auth;
 
 import im.moonchat.biz.common.ApiException;
 import im.moonchat.biz.service.auth.LoginTokenService;
+import lombok.RequiredArgsConstructor;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
@@ -15,15 +16,12 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * 不做成过滤器：解析失败要落到统一的失败体，而过滤器里的异常在 advice 之外。
  */
 @Component
+@RequiredArgsConstructor
 public class CurrentAccountArgumentResolver implements HandlerMethodArgumentResolver {
 
     private static final String BEARER = "Bearer ";
 
     private final LoginTokenService loginTokens;
-
-    public CurrentAccountArgumentResolver(LoginTokenService loginTokens) {
-        this.loginTokens = loginTokens;
-    }
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {

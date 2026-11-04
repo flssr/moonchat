@@ -17,8 +17,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ErrorResponse> handle(ApiException e) {
-        return ResponseEntity.status(e.status())
-                .body(new ErrorResponse(e.code(), e.getMessage(), e.field()));
+        return ResponseEntity.status(e.getStatus())
+                .body(new ErrorResponse(e.getCode(), e.getMessage(), e.getField()));
     }
 
     /** 入口校验只在这里做一次，之后靠类型系统流转。 */

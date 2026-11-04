@@ -5,18 +5,17 @@ import im.moonchat.biz.config.TurmsProperties;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /** im-facade 的建用户那一支手：Turms Admin REST，Basic 认证。 */
+@Slf4j
 @Component
 public class TurmsAdminClient {
 
-    private static final Logger log = LoggerFactory.getLogger(TurmsAdminClient.class);
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final RestClient restClient;
