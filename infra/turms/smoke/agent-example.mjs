@@ -39,11 +39,17 @@ function wsUrl(gatewayUrl) {
 }
 
 // ① 换凭据：这一步就是 agent 与真人的唯一差别（入口凭据不同，签出来的东西一样）。
-const sessionRes = await fetch(`${API_BASE}/api/sessions`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ account_key: ACCOUNT_KEY }),
-});
+let sessionRes;
+try {
+    sessionRes = await fetch(`${API_BASE}/api/sessions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ account_key: ACCOUNT_KEY }),
+    });
+} catch (e) {
+    console.error(`换凭据失败：连不上 ${API_BASE}（${e.message}）`);
+    process.exit(1);
+}
 if (!sessionRes.ok) {
     const body = await sessionRes.text();
     console.error(`换凭据失败 ${sessionRes.status}: ${body}`);
@@ -75,16 +81,22 @@ client.messageService.addMessageListener(async (message) => {
     const targetId = isGroup ? message.groupId : senderId;
 
     console.log(`收到 ${isGroup ? `群 ${targetId}` : `私聊 ${senderId}`}：${text}`);
-    const replyRes = await fetch(`${API_BASE}/api/conversations/${type}/${targetId}/messages`, {
-        method: 'POST',
-        headers: {
-            'content-type': 'application/json',
-            // 用账号密钥当凭据：来源会被记成 agent，并进「账号 → 会话」两级桶。
-            authorization: `Bearer ${ACCOUNT_KEY}`,
-            'x-device-type': DEVICE_TYPE,
-        },
-        body: JSON.stringify({ text: `${REPLY_PREFIX}${text}` }),
-    });
+    let replyRes;
+    try {
+        replyRes = await fetch(`${API_BASE}/api/conversations/${type}/${targetId}/messages`, {
+            method: 'POST',
+            headers: {
+                'content-type': 'application/json',
+                // 用账号密钥当凭据：来源会被记成 agent，并进「账号 → 会话」两级桶。
+                authorization: `Bearer ${ACCOUNT_KEY}`,
+                'x-device-type': DEVICE_TYPE,
+            },
+            body: JSON.stringify({ text: `${REPLY_PREFIX}${text}` }),
+        });
+    } catch (e) {
+        console.error(`回话失败：连不上 ${API_BASE}（${e.message}）`);
+        return;
+    }
     if (!replyRes.ok) {
         const body = await replyRes.text();
         console.error(`回话失败 ${replyRes.status}: ${body}`);
