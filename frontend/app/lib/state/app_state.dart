@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../turms/realtime.dart';
 
 enum AuthPhase { loggedOut, busy, ready }
 
@@ -56,9 +57,15 @@ class ChatMessage {
 /// 读（会话列表 / 历史）本该由 Turms 会话给出，见 `realtime.dart`；
 /// 这里只放 REST 能给的东西：身份、账号、好友、群、成员、发送结果。
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? api}) : api = api ?? ApiClient();
+  AppState({ApiClient? api, RealtimeClient? realtime})
+      : api = api ?? ApiClient(),
+        realtime = realtime ?? createRealtime();
 
   final ApiClient api;
+
+  /// 读取通道：客户端自己的 Turms 会话。
+  final RealtimeClient realtime;
+  bool realtimeUp = false;
 
   AuthPhase phase = AuthPhase.loggedOut;
   String? loginToken;
@@ -152,11 +159,83 @@ class AppState extends ChangeNotifier {
       loginExpiresAt = session.loginExpiresAt;
     }
     await refreshAll();
+    await _connectRealtime();
+  }
+
+  /// 登录 / 切账号之后接上该账号的 Turms 会话：收全部会话的推送，历史由客户端自己查。
+  Future<void> _connectRealtime() async {
+    final TurmsCredential? credential = turms;
+    final Account? me = account;
+    if (credential == null || me == null) {
+      return;
+    }
+    await realtime.connect(
+      credential: credential,
+      myAccountId: me.accountId,
+      onConnected: (bool up) {
+        realtimeUp = up;
+        notifyListeners();
+      },
+      onMessage: _ingest,
+      onError: (Object error) {
+        realtimeUp = false;
+        notifyListeners();
+      },
+    );
+  }
+
+  /// 推送进来的一条消息：按会话坐标落到本地列表，同一个 `messageId` 不重复插入。
+  void _ingest(IncomingMessage incoming) {
+    final int me = account?.accountId ?? 0;
+    if (me == 0) {
+      return;
+    }
+    final String key = incoming.conversationKeyFor(me);
+    final List<ChatMessage> list = _messages.putIfAbsent(key, () => <ChatMessage>[]);
+    if (incoming.id.isNotEmpty &&
+        list.any((ChatMessage m) => m.serverId != null && m.serverId.toString() == incoming.id)) {
+      return;
+    }
+    list.add(ChatMessage(
+      localId: 'srv:${incoming.id}',
+      conversationKey: key,
+      text: incoming.text,
+      sentAt: incoming.sentAt ?? DateTime.now().toUtc(),
+      state: MessageState.sent,
+      mine: incoming.senderId == me,
+      serverId: int.tryParse(incoming.id),
+    ));
+    list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
+    notifyListeners();
+  }
+
+  /// 打开会话时往回翻一页：游标是最早一条的 `deliveryDate`（Turms 没有消息 id 分页）。
+  Future<void> loadHistory(Conversation conv) async {
+    final int me = account?.accountId ?? 0;
+    if (me == 0) {
+      return;
+    }
+    final List<ChatMessage> existing = _messages[conv.key] ?? const <ChatMessage>[];
+    final DateTime? oldest = existing.isEmpty ? null : existing.first.sentAt;
+    try {
+      final List<IncomingMessage> page = await realtime.history(
+        conversationType: conv.type,
+        targetId: conv.targetId,
+        before: oldest,
+      );
+      for (final IncomingMessage m in page.reversed) {
+        _ingest(m);
+      }
+    } catch (_) {
+      // 读通道不可用时只是没有历史，不影响发送与其它动作。
+    }
   }
 
   /// 清凭据回登录页。
   void logout() {
     _renewTimer?.cancel();
+    realtime.disconnect();
+    realtimeUp = false;
     loginToken = null;
     loginExpiresAt = null;
     account = null;

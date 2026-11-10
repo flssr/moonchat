@@ -31,6 +31,9 @@
 
   <title>MoonChat</title>
   <link rel="manifest" href="manifest.json">
+  <!-- Turms Web 客户端：从 vendor/turms 的固定提交构建出的 IIFE 包，全局名 TurmsClient。
+       只在读取通道用（收推送、查历史），写仍然走 Biz 的写入网关。 -->
+  <script src="vendor/turms-client.iife.min.js"></script>
 </head>
 <body>
   <!--

@@ -36,11 +36,29 @@ lib/
 
 - 已完成：注册 / 登录、切账号、建 agent（一次性密钥）、好友四条、资料页、群七条、
   发言（唯一写入口）、发送中 / 失败 / 重试、明暗主题、按容器宽度收栏。
-- 未完成：**读取通道**。会话列表现在由「好友 + 我加入的群」拼出，历史消息与实时推送
-  必须来自客户端自己的 Turms 会话（`docs/messaging-and-tunnel.md`）。这一层没接上之前，
-  界面只能看到本机发出的消息，看不到对方与历史。
+- **读取通道已接**：`lib/turms/` 用 `dart:js_interop` 调 `turms-client-js`，登录取 `POST /api/sessions`
+  给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻。非 Web 平台走
+  `realtime_stub.dart`（官方 Dart 客户端是 TCP 传输，Web 上不可用）。
+- **尚未在真实 Turms 上跑过**：这台机器没有 Docker，起不了 Turms，所以收发与历史翻页只做到编译与
+  静态分析通过，还没有端到端证据。
 - 界面规则只从 `docs/friends.md`（私聊入口只有好友列表与资料页）与
   `docs/account-and-ownership.md`（主页字段）里读；需要新规则时先补 spec。
+
+## web/vendor/turms-client.iife.min.js 怎么来的
+
+`turms-client-js` 没有发布到 npm，仓库里也不带 `dist`，所以它由 `vendor/turms` 的固定提交现构建：
+
+```powershell
+cd vendor/turms/turms-client-js
+pnpm install
+node protoc.js            # 下载 protoc 29.1
+node protoc.js compile    # 生成 src/model/proto 下的 TS
+node node_modules/rollup/dist/bin/rollup --config rollup.config.ts --configPlugin @rollup/plugin-typescript
+# 取 dist/turms-client.iife.min.js 与 LICENSE 到 web/vendor/
+```
+
+升级 Turms 子模块时，这个文件要跟着重建并一起提交，否则客户端与服务器的 proto 会对不上。
+
 
 ## 测试
 

@@ -50,6 +50,32 @@ class _MessagesViewState extends State<MessagesView> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadActive());
+  }
+
+  @override
+  void didUpdateWidget(covariant MessagesView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeKey != widget.activeKey) {
+      _loadActive();
+    }
+  }
+
+  /// 打开会话时拉一页历史；游标与去重在 `AppState.loadHistory` 里。
+  void _loadActive() {
+    final String? key = widget.activeKey;
+    if (key == null) {
+      return;
+    }
+    final Conversation? conv = widget.state.conversationOf(key);
+    if (conv != null) {
+      widget.state.loadHistory(conv);
+    }
+  }
+
   List<Conversation> get _filtered {
     final List<Conversation> all = widget.state.conversations;
     if (widget.filter == 'dm') {
@@ -263,6 +289,8 @@ class _MessagesViewState extends State<MessagesView> {
                               ),
                             ],
                           ),
+                          const Spacer(),
+                          if (widget.state.realtimeUp) const MoonTag(text: '实时'),
                         ],
                       ),
                     ),
