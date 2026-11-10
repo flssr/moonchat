@@ -5,7 +5,8 @@
   "description": "Turms 端到端冒烟：验证用户、JWT、代发边界与群投影，以及 S1 的身份链路",
   "scripts": {
     "smoke": "node smoke.mjs",
-    "identity": "node identity.mjs"
+    "identity": "node identity.mjs",
+    "agent": "node agent-example.mjs"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
