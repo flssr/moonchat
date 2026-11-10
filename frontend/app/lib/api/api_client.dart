@@ -80,6 +80,9 @@ class ApiClient {
   final http.Client _client;
   static const Duration _timeout = Duration(seconds: 20);
 
+  /// 401 的统一出口：由 `AppState` 挂上「清凭据回登录页」，不用每个调用点各判一次。
+  void Function()? onUnauthenticated;
+
   void close() => _client.close();
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -127,12 +130,16 @@ class ApiClient {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return json;
     }
-    throw ApiException(
+    final ApiException error = ApiException(
       code: (json['code'] as String?) ?? 'internal_error',
       message: (json['message'] as String?) ?? '',
       field: json['field'] as String?,
       statusCode: res.statusCode,
     );
+    if (error.isUnauthenticated) {
+      onUnauthenticated?.call();
+    }
+    throw error;
   }
 
   List<Map<String, dynamic>> _items(Map<String, dynamic> json) =>

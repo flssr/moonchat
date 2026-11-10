@@ -247,4 +247,213 @@ void main() {
     expect(list.length, 1);
     expect(list.single.mine, isFalse);
   });
+
+  test('加好友：申请成功后重新拉取，待处理里出现对方', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(state.pending, isEmpty);
+
+    await state.requestFriend(4);
+
+    expect(biz.pending.single['peer_account_id'], 4);
+    expect(state.pending.single.peerAccountId, 4);
+  });
+
+  test('同意申请：申请移出待处理、进好友列表', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    await state.requestFriend(4);
+
+    await state.respondFriend(4, 'accept');
+
+    expect(state.pending, isEmpty);
+    expect(biz.friends.map((Map<String, Object?> f) => f['peer_account_id']), contains(4));
+    expect(state.friends.length, 2);
+  });
+
+  test('删好友：写 tombstone 后从列表消失', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    await state.requestFriend(4);
+    await state.respondFriend(4, 'accept');
+
+    await state.deleteFriend(4);
+
+    expect(state.friends.map((Friendship f) => f.peerAccountId), isNot(contains(4)));
+  });
+
+  test('建群：创建后群列表立刻包含它', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(state.rooms.length, 1);
+
+    final Room room = await state.createRoom('新群');
+
+    expect(room.name, '新群');
+    expect(state.rooms.map((Room r) => r.roomId), contains(room.roomId));
+    expect(state.conversations.map((Conversation c) => c.key), contains('room:${room.roomId}'));
+  });
+
+  test('退群：群列表移除，会话也消失', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    await state.leaveRoom(7);
+
+    expect(state.rooms, isEmpty);
+    expect(state.conversations.map((Conversation c) => c.key), isNot(contains('room:7')));
+  });
+
+  test('401 一律回登录页并清掉凭据', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(state.isReady, isTrue);
+
+    biz.unauthorized = true;
+    await expectLater(
+      state.refreshAll(),
+      throwsA(isA<ApiException>().having((ApiException e) => e.code, 'code', 'unauthenticated')),
+    );
+
+    expect(state.isReady, isFalse);
+    expect(state.loginToken, isNull);
+    expect(state.account, isNull);
+  });
 }
+
+AppState _stateOn(_FakeBiz biz) => AppState(api: ApiClient(baseUrl: 'http://mock.local', client: biz.client), realtime: _FakeRealtime());
+
+/// 有状态的假 Biz：好友与群会真的增删，用来验「动作 → 重新拉取」这条链。
+class _FakeBiz {
+  final List<Map<String, Object?>> friends = <Map<String, Object?>>[
+    <String, Object?>{
+      'peer_account_id': 2,
+      'display_name': '小助手',
+      'status': 'accepted',
+      'incoming': false,
+      'requested_at': '2026-11-09T09:00:00Z',
+    },
+  ];
+  final List<Map<String, Object?>> pending = <Map<String, Object?>>[];
+  final List<Map<String, Object?>> rooms = <Map<String, Object?>>[
+    <String, Object?>{
+      'room_id': 7,
+      'name': '月球基地',
+      'owner_account_id': 1,
+      'joined_at': '2026-11-09T10:00:00Z',
+    },
+  ];
+  bool unauthorized = false;
+  int _nextRoom = 8;
+
+  late final MockClient client = MockClient(_handle);
+
+  Future<http.Response> _handle(http.Request req) async {
+    if (unauthorized) {
+      return _json(<String, Object?>{'code': 'unauthenticated', 'message': 'expired'}, 401);
+    }
+    final String path = req.url.path;
+    final String method = req.method;
+    final Map<String, dynamic> body = req.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(req.body) as Map<String, dynamic>;
+
+    if (method == 'POST' && path == '/api/auth/login') {
+      return _json(<String, Object?>{
+        'token': 'login-jwt',
+        'expires_at': '2026-11-20T00:00:00Z',
+        'account': _account(1, '阿月'),
+      }, 200);
+    }
+    if (method == 'POST' && path == '/api/sessions') {
+      return _json(<String, Object?>{
+        'account_id': 1,
+        'display_name': '阿月',
+        'type': 'human',
+        'login_token': 'login-jwt',
+        'login_expires_at': '2026-11-20T00:00:00Z',
+        'turms': <String, Object?>{
+          'user_id': 1,
+          'credential': 'turms-jwt',
+          'gateway_url': 'ws://localhost:20510',
+        },
+        'expires_at': '2026-11-11T10:00:00Z',
+      }, 200);
+    }
+    if (method == 'GET' && path == '/api/accounts/mine') {
+      return _json(<String, Object?>{'items': <Object?>[_account(1, '阿月')]}, 200);
+    }
+    if (method == 'GET' && path == '/api/friendships') {
+      final bool wantPending = req.url.queryParameters['status'] == 'pending';
+      return _json(<String, Object?>{'items': wantPending ? pending : friends}, 200);
+    }
+    if (method == 'POST' && path == '/api/friendships') {
+      final int peer = (body['peer_account_id'] as num).toInt();
+      pending.add(<String, Object?>{
+        'peer_account_id': peer,
+        'display_name': '阿星',
+        'status': 'pending',
+        'incoming': true,
+        'requested_at': '2026-11-10T09:00:00Z',
+      });
+      return _json(<String, Object?>{
+        'peer_account_id': peer,
+        'status': 'pending',
+        'incoming': false,
+      }, 201);
+    }
+    if (method == 'POST' && path.startsWith('/api/friendships/')) {
+      final int peer = int.parse(path.split('/').last);
+      if (body['action'] == 'accept') {
+        pending.removeWhere((Map<String, Object?> f) => f['peer_account_id'] == peer);
+        friends.add(<String, Object?>{
+          'peer_account_id': peer,
+          'display_name': '阿星',
+          'status': 'accepted',
+          'incoming': false,
+          'requested_at': '2026-11-10T09:00:00Z',
+        });
+        return _json(<String, Object?>{'peer_account_id': peer, 'status': 'accepted'}, 200);
+      }
+      pending.removeWhere((Map<String, Object?> f) => f['peer_account_id'] == peer);
+      return http.Response('', 204);
+    }
+    if (method == 'DELETE' && path.startsWith('/api/friendships/')) {
+      final int peer = int.parse(path.split('/').last);
+      friends.removeWhere((Map<String, Object?> f) => f['peer_account_id'] == peer);
+      return http.Response('', 204);
+    }
+    if (method == 'GET' && path == '/api/rooms') {
+      return _json(<String, Object?>{'items': rooms}, 200);
+    }
+    if (method == 'POST' && path == '/api/rooms') {
+      final Map<String, Object?> room = <String, Object?>{
+        'room_id': _nextRoom++,
+        'name': body['name'],
+        'owner_account_id': 1,
+        'joined_at': '2026-11-10T12:00:00Z',
+      };
+      rooms.add(room);
+      return _json(room, 201);
+    }
+    if (method == 'DELETE' && path.endsWith('/members/me')) {
+      final int roomId = int.parse(path.split('/')[3]);
+      rooms.removeWhere((Map<String, Object?> r) => r['room_id'] == roomId);
+      return http.Response('', 204);
+    }
+    return _json(<String, Object?>{'code': 'not_found', 'message': 'no route'}, 404);
+  }
+}
+

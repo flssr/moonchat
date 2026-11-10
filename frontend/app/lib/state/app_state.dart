@@ -59,7 +59,10 @@ class ChatMessage {
 class AppState extends ChangeNotifier {
   AppState({ApiClient? api, RealtimeClient? realtime})
       : api = api ?? ApiClient(),
-        realtime = realtime ?? createRealtime();
+        realtime = realtime ?? createRealtime() {
+    // 401 一律回登录页（`frontend/docs/API-MAPPING.md` §4）：凭据没了就别再让界面假装还在线。
+    this.api.onUnauthenticated = logout;
+  }
 
   final ApiClient api;
 
@@ -84,6 +87,7 @@ class AppState extends ChangeNotifier {
 
   String? lastError;
   Timer? _renewTimer;
+  Timer? _turmsTimer;
 
   /// 历史翻页的运行状态：同一个会话不并发拉，翻到空页即到底。
   final Set<String> _historyLoading = <String>{};
@@ -164,6 +168,37 @@ class AppState extends ChangeNotifier {
     }
     await refreshAll();
     await _connectRealtime();
+    _scheduleTurmsRenewal();
+  }
+
+  /// Turms 凭据 12 小时过期，到期前重调 `POST /api/sessions` 换新的并重连
+  /// （`account-and-ownership.md`「凭据有两种时长」：这一步无状态、可重复调用）。
+  void _scheduleTurmsRenewal() {
+    _turmsTimer?.cancel();
+    final DateTime? expires = turms?.expiresAt;
+    final Account? me = account;
+    if (expires == null || me == null) {
+      return;
+    }
+    final Duration lead = expires.difference(DateTime.now().toUtc()) - const Duration(minutes: 30);
+    final Duration wait = lead.isNegative ? const Duration(minutes: 5) : lead;
+    _turmsTimer = Timer(wait, () async {
+      try {
+        final AccountSession session =
+            await api.sessionForOwner(token: loginToken!, accountId: me.accountId);
+        turms = session.turms;
+        if (session.loginToken != null) {
+          loginToken = session.loginToken;
+          loginExpiresAt = session.loginExpiresAt;
+        }
+        await _connectRealtime();
+        _scheduleTurmsRenewal();
+      } catch (_) {
+        // 续不上就先断开读通道：界面还能用 REST 写，读会缺席。
+        realtimeUp = false;
+        notifyListeners();
+      }
+    });
   }
 
   /// 登录 / 切账号之后接上该账号的 Turms 会话：收全部会话的推送，历史由客户端自己查。
@@ -253,6 +288,7 @@ class AppState extends ChangeNotifier {
   /// 清凭据回登录页。
   void logout() {
     _renewTimer?.cancel();
+    _turmsTimer?.cancel();
     realtime.disconnect();
     realtimeUp = false;
     loginToken = null;
@@ -440,6 +476,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _renewTimer?.cancel();
+    _turmsTimer?.cancel();
     api.close();
     super.dispose();
   }
