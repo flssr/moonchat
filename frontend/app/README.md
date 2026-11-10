@@ -39,8 +39,8 @@ lib/
 - **读取通道已接**：`lib/turms/` 用 `dart:js_interop` 调 `turms-client-js`，登录取 `POST /api/sessions`
   给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻。非 Web 平台走
   `realtime_stub.dart`（官方 Dart 客户端是 TCP 传输，Web 上不可用）。
-- **尚未在真实 Turms 上跑过**：这台机器没有 Docker，起不了 Turms，所以收发与历史翻页只做到编译与
-  静态分析通过，还没有端到端证据。
+- **尚未在真实 Turms 上跑过**：起 Turms 要 Docker（Turms + PG + Redis），本机没有，所以服务器侧的
+  proto 字段、会话可见范围、限流真实行为都还没有证据；S5 的六条验收判据也因此未验。
 - 界面规则只从 `docs/friends.md`（私聊入口只有好友列表与资料页）与
   `docs/account-and-ownership.md`（主页字段）里读；需要新规则时先补 spec。
 
@@ -59,6 +59,26 @@ node node_modules/rollup/dist/bin/rollup --config rollup.config.ts --configPlugi
 
 升级 Turms 子模块时，这个文件要跟着重建并一起提交，否则客户端与服务器的 proto 会对不上。
 
+
+## 怎么验证的
+
+三层，前两层可重复跑，第三层要真环境：
+
+| 层 | 做法 | 覆盖 |
+| --- | --- | --- |
+| 流程测试 | `flutter test`：`MockClient` 假扮 Biz 驱动真实的 `ApiClient` / `AppState` | 注册不签发 JWT、登录、切账号、好友四条、群四条、发言成功与 429、401 回登录页、推送去重，共 15 条 |
+| 界面联调 | 起一个同源假 Biz（静态页 + `/api/*`），用 headless Edge 走真实界面并截图 | 登录 → 会话列表 → 选人 → 发言 → 气泡落定 |
+| 读取通道 | 用 CDP 把 `web/vendor/turms-client.iife.min.js` 的请求换成假 `TurmsClient`，记录每次调用 | 构造参数、`login(userId, WEB)`、`addMessageListener`、`queryMessages` 的 `fromIds` / `areGroupMessages` / `descending`、`deliveryDateEnd` 逐页递减、推送落盘 |
+
+第三层能证明**客户端怎么说话**，证明不了**Turms 怎么回话**。要补上这一层，得先有 Docker：
+
+```powershell
+docker compose -f vendor/turms/docker-compose.standalone.yml `
+  -f infra/turms/pinned-images.compose.yaml up -d --wait
+```
+
+假服务与假 `TurmsClient` 都不进仓库（`AGENTS.md` §6：不许为「先跑起来」加 dev-only 的 mock）——
+它们是本机联调用的临时件，不是这份工程的依赖。
 
 ## 测试
 
