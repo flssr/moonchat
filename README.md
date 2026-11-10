@@ -2,171 +2,93 @@
 
 **一个 QQ / 微信形态的社交平台：账号、好友、私聊、群聊是地基，账号的能力是一张公开清单，可以被归属者之外的 agent 操控。**
 
-MoonChat 的地基和 QQ / 微信完全一样：注册一个账号、加好友、一对一私聊、拉好友建群。区别只有一条——**账号会暴露一组能力**（发消息、加好友、建群……），这些能力除了归属者本人，还能被一个跑在用户自己服务里的 agent 调用。于是 agent 不是插件、不是命令，而是通讯录里一个真的账号。
+agent 不是插件、不是命令，而是通讯录里一个真的账号：它用自己账号的凭据连同一个 `/im` 入口、走同一个 `/api` 写入，收到它账号的全部会话，自己决定何时回话。
 
-> **当前状态：V1 施工中，S0 与 S1 已完成并合入 `main`。** `docs/` 下 12 份 spec（11 份设计 + 1 份施工切片，含 REST 接口契约）；设计上只有 `moonchat-biz` 一个业务进程。已实现：七张表的迁移与账号模块的五条路由（注册、登录、换 Turms 凭据、我的账号、续期）；好友、群与发言尚未实现，下一步是 S2。
-
----
-
-## 核心设定
-
-- **统一账号**：真人与 agent 是同一种账号，和 QQ / 微信账号没有区别。账号归归属者所有，实际动手操作它的是 agent（经 HTTP 端点与密钥），归属者本人也可以直接切进去用它。
-- **能力清单**：账号的能力是枚举出来的（发私聊、发群消息、加好友、读历史、改名字），真人客户端与 agent 端点都在这个清单上操作，发言统一经 Biz 的写入网关。
-- **好友关系**：加好友才能私聊；好友关系是 PostgreSQL 里的一张表，隧道不知道它，执行点在写入网关。
-- **群聊**：只有一种可见性——成员可见；群与成员的真相在 PG，Turms 里的 group 只是投递所需的投影。
-- **客户端只有一类**：账号的 Turms 客户端。真人客户端与 agent 端点用同一套凭据签发路径、同一个 `/im` 入口收消息、同一个 `/api` 写入；agent 收到它账号的全部会话，自己筛——平台没有 webhook、没有推送档位、没有工作区。
-
-## 里程碑
-
-每一片结束时都是一个可验证的状态，不按「做完一半」推进。
-
-| 切片 | 内容 | 要验证的命题 |
-| --- | --- | --- |
-| **V1 社交骨架** | 注册登录 → 加好友 → 一对一私聊 → 建群拉人 → 建 agent 账号并加为好友 → 真人聊天 → agent 作为客户端收到消息 → 它自己决定何时回话 | agent 作为通讯录里的一个账号，人和它长期共处有没有意思 |
-| **V2 计划** | 内容层（发帖、朋友圈、图片）、拉黑与举报、无响应提示、公开群与邀请链接 | — |
-
-V1 的范围与验收判据见 `docs/goal-and-requirements.md` §5、§6；V2 只是计划，不是待办。V1 内部再按 S0–S5 六段纵切推进，每段的交付边界、片末判据与跨片约定见 [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md)。
+> **当前状态：V1 施工中。** S0–S4 已完成并合入 `main`（七张表的迁移、20 条接口、群投影与重放器、两级限流桶）；下一步是 S5 客户端与 V1 验收。设计与进度以 `docs/` 为准，本文件只讲怎么上手。
 
 ## 技术栈
 
 | 方面 | 选择 |
 | --- | --- |
-| 前端 | Flutter，第一版只发 Web 构建 |
-| IM 引擎 | Turms（MongoDB + Redis）：只做会话、消息、投递与在线状态；群与好友的业务真相不在这里 |
-| 业务层 | Spring（Java）：账号与资料、好友、群与成员、切换账号的凭据签发，以及发言的写入网关 |
-| 业务存储 | PostgreSQL |
-| agent 接入 | Turms 客户端（用该账号凭据）+ Biz 的 REST；与真人同一套接口面，没有专用转发层 |
+| 业务层 | Spring Boot 4（Java 21），唯一业务进程 `moonchat-biz` |
+| 业务存储 | PostgreSQL；限流桶与缓存用 Redis |
+| IM 引擎 | Turms（固定子模块 + 固定镜像 digest），只做会话、消息、投递 |
+| 前端 | Flutter，第一版只发 Web 构建（`frontend/`） |
+| agent 接入 | 该账号的 Turms 客户端 + Biz 的 REST，没有专用转发层 |
+
+## 目录
+
+```
+.
+├── README.md            # 本文件：上手与协作
+├── AGENTS.md            # 给 AI agent 的硬边界与纪律（动代码前必读）
+├── moonchat-biz/        # 唯一的业务进程
+├── frontend/            # 客户端（Flutter 工程 + 网页预览）
+├── infra/               # 本地与部署的基础设施配置（Turms 覆盖、冒烟脚本）
+├── vendor/turms/        # Turms 上游子模块，固定在具体提交
+├── deliverables/        # 对外交付稿（不是 spec，不作为设计依据）
+└── docs/                # 12 份 spec，从 docs/README.md 的台账进
+```
+
+## 快速开始
+
+前置：JDK 21、Docker（Compose v2）。
+
+```powershell
+# 1. 取到 Turms 子模块（不初始化则 vendor/turms 为空）
+git submodule update --init --recursive
+
+# 2. 构建与测试（接口测试用 Testcontainers 起真 PG / Redis，需要 Docker 在跑）
+.\mvnw.cmd test
+
+# 3. 起 Turms 开发环境
+$env:ENV = 'dev'
+docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinned-images.compose.yaml up -d --wait
+
+# 4. 起开发用的 PG，然后跑 Biz（两个密钥没有默认值，必须由环境给出）
+docker run -d --name moonchat-biz-dev-pg -e POSTGRES_DB=moonchat `
+  -e POSTGRES_USER=moonchat -e POSTGRES_PASSWORD=moonchat `
+  -p 15432:5432 postgres:17-alpine
+
+$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/moonchat'
+$env:SPRING_DATASOURCE_USERNAME = 'moonchat'
+$env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
+$env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"  # 与 turms-gateway 共用同一份
+$env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'                   # 登录 JWT 自签自验
+$env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
+.\mvnw.cmd -pl moonchat-biz spring-boot:run
+```
+
+密钥文件在本地生成、不进仓库（`infra/turms/secrets/` 只跟踪它自己的 `.gitignore`）。密钥生成、Turms 冒烟与身份链路两条端到端脚本的跑法见 `docs/deployment.md` 与 `infra/turms/smoke/`。
+
+## 协作
+
+**分支与合并**：`main` 受保护，只收 PR，不能直接推。每件事开短分支，合完就删。
+
+| 用途 | 分支名 |
+| --- | --- |
+| 功能 / 一片施工 | `feat/<短名>` |
+| 修 bug | `fix/<短名>` |
+| 只改文档 | `docs/<短名>` |
+
+**PR 要求**：
+
+1. CI（`.github/workflows/ci.yml`）跑 `mvnw test` 必须绿。
+2. 改了行为必须同时改对应 spec；改了 spec 必须同时更新 `docs/README.md` 台账。
+3. 不夹带无关改动：一次 PR 一件事。
+
+**提交信息**：中文陈述句，说清做了什么决定；不加 `feat:` 前缀、不加 emoji、不加工具署名。例：`按社交骨架重写 8 份 spec：好友归 Turms、私聊进 V1、内容层撤出`。
+
+**动代码前先读** [`AGENTS.md`](AGENTS.md)：六条硬边界、已定的简化、V1 之外的范围都写在那里，踩了就是返工。
 
 ## 文档导航
 
 | 入口 | 用途 |
 | --- | --- |
-| [`docs/README.md`](docs/README.md) | **文档台账**：每份 spec 的 id、类型、上下游依赖、覆盖的问题，以及按角色的阅读路径 |
-| [`docs/goal-and-requirements.md`](docs/goal-and-requirements.md) | **PRD**：定位、能力清单、V1 范围与验收、Non-Goals、指标、V2 计划 |
-| [`docs/architecture.md`](docs/architecture.md) | 分层、拓扑、模块表、边界硬规矩、数据归属、一条消息的旅程、跨模块不变量 |
-| [`docs/biz-data-model.md`](docs/biz-data-model.md) | **biz 的 DDD 表结构**：聚合边界、七张表的 DDL、字段语义、只能由应用层守的规则、明确不建的表 |
-| [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md) | **V1 施工切片**：S0–S5 各片的交付边界、片末判据、顺序自由度和片内禁止项 |
-| [`AGENTS.md`](AGENTS.md) | **给 AI agent 的协作规则**：硬边界、已定简化、范围纪律、文档与提交规范、交付前自检 |
+| [`docs/README.md`](docs/README.md) | **文档台账**：每份 spec 的 id、依赖、覆盖的问题、按角色的阅读路径 |
+| [`docs/goal-and-requirements.md`](docs/goal-and-requirements.md) | PRD：定位、能力清单、V1 范围与验收、Non-Goals |
+| [`docs/architecture.md`](docs/architecture.md) | 分层、数据归属、一条消息的旅程、跨模块不变量 |
+| [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md) | S0–S5 的交付边界与片末判据 |
+| [`AGENTS.md`](AGENTS.md) | 给 AI agent / 新人的协作规则与交付前自检 |
 
-**第一次读，建议顺序**：`docs/goal-and-requirements.md` → `docs/architecture.md` → 你关心的那个模块。
-
-## 代码骨架
-
-```text
-.
-├── moonchat-biz/          # 业务层：账号与资料、好友、群与成员、凭据签发、写入网关
-├── infra/turms/           # Turms 开发环境的固定镜像覆盖
-└── vendor/turms/          # Turms 上游子模块，固定到具体提交
-```
-
-`moonchat-biz` 是唯一的业务进程：无状态 REST，会话在客户端、限流桶在 Redis 与 Turms，写入经 `im-facade` 调 Turms Admin API。
-
-首次检出后初始化 Turms：
-
-```powershell
-git submodule update --init --recursive
-```
-
-构建与测试：
-
-```powershell
-.\mvnw.cmd test
-```
-
-启动 Turms 开发环境：
-
-```powershell
-$env:ENV = 'dev'
-docker compose -f vendor/turms/docker-compose.standalone.yml -f infra/turms/pinned-images.compose.yaml up
-```
-
-镜像使用构建当时核对过的 digest，不跟随上游 `latest` 漂移。当前进度：**S1 身份底座**已跑通（三个迁移文件建齐七张表、注册登录、换 Turms 凭据、续期）；好友、群与发言接口还没有实现。
-
-### Turms 冒烟（验证凭据、写入与群投影边界）
-
-`infra/turms/smoke` 验证 `docs/messaging-and-tunnel.md` 的运行时结论：指定 id 建用户、JWT 登录、QUERY-only 拒绝、私聊代发落库与推送、Admin 建群并回填 group id、成员集合一致、群消息推送，以及被移出群的账号代发被拒。
-
-```powershell
-# 1. 生成冒烟用的 HMAC 密钥（32 字节，已在 .gitignore 里）
-$key = "$PWD/infra/turms/secrets/jwt-hmac256.key"
-if (!(Test-Path $key)) {
-  New-Item -ItemType Directory -Force (Split-Path $key) | Out-Null
-  $bytes = New-Object byte[] 32
-  [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-  [IO.File]::WriteAllBytes($key, $bytes)
-}
-$env:MOONCHAT_JWT_SECRET_FILE = $key
-
-# 2. 带 JWT 认证覆盖启动 Turms（比默认多一个 -f）
-$env:ENV = 'dev'
-docker compose -f vendor/turms/docker-compose.standalone.yml `
-  -f infra/turms/pinned-images.compose.yaml `
-  -f infra/turms/jwt-identity.compose.yaml up -d --wait
-
-# 3. 构建仓库内自带的 Turms JS 客户端（只需一次），然后跑冒烟
-cd vendor/turms/turms-client-js; npm i; npm run build; cd ../../..
-cd infra/turms/smoke; npm i; npm run smoke
-```
-
-`infra/turms/jwt-identity.compose.yaml` 只用于这条冒烟路径：它把 `turms-gateway` 的 `identity-access-management.type` 改成 `jwt` 并挂入上面那个密钥文件，与其他配置无关。
-
-冒烟需要本地能拉到 `mongo:8.0.12-noble` 与三张 `ghcr.io/turms-im/*` 镜像；拉不到就先离线导入镜像再跑（本仓库不提供镜像源）。
-
-脚本共 10 条硬断言。本地 standalone 的 turms-service 默认缓存用户会话状态 60 秒；登录后立即查询可能先拿到缓存的 `OFFLINE`。脚本会等到状态真正变为 `AVAILABLE` 再发送，因此一次完整运行约一分钟。默认 `GroupType` 0 已满足邀请制、成员可见、guest 不可发言。
-
-覆盖文件把宿主端口改成 `20510→10510`（WS）与 `16379→6379`（Redis），避免与本机已有的 10510/6379 冲突；冒烟脚本默认连 `ws://localhost:20510`，要改就用 `TURMS_WS_URL`。
-
-固定的 Turms 源码声明 Java 25，而 MoonChat 模块使用 Java 21。运行 Turms 使用预构建镜像，不需要本地编译它；只有修改并重新构建 Turms 源码时才需要额外安装 JDK 25。
-
-### 身份链路（S1 片末判据）
-
-`infra/turms/smoke/identity.mjs` 在真 Turms + 真 Biz + 真 PG 上把「注册 → 登录 → `/api/sessions` → `turms-client-js` 登录 `/im`」跑一遍，同时核对 `account.id` 就是 Turms 用户 id（从 Turms 那侧查）、QUERY-only 凭据发不出消息（1106）、续期后还是同一个账号。
-
-它需要一个长期存在的库（接口测试用的是 Testcontainers 的临时库）：
-
-```powershell
-# 1. 起一个开发用的 PG
-docker run -d --name moonchat-biz-dev-pg -e POSTGRES_DB=moonchat `
-  -e POSTGRES_USER=moonchat -e POSTGRES_PASSWORD=moonchat `
-  -p 15432:5432 postgres:17-alpine
-
-# 2. 跑 Biz：库走 Spring 原生键，两个密钥没有默认值，必须由环境给出
-$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/moonchat'
-$env:SPRING_DATASOURCE_USERNAME = 'moonchat'
-$env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
-$env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"  # 与 turms-gateway 共用同一份
-$env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'                   # 登录 JWT 自签自验，与 Turms 密钥相互独立
-.\mvnw.cmd -pl moonchat-biz spring-boot:run
-
-# 3. 另一个终端跑身份链路
-cd infra/turms/smoke; npm run identity
-```
-
-Biz 的自有配置只有两组：`moonchat.turms.*`（Admin 地址与凭据、`/im` 网关地址、共享密钥文件、凭据时长）与 `moonchat.auth.*`（登录 JWT 密钥与时长）；库与 Redis 用 Spring 原生键（`SPRING_DATASOURCE_*`、`SPRING_DATA_REDIS_*`），yml 里不写默认值。
-
-脚本不清理它建的东西：V1 没有删账号的能力，每跑一次会留下一个账号行与一个 Turms 用户。
-
-## 目录约定
-
-```
-.
-├── README.md          # 项目概览（人看）
-├── AGENTS.md          # 协作规则（AI agent 看）
-├── pom.xml            # Maven 聚合工程
-├── moonchat-biz/      # 业务层启动模块
-├── infra/             # 本地与部署基础设施配置
-├── vendor/            # 固定到上游提交的外部工程
-├── deliverables/      # 对外交付稿（V1 HLD），不是 spec，设计依据仍是 docs/ 下的 12 份
-└── docs/
-    ├── README.md      # 文档台账与阅读路径
-    └── *.md           # 12 份 spec（11 份设计 + 1 份施工切片）
-```
-
-- **根目录的持久 markdown 只有 `README.md` 与 `AGENTS.md`**，不放设计内容。
-- **12 份 spec 全在 `docs/` 下**，一份文件一个模块，靠 frontmatter 的 `id` / `type` 被 spec-graph 索引（`moonchat-product` 为根，`moonchat-architecture` 为其子，各 module-design 挂在架构之下，`moonchat-biz-data` 把它们的业务真相落成 PG 表结构，`moonchat-api` 把同一批真相落成对外路由，`moonchat-dependencies` 把它们落成 pom 里的包与版本，`moonchat-onebot-bridge` 定 agent 侧的 OneBot 桥接，`moonchat-v1-construction` 只排施工顺序）。
-- **不在任何目录放临时文件**：不写 `NOTES.md`、`TODO.md`、`plan.md`。新增 spec 必须同时登记到 `docs/README.md` 的台账。
-
-## 参与协作
-
-- **人**：从上面的文档导航进入；改设计前先读 `docs/architecture.md` 的「四条边界硬规矩」与「跨模块不变量」。
-- **AI agent**：先读 [`AGENTS.md`](AGENTS.md)，它列了不可违反的边界、不该私自升级的「已定简化」，以及已知缺口（客户端写入靠 JWT 权限关闭的三条部署前提、Turms 不校验好友关系、若干数字无依据、无响应判据待重写、公开群未实测、Turms 里有残留游离 group、客户端还没有 spec）。
+第一次读：`docs/goal-and-requirements.md` → `docs/architecture.md` → 你关心的那个模块。

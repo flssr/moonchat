@@ -2,6 +2,21 @@ target/
 .idea/
 *.iml
 .vscode/
+.thinkrail/
 .env
+.env.*
 *.log
 
+# 本地生成的密钥
+*.key
+
+# Flutter（frontend/）
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+*.iml
+
+# 系统垃圾
+Thumbs.db
+.DS_Store
