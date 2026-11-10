@@ -331,6 +331,19 @@ void main() {
     expect(state.loginToken, isNull);
     expect(state.account, isNull);
   });
+
+  test('注册不签发 JWT，注册后自己再登录', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+
+    await state.register(email: 'new@b.c', password: 'password1', displayName: '新人');
+    expect(state.isReady, isFalse, reason: '注册不建立会话');
+    expect(biz.registered.single['email'], 'new@b.c');
+
+    await state.login(email: 'new@b.c', password: 'password1');
+    expect(state.isReady, isTrue);
+  });
 }
 
 AppState _stateOn(_FakeBiz biz) => AppState(api: ApiClient(baseUrl: 'http://mock.local', client: biz.client), realtime: _FakeRealtime());
@@ -356,6 +369,7 @@ class _FakeBiz {
     },
   ];
   bool unauthorized = false;
+  final List<Map<String, Object?>> registered = <Map<String, Object?>>[];
   int _nextRoom = 8;
 
   late final MockClient client = MockClient(_handle);
@@ -370,7 +384,25 @@ class _FakeBiz {
         ? <String, dynamic>{}
         : jsonDecode(req.body) as Map<String, dynamic>;
 
+    if (method == 'POST' && path == '/api/auth/register') {
+      registered.add(<String, Object?>{
+        'email': body['email'],
+        'display_name': body['display_name'],
+      });
+      return _json(<String, Object?>{
+        'account_id': 5,
+        'display_name': body['display_name'],
+        'type': 'human',
+      }, 201);
+    }
     if (method == 'POST' && path == '/api/auth/login') {
+      if (body['email'] == 'new@b.c') {
+        return _json(<String, Object?>{
+          'token': 'login-jwt',
+          'expires_at': '2026-11-20T00:00:00Z',
+          'account': _account(5, '新人'),
+        }, 200);
+      }
       return _json(<String, Object?>{
         'token': 'login-jwt',
         'expires_at': '2026-11-20T00:00:00Z',
