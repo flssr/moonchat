@@ -85,6 +85,10 @@ class AppState extends ChangeNotifier {
   String? lastError;
   Timer? _renewTimer;
 
+  /// 历史翻页的运行状态：同一个会话不并发拉，翻到空页即到底。
+  final Set<String> _historyLoading = <String>{};
+  final Set<String> _historyDone = <String>{};
+
   bool get isReady => phase == AuthPhase.ready;
   bool get isBusy => phase == AuthPhase.busy;
 
@@ -210,26 +214,41 @@ class AppState extends ChangeNotifier {
   }
 
   /// 打开会话时往回翻一页：游标是最早一条的 `deliveryDate`（Turms 没有消息 id 分页）。
+  /// 反复调用就是持续往前翻，翻到空页就认为到底了。
   Future<void> loadHistory(Conversation conv) async {
     final int me = account?.accountId ?? 0;
-    if (me == 0) {
+    if (me == 0 || _historyLoading.contains(conv.key) || _historyDone.contains(conv.key)) {
       return;
     }
+    _historyLoading.add(conv.key);
     final List<ChatMessage> existing = _messages[conv.key] ?? const <ChatMessage>[];
-    final DateTime? oldest = existing.isEmpty ? null : existing.first.sentAt;
+    // 游标要排除边界那条消息本身：`deliveryDateEnd` 是闭区间，原样传会把最早一条再取回来一次，
+    // 去重后没有进展，滚动续翻就会原地打转。
+    final DateTime? cursor =
+        existing.isEmpty ? null : existing.first.sentAt.subtract(const Duration(milliseconds: 1));
     try {
       final List<IncomingMessage> page = await realtime.history(
         conversationType: conv.type,
         targetId: conv.targetId,
-        before: oldest,
+        before: cursor,
       );
+      if (page.isEmpty) {
+        // 这一页空了：这个会话的历史到头了，不再重复请求。
+        _historyDone.add(conv.key);
+      }
       for (final IncomingMessage m in page.reversed) {
         _ingest(m);
       }
     } catch (_) {
       // 读通道不可用时只是没有历史，不影响发送与其它动作。
+    } finally {
+      _historyLoading.remove(conv.key);
+      notifyListeners();
     }
   }
+
+  bool isHistoryLoading(String key) => _historyLoading.contains(key);
+  bool isHistoryDone(String key) => _historyDone.contains(key);
 
   /// 清凭据回登录页。
   void logout() {

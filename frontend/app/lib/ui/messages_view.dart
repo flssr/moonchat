@@ -387,7 +387,7 @@ class _MessagesViewState extends State<MessagesView> {
   }
 }
 
-class _MessageList extends StatelessWidget {
+class _MessageList extends StatefulWidget {
   const _MessageList({required this.state, required this.conversation, required this.onRetry});
 
   final AppState state;
@@ -395,20 +395,62 @@ class _MessageList extends StatelessWidget {
   final ValueChanged<ChatMessage> onRetry;
 
   @override
+  State<_MessageList> createState() => _MessageListState();
+}
+
+class _MessageListState extends State<_MessageList> {
+  final ScrollController _scroll = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_maybeLoadOlder);
+  }
+
+  @override
+  void dispose() {
+    _scroll
+      ..removeListener(_maybeLoadOlder)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// 列表是 reverse 的：滚到 maxScrollExtent 就是最早一条，继续往前翻。
+  void _maybeLoadOlder() {
+    if (!_scroll.hasClients) {
+      return;
+    }
+    final ScrollPosition pos = _scroll.position;
+    if (pos.pixels >= pos.maxScrollExtent - 120) {
+      widget.state.loadHistory(widget.conversation);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
-    final List<ChatMessage> messages = state.messagesOf(conversation.key);
+    final List<ChatMessage> messages = widget.state.messagesOf(widget.conversation.key);
     if (messages.isEmpty) {
       return const MoonEmpty(
         title: '关系已经成立，发第一句话吧',
         hint: '历史消息由客户端持 Turms 凭据直接查，Biz 不在读路径上。',
       );
     }
+    final bool loadingOlder = widget.state.isHistoryLoading(widget.conversation.key);
     return ListView.builder(
+      controller: _scroll,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      itemCount: messages.length,
+      itemCount: messages.length + (loadingOlder ? 1 : 0),
       itemBuilder: (BuildContext context, int i) {
+        if (loadingOlder && i == messages.length) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5)),
+            ),
+          );
+        }
         final ChatMessage m = messages[messages.length - 1 - i];
         final bool failed = m.state == MessageState.failed;
         return Semantics(
@@ -445,7 +487,7 @@ class _MessageList extends StatelessWidget {
                     if (failed) ...<Widget>[
                       const SizedBox(width: 8),
                       GestureDetector(
-                        onTap: () => onRetry(m),
+                        onTap: () => widget.onRetry(m),
                         child: Text('重试', style: TextStyle(fontSize: 10.5, color: p.accent)),
                       ),
                     ],
