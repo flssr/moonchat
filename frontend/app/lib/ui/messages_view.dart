@@ -212,7 +212,9 @@ class _MessagesViewState extends State<MessagesView> {
                                           style: TextStyle(fontSize: 13, color: p.ink),
                                         ),
                                         Text(
-                                          c.isRoom ? '群聊 · ${c.memberCount ?? '-'} 人' : '私聊',
+                                          c.isRoom
+                                              ? (c.memberCount == null ? '群聊' : '群聊 · ${c.memberCount} 人')
+                                              : '私聊',
                                           style: TextStyle(fontSize: 11.5, color: p.ink3),
                                         ),
                                       ],
@@ -284,7 +286,11 @@ class _MessagesViewState extends State<MessagesView> {
                                 style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink),
                               ),
                               Text(
-                                active.isRoom ? '群聊 · ${active.memberCount ?? '-'} 人' : '私聊',
+                                active.isRoom
+                                    ? (active.memberCount == null
+                                        ? '群聊'
+                                        : '群聊 · ${active.memberCount} 人')
+                                    : '私聊',
                                 style: TextStyle(fontSize: 11, color: p.ink3),
                               ),
                             ],
