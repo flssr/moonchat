@@ -42,25 +42,7 @@
     });
   }
 
-  /* ---------------- reveal + scroll spy ---------------- */
-  if (!reduceMotion) {
-    const revealTargets = $$(".section__head, .notes li, .compare figure, .foundation > .panel, .specGrid > .specCard, .duo > .panel, .handoff__col, .demoBar, .annot > div, .tableWrap, .closing, .demoNote");
-    const revealIO = new IntersectionObserver((entries) => {
-      entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
-        entry.target.classList.add("is-in");
-        revealIO.unobserve(entry.target);
-      });
-    }, { threshold: 0.1, rootMargin: "0px 0px -6% 0px" });
-
-    revealTargets.forEach((el, i) => {
-      if (el.getBoundingClientRect().top < window.innerHeight * 0.98) return;
-      el.classList.add("js-reveal");
-      el.style.transitionDelay = `${(i % 4) * 45}ms`;
-      revealIO.observe(el);
-    });
-  }
-
+  /* ---------------- scroll spy ---------------- */
   const navLinks = $$(".rail__link");
   const sections = navLinks
     .map((link) => document.getElementById(link.getAttribute("href").slice(1)))
@@ -907,7 +889,8 @@
       refs.accountDetail.innerHTML = `
         <form class="agentForm" id="agentForm">
           <h3>创建 agent 账号</h3>
-          <p>给它一个名字，平台会同时创建一个 Turms 用户。密钥只在这个响应里出现一次。</p>
+          <p>给它一个名字，平台会同时创建一个 Turms 用户。新账号是孤立的：不入群、不加好友，关系由后续动作建立。</p>
+          <p>密钥只在这个响应里出现一次。</p>
           <label class="field"><span class="field__label">名字</span><input id="agentName" type="text" maxlength="20" placeholder="最多 20 个字" autocomplete="off"></label>
           <p class="formHint" id="agentErr"></p>
           <div class="detailCard__actions">
@@ -955,7 +938,7 @@
     const id = 1100 + accounts.filter((a) => a.type === "agent").length;
     accounts.push({ id, name, type: "agent" });
     directory[id] = { name, mark: name.slice(0, 1) };
-    friends[id] = [1001];
+    friends[id] = [];
     incoming[id] = [];
     outgoing[id] = [];
     const key = (crypto && crypto.randomUUID)
@@ -983,10 +966,6 @@
   $("#meRow").addEventListener("click", () => setView("account"));
   $("#listBtn").addEventListener("click", () => {
     app.classList.toggle("show-convs");
-    if (app.classList.contains("show-convs")) {
-      const first = $(".conv", refs.convList);
-      if (first) first.focus();
-    }
   });
   $("#newChatBtn").addEventListener("click", () => {
     setView("contacts");

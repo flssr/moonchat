@@ -137,7 +137,7 @@
     <section class="section" id="foundation">
       <header class="section__head">
         <p class="kicker"><span>02</span> 基础</p>
-        <h2>四组值，撑住整页。</h2>
+        <h2>基础值只有四组。</h2>
         <p class="section__lede">颜色、字、间距、动效。其余样式都从这四组推导，不再临时加值。</p>
       </header>
 
@@ -197,7 +197,7 @@
     <section class="section" id="login">
       <header class="section__head">
         <p class="kicker"><span>03</span> 登录与注册</p>
-        <h2>先验证一个人，再验证一个身份。</h2>
+        <h2>登录和注册共用一张表单。</h2>
         <p class="section__lede">登录和注册共用一张表单，注册多一个名字。密码 8–72 位，不能是纯数字；邮箱填对即可，演示不提交任何数据。</p>
       </header>
 
@@ -292,7 +292,7 @@
     <section class="section" id="chat">
       <header class="section__head">
         <p class="kicker"><span>04</span> 会话与关系</p>
-        <h2>关系决定入口，消息只走一条路。</h2>
+        <h2>消息的入口由关系决定。</h2>
         <p class="section__lede">左栏找会话，中间读消息，右栏看成员或资料。好友才能私聊；非好友在群里只到资料页。点左侧图标切“联系人”和“账号”，试着发一条消息。</p>
       </header>
 
@@ -456,7 +456,7 @@
     <section class="section" id="components">
       <header class="section__head">
         <p class="kicker"><span>05</span> 组件</p>
-        <h2>状态写在表面上。</h2>
+        <h2>组件状态与尺寸。</h2>
         <p class="section__lede">每个组件至少给出默认、悬停、焦点、禁用或错误中的三种。下面是可以直接对照开发的部分。</p>
       </header>
 
@@ -487,7 +487,7 @@
           <div class="specStack">
             <div class="bubble bubble--them">舱门已关闭，欢迎登舱。<span>21:04</span></div>
             <div class="bubble bubble--me">外面星星很多。<span>21:05</span></div>
-            <div class="bubble bubble--them is-pending"><i class="spinner" aria-hidden="true"></i>发送中</div>
+            <div class="bubble bubble--them is-pending">这条消息还在发送<span>发送中…</span></div>
             <div class="bubble bubble--them is-failed">发送失败 <button type="button">重试</button></div>
           </div>
           <p class="specCard__note">V1 没有已读回执，也没有“正在输入”。发送状态只有三档：发送中、已发送、失败。</p>
@@ -509,7 +509,7 @@
     <section class="section" id="motion">
       <header class="section__head">
         <p class="kicker"><span>06</span> 动效与可用性</p>
-        <h2>动效是标点，不是修辞。</h2>
+        <h2>动效只有四条时序。</h2>
         <p class="section__lede">四条时序覆盖全站。超过 400ms 的只有舱门与发射，且都可以被系统设置关掉。</p>
       </header>
 
@@ -552,7 +552,7 @@
     <section class="section" id="contract">
       <header class="section__head">
         <p class="kicker"><span>07</span> 接口契约</p>
-        <h2>客户端需要的接口，都在这里。</h2>
+        <h2>接口只需要这些。</h2>
         <p class="section__lede">以下直接对齐 <code>docs/api-contracts.md</code>。登录 JWT 只对 Biz 有效；Turms 凭据只授 <code>QUERY</code>，所以客户端读消息不经过 Biz，写消息只有一条路。</p>
       </header>
 
@@ -626,7 +626,7 @@ X-Device-Type: desktop
     <section class="section" id="handoff">
       <header class="section__head">
         <p class="kicker"><span>08</span> 交付</p>
-        <h2>这轮给什么，下轮给什么。</h2>
+        <h2>本轮交付与下一轮。</h2>
         <p class="section__lede">评审只针对这一页：视觉方向、登录流程、会话结构、关系入口、状态定义。通过后再落文档，避免文档跟着稿子一起改。</p>
       </header>
 

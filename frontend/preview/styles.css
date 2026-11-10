@@ -21,15 +21,15 @@
   --stage: #e6e2d9;
   --ink: #1a1917;
   --ink-2: #56534c;
-  --ink-3: #868176;
+  --ink-3: #69645a;
   --line: #dcd7cc;
   --line-strong: #c8c2b3;
   --accent: #a9432c;
   --accent-ink: #faf7f1;
   --accent-soft: rgba(169, 67, 44, .09);
   --bubble-them: #efebe3;
-  --bubble-me: #211f1b;
-  --bubble-me-ink: #f6f3ec;
+  --bubble-me: #eae7df;
+  --bubble-me-ink: #1a1917;
   --flash: #fffefb;
   color-scheme: light;
 }
@@ -41,15 +41,15 @@
   --stage: #181715;
   --ink: #ede9e1;
   --ink-2: #a9a49a;
-  --ink-3: #78736a;
+  --ink-3: #8f8a80;
   --line: #2b2926;
   --line-strong: #3d3a34;
   --accent: #d2684c;
   --accent-ink: #1b110d;
   --accent-soft: rgba(210, 104, 76, .13);
   --bubble-them: #211f1d;
-  --bubble-me: #e9e4da;
-  --bubble-me-ink: #1a1815;
+  --bubble-me: #232120;
+  --bubble-me-ink: #ede9e1;
   --flash: #ece7dc;
   color-scheme: dark;
 }
@@ -231,7 +231,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .notes h3 { margin-bottom: 6px; }
 .notes p { max-width: 64ch; font-size: 14px; color: var(--ink-2); }
 
-.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 40px; }
+.compare { display: grid; grid-template-columns: 1fr; gap: 24px; margin-top: 40px; max-width: 900px; }
 .compare__item { border: 1px solid var(--line); border-radius: var(--r2); overflow: hidden; background: var(--surface); }
 .compare__item img { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; filter: saturate(.92); }
 .compare__item figcaption { padding: 10px 14px; font-size: 12px; color: var(--ink-3); border-top: 1px solid var(--line); }
@@ -343,6 +343,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 }
 .field:hover { border-color: var(--line-strong); }
 .field:focus-within { border-color: var(--ink-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.field.is-focus { border-color: var(--ink-2); box-shadow: 0 0 0 3px var(--accent-soft); }
 .field__label { display: block; font: 10px/1.3 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
 .field input {
   width: 100%; border: 0; background: none; outline: none;
@@ -411,8 +412,8 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .stage__moon {
   position: absolute; top: 48px; right: 44px;
   width: 168px; height: 168px; border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  opacity: .8;
+  border: 1px solid var(--ink-3);
+  background: var(--surface-2);
 }
 .stage__moon i {
   position: absolute; inset: 0; border-radius: 50%;
@@ -421,8 +422,8 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 }
 .stage__horizon {
   position: absolute; left: 0; right: 0; bottom: 22%;
-  border-top: 1px solid var(--line-strong);
-  opacity: .6;
+  border-top: 1px solid var(--ink-3);
+  opacity: .85;
 }
 .rocket {
   position: absolute; bottom: 12%; left: 50%;
@@ -534,7 +535,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .miniBubble {
   align-self: flex-start;
   padding: 7px 11px;
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--bubble-them);
   font-size: 12px; line-height: 1.5;
   max-width: 82%;
@@ -697,17 +698,10 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   font-size: 13.5px; line-height: 1.6;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.msg--me .bubbleText { background: var(--bubble-me); color: var(--bubble-me-ink); border-color: transparent; border-bottom-right-radius: 4px; }
+.msg--me .bubbleText { background: var(--bubble-me); color: var(--bubble-me-ink); border-color: var(--line); border-bottom-right-radius: 4px; }
 .msg:not(.msg--me) .bubbleText { border-bottom-left-radius: 4px; }
 .msg__time { display: block; margin-top: 4px; font: 10px/1 var(--mono); color: var(--ink-3); }
 .msg--me .msg__time { text-align: right; }
-
-.typing { display: flex; align-items: center; gap: 8px; padding-left: 34px; margin-bottom: 12px; font-size: 11px; color: var(--ink-3); }
-.typing__dots { display: inline-flex; gap: 3px; }
-.typing__dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--ink-3); animation: blink 1s infinite; }
-.typing__dots i:nth-child(2) { animation-delay: .15s; }
-.typing__dots i:nth-child(3) { animation-delay: .3s; }
-@keyframes blink { 0%, 60%, 100% { opacity: .3; } 30% { opacity: 1; } }
 
 .composer { padding: 10px 18px 14px; }
 .composer__box {
@@ -971,11 +965,8 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   font-size: 12.5px; line-height: 1.55;
 }
 .bubble span { margin-left: 8px; font: 9px/1 var(--mono); color: var(--ink-3); }
-.bubble--me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-ink); border-color: transparent; }
-.bubble--me span { color: var(--bubble-me-ink); opacity: .55; }
-.bubble.is-pending { display: inline-flex; align-items: center; gap: 7px; color: var(--ink-3); background: transparent; border: 1px dashed var(--line-strong); }
-.spinner { width: 10px; height: 10px; border: 1px solid var(--line-strong); border-top-color: var(--ink-2); border-radius: 50%; animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.bubble--me { align-self: flex-end; background: var(--bubble-me); color: var(--bubble-me-ink); border-color: var(--line); }
+.bubble--me span { color: var(--ink-3); opacity: 1; }
 .bubble.is-failed { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
 .bubble.is-failed button { border: 0; background: none; padding: 0 0 0 6px; color: var(--accent); text-decoration: underline; font-size: 11px; }
 .badge { min-width: 16px; height: 16px; padding: 0 4px; display: inline-grid; place-items: center; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font: 9px/1 var(--mono); }
@@ -1030,9 +1021,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   font: 10px/1.5 var(--mono); color: var(--ink-3); letter-spacing: .04em;
 }
 
-/* ---------- reveal ---------- */
-.js-reveal { opacity: 0; transform: translateY(10px); }
-.js-reveal.is-in { opacity: 1; transform: none; transition: opacity 560ms var(--ease), transform 560ms var(--ease); }
+
 
 /* ---------- responsive ---------- */
 @container (max-width: 860px) {
@@ -1115,5 +1104,5 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }
-  .js-reveal { opacity: 1; transform: none; }
+
 }
