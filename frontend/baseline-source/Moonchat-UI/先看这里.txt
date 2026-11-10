@@ -1,0 +1,36 @@
+﻿Moonchat · 月读世界 —— UI 预览包
+====================================
+
+【最快看法】不用装任何东西
+  双击打开  web/index.html  （Chrome / Edge）
+
+  1. 在「邮箱 / 密码」里随便填（邮箱要带 @，密码 >= 4 位），按回车
+  2. 两个输入框会飞进舱门，门关上，火箭身上弹出红色「登录」
+  3. 点一下红色按钮：火箭点火、拐弯、缩小，最后钻进月球消失
+  4. 白光过后进入聊天主页，可以切会话、发消息
+
+  建议全屏看；音效默认开启，右上角可静音。
+
+【截图】
+  预览截图/ 里有 4 张关键画面。
+
+【想改 UI】
+  web/                 网页实现（HTML + CSS + 原生 JS，无需构建）
+    css/style.css        配色、尺寸、字体
+    js/app.js            动画时序、聊天数据
+    assets/              火箭三态图、logo、遮罩
+
+【想用 Flutter 重做 / 接入】
+  flutter/             完整 Flutter 工程（纯 SDK，无第三方包）
+    在 flutter/ 目录下：
+      flutter pub get
+      flutter run -d windows      # 或 chrome / android
+    细节见 flutter/README.md
+
+【关于安装包】
+  本包是可交互的网页预览 + Flutter 源码，不含 APK/EXE。
+  需要安装包时，装好 Flutter 与 Android Studio，在 flutter/ 里执行：
+      flutter build apk --release
+  产物：build/app/outputs/flutter-apk/app-release.apk
+
+—— Moonchat UI v1

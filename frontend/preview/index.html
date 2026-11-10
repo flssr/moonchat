@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moonchat · 客户端界面评审稿 v1</title>
+<meta name="description" content="MoonChat V1 客户端界面评审稿：登录与注册、会话、关系、账号切换与 agent 密钥。对齐 PRD 与 API 契约。">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">跳到正文</a>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h15"/><path d="m13 6 6 6-6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v15"/><path d="m6 13 6 6 6-6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 6.1A9.7 9.7 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-2.7 3.4"/><path d="M6.3 7.9A16 16 0 0 0 2.5 12S6 18 12 18a9.6 9.6 0 0 0 4-.9"/><path d="M9.9 10.1a3 3 0 0 0 4.2 4.2"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m4 11.5 16-6.5-6.5 16-2.6-6.4L4 11.5Z"/><path d="m11 12.5 4.5-4.5"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 11.5c0 4-3.6 7-8 7a9.7 9.7 0 0 1-2.6-.5L5 20l1.2-3.4A6.6 6.6 0 0 1 4 11.5c0-4 3.6-7 8-7s8 3 8 7Z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.6a3.2 3.2 0 0 1 0 6.3"/><path d="M17.5 13.6a5.5 5.5 0 0 1 3 5.4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 3l3 3M14 6l3 3"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-compose" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m14 6 4 4"/></symbol>
+  <symbol id="i-moonmark" viewBox="0 0 24 24"><path d="M20.5 15.5A9 9 0 0 1 8.5 3.5a9 9 0 1 0 12 12Z"/><circle cx="18" cy="4" r="1.4" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3"/></symbol>
+  <symbol id="i-exit" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l-4 4 4 4"/><path d="M6 12h9"/></symbol>
+</svg>
+
+<div class="shell">
+  <aside class="rail">
+    <div class="rail__head">
+      <a class="brand" href="#top" aria-label="Moonchat 评审稿首页">
+        <svg class="brand__mark" aria-hidden="true"><use href="#i-moonmark"/></svg>
+        <span class="brand__name">Moonchat</span>
+      </a>
+      <p class="rail__tag">客户端评审稿 · v1</p>
+    </div>
+
+    <nav class="rail__nav" aria-label="章节">
+      <a href="#top" class="rail__link">00&nbsp;&nbsp;开场</a>
+      <a href="#direction" class="rail__link">01&nbsp;&nbsp;判断</a>
+      <a href="#foundation" class="rail__link">02&nbsp;&nbsp;基础</a>
+      <a href="#login" class="rail__link">03&nbsp;&nbsp;登录</a>
+      <a href="#chat" class="rail__link">04&nbsp;&nbsp;会话</a>
+      <a href="#components" class="rail__link">05&nbsp;&nbsp;组件</a>
+      <a href="#motion" class="rail__link">06&nbsp;&nbsp;动效</a>
+      <a href="#contract" class="rail__link">07&nbsp;&nbsp;接口</a>
+      <a href="#handoff" class="rail__link">08&nbsp;&nbsp;交付</a>
+    </nav>
+
+    <div class="rail__foot">
+      <button id="themeBtn" class="themeBtn" type="button" aria-pressed="false">
+        <svg class="ico ico--moon" aria-hidden="true"><use href="#i-moon"/></svg>
+        <svg class="ico ico--sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        <span class="themeBtn__label">夜间</span>
+      </button>
+      <p class="rail__meta">基线 · Moonchat-UI.zip<br>依据 · PRD / API 契约<br>2026.11.11</p>
+    </div>
+  </aside>
+
+  <main id="main">
+    <!-- 00 -->
+    <section class="hero" id="top">
+      <div class="hero__disc" aria-hidden="true"></div>
+      <p class="kicker">Moonchat&nbsp;&nbsp;/&nbsp;&nbsp;客户端界面评审&nbsp;&nbsp;/&nbsp;&nbsp;第 1 稿</p>
+      <h1>少一点星空，<br>多一点对话。</h1>
+      <p class="lede">产品是 QQ / 微信的骨架：账号、好友、私聊、群聊。差别只有一条，账号可以交给 agent。这一稿按 V1 文档收客户端界面：登录与注册、会话、关系、账号与密钥。</p>
+      <div class="hero__meta">
+        <div><span>视觉基线</span><b>Moonchat-UI.zip</b></div>
+        <div><span>行为依据</span><b>PRD · API 契约</b></div>
+        <div><span>范围</span><b>V1 客户端</b></div>
+      </div>
+      <a class="hero__next" href="#direction">从判断开始 <svg aria-hidden="true"><use href="#i-down"/></svg></a>
+    </section>
+
+    <!-- 01 -->
+    <section class="section" id="direction">
+      <header class="section__head">
+        <p class="kicker"><span>01</span> 判断</p>
+        <h2>先减，再加。</h2>
+        <p class="section__lede">基线的问题不是不好看，是每一样东西都在争注意力。换成真实产品后还多一条：关系状态必须一眼读出来。</p>
+      </header>
+
+      <ol class="notes">
+        <li>
+          <span class="notes__n">A</span>
+          <div>
+            <h3>装饰退到背景里</h3>
+            <p>星云、紫蓝渐变、玻璃拟态全部移除。背景只剩纸白和炭黑，月面用一条地平线加一枚月相表示，不再铺满整屏。</p>
+          </div>
+        </li>
+        <li>
+          <span class="notes__n">B</span>
+          <div>
+            <h3>一个强调色，只做警示</h3>
+            <p>主操作交给墨色，月壤红只给未读、焦点环和错误。红色按钮留在舱门上，其余地方不出现第二颗红点。</p>
+          </div>
+        </li>
+        <li>
+          <span class="notes__n">C</span>
+          <div>
+            <h3>关系状态写在行上</h3>
+            <p>好友、非好友、群主、待处理，用文字、位置和一条描边表达。agent 与真人同形，不做特殊标签：来源只进服务端日志，不进界面。</p>
+          </div>
+        </li>
+        <li>
+          <span class="notes__n">D</span>
+          <div>
+            <h3>动效只解释状态</h3>
+            <p>三档时长、一条缓动。登录保留“输入、关门、发射”三段，每段只回答一个问题：现在到哪一步了。</p>
+          </div>
+        </li>
+      </ol>
+
+      <div class="compare">
+        <figure class="compare__item">
+          <img src="assets/baseline-login.jpg" alt="基线登录页：紫色渐变星空、发光卡片">
+          <figcaption>基线 · 登录：渐变、光晕、玻璃卡片同时出现</figcaption>
+        </figure>
+        <figure class="compare__item">
+          <img src="assets/baseline-chat.jpg" alt="基线会话页：深蓝背景、彩色头像、发光选中态">
+          <figcaption>基线 · 会话：四栏、彩色头像、发光选中态</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 02 -->
+    <section class="section" id="foundation">
+      <header class="section__head">
+        <p class="kicker"><span>02</span> 基础</p>
+        <h2>四组值，撑住整页。</h2>
+        <p class="section__lede">颜色、字、间距、动效。其余样式都从这四组推导，不再临时加值。</p>
+      </header>
+
+      <div class="foundation">
+        <div class="panel">
+          <div class="panel__head"><h3>颜色</h3><span>DAY / NIGHT</span></div>
+          <div class="swatches">
+            <div class="swatch"><i style="background:var(--bg)"></i><b>纸面</b><code>--bg</code></div>
+            <div class="swatch"><i style="background:var(--surface)"></i><b>卡片</b><code>--surface</code></div>
+            <div class="swatch"><i style="background:var(--ink)"></i><b>墨</b><code>--ink</code></div>
+            <div class="swatch"><i style="background:var(--ink-3)"></i><b>次级字</b><code>--ink-3</code></div>
+            <div class="swatch"><i style="background:var(--line-strong)"></i><b>描边</b><code>--line</code></div>
+            <div class="swatch"><i class="swatch__accent"></i><b>月壤红</b><code>--accent</code></div>
+          </div>
+          <p class="panel__note">两套主题共用一套语义变量；切换只换值，不换结构。主按钮用墨色，红色不做大面积填充。</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>字</h3><span>SANS / MONO</span></div>
+          <div class="typeSpec">
+            <p class="typeSpec__xl">月面基地</p>
+            <p class="typeSpec__lg">今晚的月食别错过</p>
+            <p class="typeSpec__base">正文用 15 / 1.7，中文不追字距。数字统一等宽，账号 ID 和时间才对得齐。</p>
+            <p class="typeSpec__mono">1002 · 21:04</p>
+          </div>
+          <p class="panel__note">系统字体栈，不加载网络字体。标题最多 500 字重，不靠加粗制造层级。</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>间距与圆角</h3><span>4PT GRID</span></div>
+          <div class="spaceSpec" aria-hidden="true">
+            <span style="width:4px"></span><span style="width:8px"></span><span style="width:12px"></span>
+            <span style="width:16px"></span><span style="width:24px"></span><span style="width:32px"></span>
+            <span style="width:48px"></span>
+          </div>
+          <div class="radiusSpec" aria-hidden="true">
+            <i style="border-radius:4px">4</i><i style="border-radius:8px">8</i><i style="border-radius:12px">12</i><i class="radiusSpec__pill">全圆</i>
+          </div>
+          <p class="panel__note">间距 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64。圆角只用 4、8、12 和全圆，不出现 6 或 10。</p>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head"><h3>动效</h3><span>3 + 1</span></div>
+          <dl class="motionSpec">
+            <div><dt>120ms</dt><dd>悬停、按下、发送状态</dd></div>
+            <div><dt>200ms</dt><dd>主题、面板、抽屉</dd></div>
+            <div><dt>320ms</dt><dd>会话切换、资料页</dd></div>
+            <div><dt>560ms</dt><dd>舱门</dd></div>
+            <div><dt>ease</dt><dd>cubic-bezier(.2,.7,.2,1)</dd></div>
+          </dl>
+          <p class="panel__note">没有回弹，没有无限循环的装饰动画。系统开启“减少动态效果”时，时长归零并直接跳到终态。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 -->
+    <section class="section" id="login">
+      <header class="section__head">
+        <p class="kicker"><span>03</span> 登录与注册</p>
+        <h2>先验证一个人，再验证一个身份。</h2>
+        <p class="section__lede">登录和注册共用一张表单，注册多一个名字。密码 8–72 位，不能是纯数字；邮箱填对即可，演示不提交任何数据。</p>
+      </header>
+
+      <div class="demoBar">
+        <span class="demoBar__label">登录样机 · 桌面自适应</span>
+        <div class="demoBar__actions">
+          <button class="textBtn" type="button" id="loginReset">重播流程</button>
+        </div>
+      </div>
+
+      <div class="screen screen--login" id="loginScreen" data-phase="idle">
+        <div class="loginPane">
+          <div class="loginCopy">
+            <p class="micro">Moonchat · 登舱口</p>
+            <h3 class="loginTitle">月面舱门<br>已经打开。</h3>
+            <p class="loginCopy__sub">登录你的真人账号。登录后可以切到自己名下的 agent 账号，也可以从好友开始第一段对话。</p>
+          </div>
+
+          <form class="auth" id="authForm" novalidate>
+            <div class="modeToggle" role="tablist" aria-label="登录或注册">
+              <button class="modeToggle__btn is-active" type="button" data-mode="login" role="tab" aria-selected="true">登录</button>
+              <button class="modeToggle__btn" type="button" data-mode="register" role="tab" aria-selected="false">注册</button>
+            </div>
+
+            <label class="field" data-field id="nameField" hidden>
+              <span class="field__label">名字</span>
+              <input id="loginName" type="text" placeholder="最多 20 个字" autocomplete="nickname" spellcheck="false">
+            </label>
+            <label class="field" data-field>
+              <span class="field__label">邮箱</span>
+              <input id="loginEmail" type="email" inputmode="email" placeholder="you@moon.chat" autocomplete="email" spellcheck="false">
+            </label>
+            <label class="field" data-field>
+              <span class="field__label">密码</span>
+              <input id="loginPass" type="password" placeholder="8–72 位，不能是纯数字" autocomplete="current-password">
+              <button class="field__eye" type="button" id="eyeBtn" aria-label="显示密码" aria-pressed="false">
+                <svg class="ico ico--eye" aria-hidden="true"><use href="#i-eye"/></svg>
+                <svg class="ico ico--eyeOff" aria-hidden="true"><use href="#i-eye-off"/></svg>
+              </button>
+            </label>
+            <p class="auth__err" id="loginErr" role="alert"></p>
+            <button class="btn btn--primary auth__submit" type="submit" id="boardBtn">
+              <span id="boardLabel">登舱</span><svg aria-hidden="true"><use href="#i-arrow"/></svg>
+            </button>
+            <p class="auth__alt">V1 不做邮箱验证，也不做找回密码。</p>
+          </form>
+          <p class="loginNote">静态演示 · 输入不会离开本页</p>
+          <div class="loginStatus" id="loginStatus" aria-live="polite"></div>
+        </div>
+
+        <div class="stage">
+          <p class="stage__caption" id="stageCaption">01 / 舱门开启</p>
+          <div class="stage__moon" aria-hidden="true"><i></i></div>
+          <div class="stage__horizon" aria-hidden="true"></div>
+          <div class="rocket" id="rocket">
+            <img class="rocket__img is-on" src="assets/rocket-open.png" alt="">
+            <img class="rocket__img" src="assets/rocket-closed.png" alt="">
+            <img class="rocket__img rocket__img--launch" src="assets/rocket-launch.png" alt="">
+            <button class="enterBtn" id="enterBtn" type="button">登 录</button>
+          </div>
+          <div class="stage__ground" aria-hidden="true"></div>
+        </div>
+
+        <div class="flash" id="flash" aria-hidden="true"></div>
+
+        <div class="arrived" id="arrived" aria-hidden="true">
+          <p class="micro">05 / 已抵达 · 月面基地 A-07</p>
+          <div class="arrived__room" role="img" aria-label="进入后的会话界面示意图">
+            <div class="arrived__head"><b>Luna</b><span>好友 · 私聊</span></div>
+            <div class="arrived__msgs">
+              <p class="miniBubble">舱门已关闭，欢迎登舱。</p>
+              <p class="miniBubble miniBubble--me">外面星星很多。</p>
+              <p class="miniBubble">这里是 A-07，想聊什么都可以。</p>
+            </div>
+            <div class="arrived__composer">发一条消息给 Luna…</div>
+          </div>
+          <div class="arrived__foot">
+            <button class="btn" type="button" id="toChat">看完整客户端样机</button>
+            <button class="textBtn" type="button" id="againBtn">再走一遍</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div><b>01 表单</b><p>登录与注册不跳页，只换字段和按钮文案。错误贴在字段下方，不弹窗；登录失败不区分“邮箱不存在”和“密码错”。</p></div>
+        <div><b>02 关门</b><p>字段收进舱门，插画从“开启”换到“关闭”，560ms。门上出现红色登录按钮，这是第二次确认。</p></div>
+        <div><b>03 发射</b><p>点火 1.4s 后进入月面，白光转场。全程没有音效依赖，静音环境下流程完整。</p></div>
+      </div>
+    </section>
+
+    <!-- 04 -->
+    <section class="section" id="chat">
+      <header class="section__head">
+        <p class="kicker"><span>04</span> 会话与关系</p>
+        <h2>关系决定入口，消息只走一条路。</h2>
+        <p class="section__lede">左栏找会话，中间读消息，右栏看成员或资料。好友才能私聊；非好友在群里只到资料页。点左侧图标切“联系人”和“账号”，试着发一条消息。</p>
+      </header>
+
+      <div class="demoBar">
+        <span class="demoBar__label">客户端样机 · 可交互</span>
+        <div class="demoBar__actions">
+          <button class="textBtn" type="button" id="chatReset">恢复初始状态</button>
+        </div>
+      </div>
+
+      <div class="screen screen--app" id="chatScreen">
+        <div class="app" id="app" data-view="messages">
+          <nav class="appRail" aria-label="主导航">
+            <span class="appRail__logo" aria-hidden="true"><svg><use href="#i-moonmark"/></svg></span>
+            <button class="appRail__btn is-active" type="button" data-view="messages" aria-label="消息" aria-pressed="true"><svg aria-hidden="true"><use href="#i-chat"/></svg></button>
+            <button class="appRail__btn" type="button" data-view="contacts" aria-label="联系人" aria-pressed="false"><svg aria-hidden="true"><use href="#i-users"/></svg><i class="appRail__dot" id="reqDot"></i></button>
+            <button class="appRail__btn" type="button" data-view="account" aria-label="账号" aria-pressed="false"><svg aria-hidden="true"><use href="#i-key"/></svg></button>
+          </nav>
+
+          <!-- messages -->
+          <aside class="convs" id="convsPane">
+            <div class="convs__head">
+              <h3>消息 <span class="convs__count" id="convCount">4</span></h3>
+              <button class="iconBtn" type="button" id="newChatBtn" aria-label="新建会话"><svg aria-hidden="true"><use href="#i-compose"/></svg></button>
+            </div>
+            <div class="tabs" role="tablist" aria-label="会话筛选">
+              <button class="tab is-active" type="button" role="tab" aria-selected="true" data-filter="all">全部</button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-filter="dm">私聊</button>
+              <button class="tab" type="button" role="tab" aria-selected="false" data-filter="room">群聊</button>
+            </div>
+            <div class="convList" id="convList" role="list"></div>
+            <button class="convs__me" type="button" id="meRow" aria-label="查看账号">
+              <span class="avatar avatar--sm" id="meAvatar">林</span>
+              <span class="convs__meTxt"><b id="meName">林岸</b><em id="meId">账号 1001</em></span>
+              <svg class="convs__meChev" aria-hidden="true"><use href="#i-chev"/></svg>
+            </button>
+          </aside>
+
+          <section class="room" id="room" aria-label="当前会话">
+            <header class="room__head">
+              <div class="room__id">
+                <button class="iconBtn room__listBtn" type="button" id="listBtn" aria-label="打开会话列表"><svg aria-hidden="true"><use href="#i-chat"/></svg></button>
+                <span class="avatar avatar--lg" id="roomAvatar">L</span>
+                <div>
+                  <h3 id="roomName">Luna</h3>
+                  <p id="roomStatus">好友 · 私聊</p>
+                </div>
+              </div>
+              <div class="room__actions">
+                <button class="iconBtn is-active" type="button" id="infoBtn" aria-label="收起会话信息" aria-pressed="true"><svg aria-hidden="true"><use href="#i-info"/></svg></button>
+              </div>
+            </header>
+
+            <div class="room__body" id="msgList" aria-live="polite" aria-label="消息列表"></div>
+
+            <div class="composer">
+              <div class="composer__box">
+                <textarea id="msgInput" rows="1" maxlength="500" placeholder="发一条消息给 Luna…" aria-label="输入消息"></textarea>
+                <button class="sendBtn" type="button" id="sendBtn" disabled aria-label="发送">
+                  <svg aria-hidden="true"><use href="#i-send"/></svg>
+                </button>
+              </div>
+              <p class="composer__hint"><span>Enter 发送 · Shift + Enter 换行</span><span id="charCount"></span></p>
+            </div>
+
+            <div class="sheetScrim" id="sheetScrim" hidden></div>
+            <aside class="profileSheet" id="profileSheet" aria-label="账号资料" hidden>
+              <div class="profileSheet__head">
+                <span>账号资料</span>
+                <button class="iconBtn" type="button" id="profileClose" aria-label="关闭资料页"><svg aria-hidden="true"><use href="#i-close"/></svg></button>
+              </div>
+              <div class="profileSheet__body" id="profileBody"></div>
+            </aside>
+          </section>
+
+          <aside class="info" id="infoPanel" aria-label="会话信息"></aside>
+
+          <!-- contacts -->
+          <section class="contactsPane" aria-label="联系人">
+            <div class="paneList">
+              <div class="paneList__head">
+                <h3>联系人</h3>
+                <div class="paneList__actions">
+                  <button class="btn btn--small" type="button" id="createRoomBtn">建群</button>
+                  <button class="btn btn--small" type="button" id="addFriendBtn">添加好友</button>
+                </div>
+              </div>
+
+              <form class="inlineForm" id="createRoomForm" hidden>
+                <label class="field">
+                  <span class="field__label">群名</span>
+                  <input id="roomNameInput" type="text" maxlength="20" placeholder="最多 20 个字">
+                </label>
+                <label class="field" style="margin-top:8px">
+                  <span class="field__label">先拉一个人（可选）</span>
+                  <input id="roomMemberInput" type="text" inputmode="numeric" placeholder="账号 ID，例如 1003">
+                </label>
+                <p class="formHint" id="roomErr">建群后你就是群主，邀请即入群。</p>
+                <div class="inlineForm__actions">
+                  <button class="btn btn--primary btn--small" type="submit">创建群聊</button>
+                  <button class="textBtn" type="button" id="createRoomCancel">取消</button>
+                </div>
+              </form>
+
+              <form class="inlineForm" id="addFriendForm" hidden>
+                <label class="field">
+                  <span class="field__label">账号 ID</span>
+                  <input id="addFriendId" type="text" inputmode="numeric" placeholder="例如 1005">
+                </label>
+                <div class="inlineForm__actions">
+                  <button class="btn btn--primary btn--small" type="submit">查找</button>
+                  <button class="textBtn" type="button" id="addFriendCancel">取消</button>
+                </div>
+                <p class="formHint" id="addFriendHint">V1 不做搜人。群成员资料页与账号 ID 是仅有的入口。演示可以试 1006 发申请，或 1005 同意申请。</p>
+              </form>
+
+              <div class="tabs" role="tablist" aria-label="关系筛选">
+                <button class="tab is-active" type="button" role="tab" aria-selected="true" data-friends-tab="friends">好友 <i id="friendCount">3</i></button>
+                <button class="tab" type="button" role="tab" aria-selected="false" data-friends-tab="pending">待处理 <i id="requestCount">1</i></button>
+              </div>
+              <div class="contactList" id="contactList"></div>
+            </div>
+            <div class="paneDetail" id="contactsDetail">
+              <div class="emptyState">
+                <p class="micro">联系人</p>
+                <p>从左侧选一个人，或者按账号 ID 查找。只有好友之间才会出现私聊入口。</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- accounts -->
+          <section class="accountPane" aria-label="账号">
+            <div class="paneList">
+              <div class="paneList__head">
+                <h3>账号</h3>
+                <span class="micro" id="accountCount">2</span>
+              </div>
+              <p class="paneIntro">一个真人账号可以拥有多个 agent 账号。切进任意一个，用它收发消息。</p>
+              <div class="accountList" id="accountList"></div>
+            </div>
+            <div class="paneDetail" id="accountDetail">
+              <div class="emptyState">
+                <p class="micro">Agent 账号</p>
+                <p>agent 和真人是同一种账号，没有第二套身份。创建后只会看到一次密钥，关掉就再也拿不到。</p>
+                <button class="btn" type="button" id="createAgentBtn">创建 agent 账号</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div class="annot">
+        <div><b>会话</b><p>私聊和群聊共用一张列表，用标签筛。未读只有红点和数字，选中态用底色和字重。</p></div>
+        <div><b>关系</b><p>好友列表、待处理申请、资料页分栏。非好友的资料页只有“加好友”，没有发消息。</p></div>
+        <div><b>群</b><p>群主就是所有者，成员行标注“群主”。邀请即入群；群主不能退群，移除成员只有群主能做。</p></div>
+      </div>
+      <p class="demoNote">样机只模拟前端状态：发送后先显示“发送中”，500ms 后落到“已发送”。真实写入走 Biz 的 <code>POST /api/conversations/{type}/{id}/messages</code>；历史消息由客户端直接向 Turms 查询，不经过 Biz。</p>
+    </section>
+
+    <!-- 05 -->
+    <section class="section" id="components">
+      <header class="section__head">
+        <p class="kicker"><span>05</span> 组件</p>
+        <h2>状态写在表面上。</h2>
+        <p class="section__lede">每个组件至少给出默认、悬停、焦点、禁用或错误中的三种。下面是可以直接对照开发的部分。</p>
+      </header>
+
+      <div class="specGrid">
+        <div class="specCard">
+          <h3>按钮</h3>
+          <div class="specRow">
+            <button class="btn btn--primary" type="button">主要</button>
+            <button class="btn" type="button">次要</button>
+            <button class="btn btn--ghost" type="button">文字</button>
+            <button class="btn btn--danger" type="button">危险</button>
+            <button class="btn btn--primary" type="button" disabled>禁用</button>
+          </div>
+          <p class="specCard__note">主按钮用墨色，一屏只有一个。危险动作用描边红字，只有删除好友和移除成员用。</p>
+        </div>
+
+        <div class="specCard">
+          <h3>输入</h3>
+          <div class="specStack">
+            <label class="field"><span class="field__label">默认</span><input type="text" placeholder="账号 ID"></label>
+            <label class="field is-focus"><span class="field__label">焦点</span><input type="text" value="1005"></label>
+            <label class="field is-error"><span class="field__label">错误</span><input type="text" value="abc" aria-invalid="true"><em>账号 ID 只能是数字</em></label>
+          </div>
+        </div>
+
+        <div class="specCard">
+          <h3>消息气泡</h3>
+          <div class="specStack">
+            <div class="bubble bubble--them">舱门已关闭，欢迎登舱。<span>21:04</span></div>
+            <div class="bubble bubble--me">外面星星很多。<span>21:05</span></div>
+            <div class="bubble bubble--them is-pending"><i class="spinner" aria-hidden="true"></i>发送中</div>
+            <div class="bubble bubble--them is-failed">发送失败 <button type="button">重试</button></div>
+          </div>
+          <p class="specCard__note">V1 没有已读回执，也没有“正在输入”。发送状态只有三档：发送中、已发送、失败。</p>
+        </div>
+
+        <div class="specCard">
+          <h3>关系标记</h3>
+          <div class="specStack">
+            <div class="specRow"><span class="tag">好友</span><span class="tag tag--owner">群主</span><span class="tag tag--muted">待处理</span><span class="badge">2</span><span class="dot" aria-hidden="true"></span></div>
+            <div class="specRow"><span class="idText">账号 1002</span><span class="idText">账号 1005</span></div>
+            <div class="keyField"><code>6f1c2a4e-9d3b-4c77-8e21-7a0f5b2d9c10</code><button class="iconBtn" type="button" aria-label="复制密钥"><svg aria-hidden="true"><use href="#i-copy"/></svg></button></div>
+          </div>
+          <p class="specCard__note">账号 ID 用等宽字，可选中复制。密钥只出现一次，用等宽字整行展示。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 -->
+    <section class="section" id="motion">
+      <header class="section__head">
+        <p class="kicker"><span>06</span> 动效与可用性</p>
+        <h2>动效是标点，不是修辞。</h2>
+        <p class="section__lede">四条时序覆盖全站。超过 400ms 的只有舱门与发射，且都可以被系统设置关掉。</p>
+      </header>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead><tr><th>场景</th><th>时长</th><th>缓动</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>悬停、按下、发送状态</td><td>120ms</td><td>standard</td><td>只改底色、描边和透明度</td></tr>
+            <tr><td>主题切换、弹层</td><td>200ms</td><td>standard</td><td>颜色过渡，不做遮罩闪烁</td></tr>
+            <tr><td>会话切换、资料页</td><td>320ms</td><td>standard</td><td>内容淡入 8px，不做横向滑动</td></tr>
+            <tr><td>舱门关闭</td><td>560ms</td><td>standard</td><td>字段收束与插画切换同时结束</td></tr>
+            <tr><td>发射转场</td><td>1400ms</td><td>ease-out</td><td>可跳过；减少动态时直接到终态</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="duo">
+        <div class="panel">
+          <div class="panel__head"><h3>键盘与焦点</h3><span>A11Y</span></div>
+          <ul class="checks">
+            <li>焦点环 2px 月壤红，外扩 2px，只在键盘操作时出现。</li>
+            <li>Tab 顺序：导航、会话列表、消息区、输入框、发送。</li>
+            <li>Enter 发送、Shift + Enter 换行；Esc 收起资料页与侧栏。</li>
+            <li>可点击区域不低于 40 × 40，移动端 44 × 44。</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><h3>对比度与降级</h3><span>WCAG AA</span></div>
+          <ul class="checks">
+            <li>正文和次要文字对比度 ≥ 4.5:1，描边只作装饰。</li>
+            <li>明暗两套使用同一套语义变量，切主题不改变布局。</li>
+            <li>减少动态：关闭位移和缩放，保留 120ms 的透明度变化。</li>
+            <li>不依赖颜色传达状态：未读同时有数字，待处理同时有文字。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 -->
+    <section class="section" id="contract">
+      <header class="section__head">
+        <p class="kicker"><span>07</span> 接口契约</p>
+        <h2>客户端需要的接口，都在这里。</h2>
+        <p class="section__lede">以下直接对齐 <code>docs/api-contracts.md</code>。登录 JWT 只对 Biz 有效；Turms 凭据只授 <code>QUERY</code>，所以客户端读消息不经过 Biz，写消息只有一条路。</p>
+      </header>
+
+      <div class="tableWrap">
+        <table class="table">
+          <thead><tr><th>动作</th><th>方法与路径</th><th>客户端用途</th><th>关键约束</th></tr></thead>
+          <tbody>
+            <tr><td>注册</td><td>POST /api/auth/register</td><td>邮箱 + 密码 + 名字</td><td>201 不发 token，注册后再登录</td></tr>
+            <tr><td>登录</td><td>POST /api/auth/login</td><td>换 7 天登录 JWT</td><td>401 不区分账号不存在与密码错</td></tr>
+            <tr><td>换 Turms 凭据</td><td>POST /api/sessions</td><td>连 Turms、切账号</td><td>12 小时；切账号时带回 login_token</td></tr>
+            <tr><td>续期</td><td>POST /api/auth/refresh</td><td>登录 JWT 滑动续期</td><td>只续登录凭据，不签 Turms</td></tr>
+            <tr><td>我的账号</td><td>GET /api/accounts/mine</td><td>账号切换列表</td><td>自己排第一，agent 按创建时间</td></tr>
+            <tr><td>建 agent</td><td>POST /api/agent-accounts</td><td>名字换一次性密钥</td><td>密钥只在 201 响应里出现一次</td></tr>
+            <tr><td>资料页</td><td>GET /api/accounts/{id}</td><td>名字、ID、是否好友</td><td>只返回三项，不含 type 与邮箱</td></tr>
+            <tr><td>好友</td><td>GET /api/friendships?status=</td><td>好友列表、待处理申请</td><td>pending 只返回发给我的</td></tr>
+            <tr><td>加好友 / 应答 / 删除</td><td>POST /api/friendships · POST /{id} · DELETE /{id}</td><td>关系动作</td><td>拒绝是 tombstone；重发复用原行</td></tr>
+            <tr><td>群</td><td>POST/GET /api/rooms · GET /{id} · members</td><td>建群、群信息、成员</td><td>唯一分页接口是成员列表</td></tr>
+            <tr><td>成员动作</td><td>POST /members · DELETE /members/me · DELETE /members/{id}</td><td>拉人、退群、移人</td><td>只有真人能做；群主不能退群</td></tr>
+            <tr><td>发言</td><td>POST /api/conversations/{type}/{id}/messages</td><td>私聊与群聊唯一写入口</td><td>type = dm / room；text ≤ 500</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="duo">
+        <div class="panel">
+          <div class="panel__head"><h3>发言请求</h3><span>WRITE</span></div>
+          <pre class="code">POST /api/conversations/dm/1002/messages
+Authorization: Bearer &lt;login-jwt&gt;
+X-Device-Type: desktop
+
+{ "text": "今晚的月食别错过" }
+
+201
+{
+  "message_id": 90231,
+  "conversation": { "type": "dm", "id": 1002 },
+  "sent_at": "2026-11-11T13:05:00Z"
+}</pre>
+          <p class="panel__note">没有请求号，也不做幂等。失败后重试可能产生重复消息，这是文档里已写明的行为；界面只在失败时给“重试”。</p>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><h3>客户端不做的四件事</h3><span>BOUNDARY</span></div>
+          <ul class="checks">
+            <li><b>不发已读回执、不发“正在输入”</b>：Turms 凭据只授 <code>QUERY</code>，这类写请求会被拒。</li>
+            <li><b>不搜索消息</b>：V1 没有搜索接口，只有会话列表筛选。</li>
+            <li><b>不做附件、图片、音视频</b>：V1 内容层完全不做，连字段都不预留。</li>
+            <li><b>不在界面标注 agent 来源</b>：来源由凭据决定，只进日志，不作权限，也不下发到客户端。</li>
+          </ul>
+          <p class="panel__note">错误按 <code>code</code> 分流：<code>not_friend</code>、<code>not_room_member</code>、<code>rate_limited</code>、<code>upstream_unavailable</code> 各有一句人话，不把 HTTP 码直接抛给用户。</p>
+        </div>
+      </div>
+
+      <div class="duo">
+        <div class="panel">
+          <div class="panel__head"><h3>会话读取</h3><span>READ</span></div>
+          <p class="panel__note">历史消息由客户端持 Turms 凭据直接查询，按 <code>deliveryDate</code> 分页，往回翻用最早一条的 <code>sent_at</code> 做游标。Biz 不在读路径上，也不存消息副本。新好友、新入群只看到加入之后的增量，没有历史回填。</p>
+        </div>
+        <div class="panel">
+          <div class="panel__head"><h3>需要确认的界面问题</h3><span>OPEN</span></div>
+          <ul class="checks">
+            <li>账号切换后的会话列表是否按账号重建，文档未规定客户端行为。</li>
+            <li>群成员资料页里，“发消息”只在双方是好友时出现；这条规则目前只在 <code>friends.md</code>。</li>
+            <li>登录 JWT 7 天与 Turms 凭据 12 小时的续期提示放在哪里。</li>
+            <li>默认头像按账号 ID 生成，具体形态待定。</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 08 -->
+    <section class="section" id="handoff">
+      <header class="section__head">
+        <p class="kicker"><span>08</span> 交付</p>
+        <h2>这轮给什么，下轮给什么。</h2>
+        <p class="section__lede">评审只针对这一页：视觉方向、登录流程、会话结构、关系入口、状态定义。通过后再落文档，避免文档跟着稿子一起改。</p>
+      </header>
+
+      <div class="handoff">
+        <div class="handoff__col">
+          <h3>本轮已交</h3>
+          <ul class="checks">
+            <li>可交互评审页（本页），含明暗两套。</li>
+            <li>登录与注册共表，含三态流程，可重播。</li>
+            <li>客户端样机：消息、联系人、账号三个视图。</li>
+            <li>资料页、群成员、邀请、退群、创建 agent 与一次性密钥。</li>
+            <li>与 PRD / API 契约对齐的范围和边界。</li>
+          </ul>
+        </div>
+        <div class="handoff__col">
+          <h3>评审通过后</h3>
+          <ul class="checks">
+            <li><b>DESIGN-SPEC</b>：令牌、栅格、组件尺寸与状态表。</li>
+            <li><b>SCREEN-MAP</b>：登录、消息、联系人、账号、资料页的路由与状态。</li>
+            <li><b>API-MAPPING</b>：每个界面动作对应的接口、错误码与空状态。</li>
+            <li><b>HANDOFF</b>：Flutter Web 还原清单与验收录屏。</li>
+          </ul>
+        </div>
+        <div class="handoff__col">
+          <h3>本轮不做</h3>
+          <ul class="checks">
+            <li>已读回执、正在输入、消息搜索、附件与音视频。</li>
+            <li>公开群、邀请链接、账号转让、群主解散。</li>
+            <li>火箭插画重绘；现有插画保留，体积缩小，不加光晕。</li>
+            <li>真实鉴权与后端；这一页只作还原基准。</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="closing">
+        <p class="kicker">待确认</p>
+        <p class="closing__text">客户端 spec 还没写（docs/README.md 已列为已知缺口）。这一页事实上在补这份空缺。如果评审通过，我会把上面三份文档一起落下来。</p>
+        <a class="btn btn--primary" href="#top">回到顶部 <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span>Moonchat · 客户端界面评审稿 v1</span>
+      <span>frontend-spec · 2026.11.11</span>
+    </footer>
+  </main>
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
