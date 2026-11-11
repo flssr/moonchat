@@ -9,9 +9,13 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       # vendor/turms 是固定提交的子模块，测试不依赖它，不拉取
@@ -22,3 +26,23 @@ jobs:
           cache: maven
       - run: chmod +x mvnw
       - run: ./mvnw -B test
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend/app
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      # 客户端也要进门槛：这个 PR 加了 4k+ 行前端，视图坏了不该能合进去。
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # 读通道在 web-only 的 js_interop 里，VM 测试编译不到它；单独加一道 web 构建。
+      - run: flutter build web --release

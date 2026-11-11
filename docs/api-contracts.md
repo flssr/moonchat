@@ -385,7 +385,10 @@ Authorization: Bearer <token>
 
 ### 6.2 `GET /api/rooms`
 
-**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`。
+**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`、`turms_group_id`。
+
+- `turms_group_id` 是 Turms 生成的群句柄（雪花值，按**字符串**给，避免 JS 精度丢失）；投影还没回填时为 `null`。它**只在这个列表接口出现**，用途只有一个：客户端/agent 用它把 Turms 推送里的 `groupId` 与群历史查询对回 `room_id`。
+- 对外的群标识仍是 `room_id`：写接口（#16–#19）的 `id`、成员列表、资料页都只认 `room_id`。
 
 **读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——客户端现在建不了新群，但 Turms 里仍可能有残留的游离群，它的群列表不等于业务列表（`moonchat-messaging` 的已知缺口）。
 
@@ -485,13 +488,14 @@ Authorization: Bearer <token>
 | `not_room_member` 403 | `room` 且调用者不是有效成员 |
 | `account_frozen` 403 | 调用者账号冻结 |
 | `rate_limited` 429 | `agent` 来源超账号级（60/分钟）或会话级（20/分钟）桶，两个数字暂定、可配置 |
-| `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认 |
+| `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认；或群还没有可用的 `turms_group_id` |
 
 **校验顺序**（与架构旅程一致，不许调换）：认证凭据 → 归属（凭据能不能代表这个账号）→ 会话解析（`type` / `id` 合法且目标存在）→ 授权事实（群成员 / 好友，现查 PG）→ 限流（只有 `agent` 来源进桶）→ 来源标记写日志 → 交出去。
 
 **副作用与不变量**
 
 - 通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `id`（上一步生成的 message id）、`senderId`（上一步认证出的账号，**不接受请求体里自报的发送者**）、`senderDeviceType`（来自请求头）、`senderIp`（`X-Forwarded-For` 第一段，缺省 `remoteAddr`）、`isGroupMessage`、`targetId`。
+- `room` 的 `targetId` 是 `room_info.turms_group_id`（Turms 的投递句柄），不是对外的 `room_id`；群还在 `pending`、句柄尚未回填时回 `503`，不拿 `room_id` 去撞 Turms。
 - **PG 零写入**：消息只在 Turms，没有副本、没有发送记录表、没有审计表；来源与限流命中只进结构化日志。
 - 成功（`201`）只保证「Turms 已落库并接下了投递」；是否真的到达对方在线端还取决于对方的会话在线状态（冒烟里观察到刚登录的会话有一段同步窗口，见 `moonchat-messaging` 的冒烟结果）。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
 - Turms 侧还会用它自己的投影再校验一次（群成员、黑名单）；两道闸都在，但好友校验只有 Biz 这一道（`allowSendMessagesToStranger = true`）。
@@ -528,7 +532,7 @@ Authorization: Bearer <token>
 | `account_info` | #1、#5、#6 | #2、#3、#4、#7、#15 | `credential_hash`、`email`、`status`、时间列 |
 | `friendship` | #9、#10、#11 | #7（`is_friend`）、#8、#15（`is_friend`）、#19（授权） | `id`、`requested_by`（对外是 `incoming`）、`deleted_at`、时间列（只暴露 `requested_at`） |
 | `friendship_reverse` | #9、#10、#11（同事务镜像） | #8（按较大 id 查） | 全部列；它只是查询镜像 |
-| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_group_id`、`turms_sync_state`、`updated_at` |
+| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_sync_state`、`updated_at`；`turms_group_id` 只在 #13 以字符串出现（投递句柄，不是对外标识） |
 | `room_member` | #12、#16、#17、#18 | #14（计数）、#15、#19（授权） | `deleted_at`；不暴露角色（没有该列） |
 | `account_room` | #12、#16、#17、#18（同事务镜像） | #13 | 全部列；`joined_at` 通过 `room_member` 语义暴露 |
 
