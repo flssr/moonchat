@@ -336,7 +336,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 left: 24,
                 bottom: 20,
                 child: Text(
-                  '月面基地',
+                  '发射基地',
                   style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
                 ),
               ),
