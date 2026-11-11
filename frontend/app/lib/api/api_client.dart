@@ -74,7 +74,9 @@ class ApiClient {
     defaultValue: '',
   );
 
-  static const String deviceType = 'WEB';
+  /// 写入网关只认这几个取值（`ConversationController.java:31-37`），其余返回 400。
+  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的 `WEB` 在 `realtime_web.dart`。
+  static const String deviceType = 'browser';
 
   final String _base;
   final http.Client _client;
@@ -224,12 +226,12 @@ class ApiClient {
     return _items(json).map(Friendship.fromJson).toList();
   }
 
-  /// #9 发好友申请。
-  Future<Friendship> requestFriend({required String token, required int peerAccountId}) async {
-    final json = await _send('POST', '/api/friendships', token: token, body: {
+  /// #9 发好友申请。响应只有 `peer_account_id` / `status` / `incoming`，
+  /// 没有 `display_name` 与 `requested_at`，所以不拿列表模型去装它（列表由调用方重新拉）。
+  Future<void> requestFriend({required String token, required int peerAccountId}) async {
+    await _send('POST', '/api/friendships', token: token, body: {
       'peer_account_id': peerAccountId,
     });
-    return Friendship.fromJson(json);
   }
 
   /// #10 同意 / 拒绝。`reject` 返回 204。

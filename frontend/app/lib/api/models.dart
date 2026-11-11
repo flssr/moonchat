@@ -46,12 +46,6 @@ class Account {
   final String displayName;
 
   bool get isAgent => type == 'agent';
-
-  Account copyWith({String? displayName}) => Account(
-        accountId: accountId,
-        type: type,
-        displayName: displayName ?? this.displayName,
-      );
 }
 
 /// #2 登录 / #20 续期：登录 JWT 与它归属的账号。
@@ -192,11 +186,13 @@ class Room {
     required this.joinedAt,
   });
 
+  /// 列表返回带 `joined_at`；`POST /api/rooms` 的返回只有 `created_at`（自己刚建的群，
+  /// 加入时间就是创建时间），缺哪个用另一个顶上，而不是留空。
   factory Room.fromJson(Map<String, dynamic> j) => Room(
         roomId: _int(j['room_id']),
         name: _str(j['name']),
         ownerAccountId: _int(j['owner_account_id']),
-        joinedAt: _date(j['joined_at']),
+        joinedAt: _date(j['joined_at'] ?? j['created_at']),
       );
 
   final int roomId;
