@@ -5,31 +5,41 @@
 //
 // 跑法：cd infra/turms/smoke && npm i && node e2e-biz.mjs
 // 环境变量：MOONCHAT_API_BASE（默认 http://localhost:8080）
+import crypto from 'node:crypto';
 import TurmsClient from 'turms-client-js';
 
 const API = (process.env.MOONCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
-const run = Date.now().toString().slice(-6);
+// 随机而不是截取时间戳：`Date.now()` 后 6 位每 ~16 分钟就重复，重跑会撞 `email_taken`。
+const run = crypto.randomBytes(6).toString('hex');
 
-async function post(path, body, token) {
+async function request(method, path, body, token) {
     const res = await fetch(API + path, {
-        method: 'POST',
+        method,
         headers: {
             'content-type': 'application/json',
             ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify(body ?? {}),
+        body: method === 'GET' ? undefined : JSON.stringify(body ?? {}),
     });
     const text = await res.text();
     let json;
     try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
     return { status: res.status, json };
 }
-async function get(path, token) {
-    const res = await fetch(API + path, {
-        headers: token ? { authorization: `Bearer ${token}` } : {},
-    });
-    const text = await res.text();
-    return { status: res.status, json: text ? JSON.parse(text) : {} };
+const post = (path, body, token) => request('POST', path, body, token);
+const get = (path, token) => request('GET', path, undefined, token);
+
+/** 轮询到条件成立或超时：推送是异步的，固定 sleep 会两头都不准。 */
+async function waitFor(what, predicate, timeoutMs = 8000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        if (predicate()) {
+            return true;
+        }
+        await new Promise((r) => setTimeout(r, 200));
+    }
+    console.error(`等待超时：${what}`);
+    return false;
 }
 
 const results = [];
@@ -38,16 +48,26 @@ function check(name, ok, detail = '') {
     console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`);
 }
 
+/** 前置失败就带着诊断信息退出，别让后面的解引用抛一个看不懂的 TypeError。 */
+function require(ok, what, detail = '') {
+    if (!ok) {
+        console.error(`前置失败：${what}${detail ? '  ' + detail : ''}`);
+        process.exit(1);
+    }
+}
+
 // ① 注册两个真人账号
 const a = await post('/api/auth/register', { email: `a${run}@test.local`, password: 'password1', display_name: '甲' });
 const b = await post('/api/auth/register', { email: `b${run}@test.local`, password: 'password1', display_name: '乙' });
 check('注册两个账号', a.status === 201 && b.status === 201, `a=${a.status} b=${b.status} id=${a.json.account_id}/${b.json.account_id}`);
+require(a.status === 201 && b.status === 201, '注册', `a=${a.status} b=${b.status} ${a.json.code ?? ''}${b.json.code ?? ''}`);
 const A = a.json.account_id, B = b.json.account_id;
 
 // ② 登录
 const la = await post('/api/auth/login', { email: `a${run}@test.local`, password: 'password1' });
 const lb = await post('/api/auth/login', { email: `b${run}@test.local`, password: 'password1' });
 check('两个账号都能登录', la.status === 200 && lb.status === 200);
+require(la.status === 200 && lb.status === 200, '登录', `a=${la.status} b=${lb.status}`);
 const tokenA = la.json.token, tokenB = lb.json.token;
 
 // ③ 换 Turms 凭据
@@ -55,6 +75,7 @@ const sa = await post('/api/sessions', { account_id: A }, tokenA);
 const sb = await post('/api/sessions', { account_id: B }, tokenB);
 check('换 Turms 凭据', sa.status === 200 && sb.status === 200,
     `gateway=${sa.json.turms?.gateway_url} ttl=${sa.json.expires_at}`);
+require(sb.status === 200 && sb.json.turms?.credential, 'B 的 Turms 凭据', `status=${sb.status}`);
 
 // ④ 非好友私聊必须被拒（授权执行点在写入网关）
 const deny = await post(`/api/conversations/dm/${B}/messages`, { text: '还没加好友就发' }, tokenA);
@@ -77,23 +98,31 @@ const acc = await post(`/api/friendships/${A}`, { action: 'accept' }, tokenB);
 check('好友申请与同意', req.status === 201 && acc.status === 200,
     `req=${req.status} accept=${acc.status}`);
 
-// ⑦ A 发私聊 → 201，B 收到推送
+// ⑦ A 发私聊 → 201，B 收到推送（轮询到超时，不用魔数 sleep）
 const send = await post(`/api/conversations/dm/${B}/messages`, { text: '真链路的第一条私聊' }, tokenA);
 check('好友私聊 201', send.status === 201, `message_id=${send.json.message_id} sent_at=${send.json.sent_at}`);
-await new Promise((r) => setTimeout(r, 2500));
-check('B 通过 Turms 收到推送', received.includes('真链路的第一条私聊'), JSON.stringify(received));
+const gotDm = await waitFor('私聊推送', () => received.includes('真链路的第一条私聊'));
+check('B 通过 Turms 收到推送', gotDm, JSON.stringify(received));
 
 // ⑧ 建群 → 拉 B → 发群消息 → B 收到
 const room = await post('/api/rooms', { name: '真链路测试群' }, tokenA);
 check('建群 201', room.status === 201, `room_id=${room.json.room_id}`);
+require(room.status === 201 && room.json.room_id, '建群', `status=${room.status}`);
 const roomId = room.json.room_id;
 const invite = await post(`/api/rooms/${roomId}/members`, { account_id: B }, tokenA);
 check('拉人进群 201', invite.status === 201, `${invite.status}`);
-await new Promise((r) => setTimeout(r, 1500));
-const gsend = await post(`/api/conversations/room/${roomId}/messages`, { text: '群里的第一条' }, tokenA);
-check('群消息 201', gsend.status === 201, `message_id=${gsend.json.message_id}`);
-await new Promise((r) => setTimeout(r, 2500));
-check('B 收到群消息推送', received.includes('群里的第一条'), JSON.stringify(received));
+// 拉人要先投影进 Turms 才轮得到投递；发一条、等一会儿，最多重试三次。
+let gsend;
+for (let attempt = 1; attempt <= 3; attempt++) {
+    gsend = await post(`/api/conversations/room/${roomId}/messages`, { text: '群里的第一条' }, tokenA);
+    if (gsend.status === 201) {
+        break;
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+}
+check('群消息 201', gsend?.status === 201, `message_id=${gsend?.json.message_id} status=${gsend?.status}`);
+const gotGroup = await waitFor('群消息推送', () => received.includes('群里的第一条'));
+check('B 收到群消息推送', gotGroup, JSON.stringify(received));
 
 // ⑨ 资料页只返回三项
 const prof = await get(`/api/accounts/${B}`, tokenA);

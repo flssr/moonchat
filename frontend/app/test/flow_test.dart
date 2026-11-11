@@ -14,7 +14,13 @@ import 'package:moonchat/ui/home_shell.dart';
 /// 读取通道在测试里不连 Turms：只验证 REST 链路与状态机。
 class _FakeRealtime implements RealtimeClient {
   bool connected = false;
+  int? connectedAccountId;
   void Function(IncomingMessage message)? _onMessage;
+  void Function(Object error)? _onError;
+
+  /// 每次 `history()` 收到的游标，以及要返回的页（按调用顺序消费）。
+  final List<DateTime?> beforeCursors = <DateTime?>[];
+  final List<List<IncomingMessage>> pages = <List<IncomingMessage>>[];
 
   @override
   Future<void> connect({
@@ -29,12 +35,17 @@ class _FakeRealtime implements RealtimeClient {
     expect(credential.gatewayUrl, isNotEmpty);
     expect(myAccountId, greaterThan(0));
     connected = true;
+    connectedAccountId = myAccountId;
     _onMessage = onMessage;
+    _onError = onError;
     onConnected?.call(true);
   }
 
   /// 模拟服务端推来一条消息。
   void emit(IncomingMessage message) => _onMessage?.call(message);
+
+  /// 模拟读通道报错（断线/凭据失效）。
+  void fail(Object error) => _onError?.call(error);
 
   @override
   Future<List<IncomingMessage>> history({
@@ -42,8 +53,13 @@ class _FakeRealtime implements RealtimeClient {
     required int targetId,
     DateTime? before,
     int maxCount = 50,
-  }) async =>
-      const <IncomingMessage>[];
+  }) async {
+    beforeCursors.add(before);
+    if (pages.isEmpty) {
+      return const <IncomingMessage>[];
+    }
+    return pages.removeAt(0);
+  }
 
   @override
   Future<void> disconnect() async {
@@ -61,10 +77,21 @@ http.Response _json(Object? body, int status) => http.Response(
     );
 
 /// 假 Biz：只实现客户端会打到的那几条，字段与 `docs/api-contracts.md` 一致。
-MockClient _mockBiz({int sendStatus = 201}) {
+MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
   return MockClient((http.Request req) async {
     final String path = req.url.path;
     final String method = req.method;
+
+    // 发送路径也要校验契约头：token 掉了、设备头写错，测试必须红（`X-Device-Type` 就是这么漏过去的）。
+    if (path.startsWith('/api/conversations/')) {
+      expect(req.headers['authorization'] ?? req.headers['Authorization'], startsWith('Bearer '));
+      expect(
+        const <String>['desktop', 'browser', 'ios', 'android', 'others']
+            .contains(req.headers['x-device-type'] ?? req.headers['X-Device-Type']),
+        isTrue,
+        reason: 'X-Device-Type 必须是写入网关认的枚举',
+      );
+    }
 
     if (method == 'POST' && path == '/api/auth/login') {
       return _json(<String, Object?>{
@@ -135,8 +162,9 @@ MockClient _mockBiz({int sendStatus = 201}) {
       }, 200);
     }
     if (method == 'POST' && path.startsWith('/api/conversations/')) {
-      if (sendStatus != 201) {
-        return _json(<String, Object?>{'code': 'rate_limited', 'message': 'too many'}, sendStatus);
+      final int status = statusOf?.call() ?? sendStatus;
+      if (status != 201) {
+        return _json(<String, Object?>{'code': 'rate_limited', 'message': 'too many'}, status);
       }
       return _json(<String, Object?>{
         'message_id': 9001,
@@ -148,9 +176,12 @@ MockClient _mockBiz({int sendStatus = 201}) {
   });
 }
 
-AppState _newState({int sendStatus = 201, _FakeRealtime? realtime}) {
+AppState _newState({int sendStatus = 201, int Function()? statusOf, _FakeRealtime? realtime}) {
   return AppState(
-    api: ApiClient(baseUrl: 'http://mock.local', client: _mockBiz(sendStatus: sendStatus)),
+    api: ApiClient(
+      baseUrl: 'http://mock.local',
+      client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf),
+    ),
     realtime: realtime ?? _FakeRealtime(),
   );
 }
@@ -412,6 +443,123 @@ void main() {
     expect(state.messagesOf('room:7'), isEmpty);
     state.dispose();
   });
+
+  test('历史往前翻：首屏无游标，第二次取最早一条减 1ms，空页收尾', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.pages.add(<IncomingMessage>[
+      const IncomingMessage(
+        id: '501',
+        text: '早一点',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: null,
+      ),
+      IncomingMessage(
+        id: '502',
+        text: '晚一点',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T09:01:00Z'),
+      ),
+    ]);
+    rt.pages.add(<IncomingMessage>[
+      IncomingMessage(
+        id: '500',
+        text: '更早一条',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T08:00:00Z'),
+      ),
+    ]);
+
+    await state.loadHistory(dm);
+    expect(rt.beforeCursors.first, isNull, reason: '首屏没有游标');
+    expect(state.messagesOf(dm.key).length, 2);
+    expect(state.isHistoryDone(dm.key), isFalse);
+
+    // 第二次：游标必须是「最早一条（09:01）减 1ms」——闭区间的边界消息要排除掉。
+    await state.loadHistory(dm);
+    expect(rt.beforeCursors[1], DateTime.parse('2026-11-10T09:00:59.999Z'));
+    expect(state.messagesOf(dm.key).length, 3);
+
+    // 第三次返回空页：到底，之后再调用不再打请求。
+    await state.loadHistory(dm);
+    expect(state.isHistoryDone(dm.key), isTrue);
+    final int calls = rt.beforeCursors.length;
+    await state.loadHistory(dm);
+    expect(rt.beforeCursors.length, calls, reason: '到底后不该再查');
+  });
+
+  test('读通道报错时 realtimeUp 变 false，历史不再被误判为到底', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(state.realtimeUp, isTrue);
+
+    rt.fail(StateError('socket closed'));
+
+    expect(state.realtimeUp, isFalse);
+    // 未连上时不发请求，也不把「空」写成到底。
+    await state.loadHistory(state.conversations.first);
+    expect(rt.beforeCursors, isEmpty);
+    expect(state.isHistoryDone(state.conversations.first.key), isFalse);
+  });
+
+  test('失败消息重试成功：同一个气泡变成已发送', () async {
+    int status = 429;
+    final AppState state = _newState(statusOf: () => status);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    await expectLater(state.sendMessage(dm, '重试我'), throwsA(isA<ApiException>()));
+    final ChatMessage bubble = state.messagesOf(dm.key).single;
+    expect(bubble.state, MessageState.failed);
+
+    status = 201;
+    await state.retryMessage(dm, bubble);
+    expect(state.messagesOf(dm.key).single.state, MessageState.sent);
+    expect(state.messagesOf(dm.key).single.serverIdText, '9001');
+  });
+
+  test('401 之后读通道要拆掉，本地消息清空', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz, realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(rt.connected, isTrue);
+
+    biz.unauthorized = true;
+    await expectLater(state.refreshAll(), throwsA(isA<ApiException>()));
+
+    expect(rt.connected, isFalse, reason: '登出要断开读通道');
+    expect(state.realtimeUp, isFalse);
+    expect(state.turms, isNull);
+    expect(state.messagesOf('dm:2'), isEmpty);
+  });
+
+  test('切账号会带着新账号重连读通道，并清掉上一个账号的消息', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _stateOn(_FakeBiz(), realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    expect(rt.connectedAccountId, 1);
+
+    rt.emit(const IncomingMessage(id: '900', text: '甲的消息', senderId: 2, recipientId: 1, sentAt: null));
+    expect(state.messagesOf('dm:2').length, 1);
+
+    await state.switchAccount(2);
+
+    expect(rt.connectedAccountId, 2, reason: '要用新账号的凭据重连');
+    expect(state.messagesOf('dm:2'), isEmpty, reason: '上一个账号的缓存不能留');
+  });
 }
 
 /// 登录后的状态，供 widget 测试用。
@@ -431,7 +579,10 @@ Widget _shell(AppState state) => MaterialApp(
     );
 
 
-AppState _stateOn(_FakeBiz biz) => AppState(api: ApiClient(baseUrl: 'http://mock.local', client: biz.client), realtime: _FakeRealtime());
+AppState _stateOn(_FakeBiz biz, {_FakeRealtime? realtime}) => AppState(
+      api: ApiClient(baseUrl: 'http://mock.local', client: biz.client),
+      realtime: realtime ?? _FakeRealtime(),
+    );
 
 /// 有状态的假 Biz：好友与群会真的增删，用来验「动作 → 重新拉取」这条链。
 class _FakeBiz {
@@ -514,22 +665,26 @@ class _FakeBiz {
       }, 200);
     }
     if (method == 'POST' && path == '/api/sessions') {
+      // 回显请求的 account_id：写死的话，切账号/多账号的用例永远看不出身份错位。
+      final int id = (body['account_id'] as num?)?.toInt() ?? 1;
       return _json(<String, Object?>{
-        'account_id': 1,
-        'display_name': '阿月',
-        'type': 'human',
-        'login_token': 'login-jwt',
-        'login_expires_at': '2026-11-20T00:00:00Z',
+        'account_id': id,
+        'display_name': id == 1 ? '阿月' : '小助手',
+        'type': id == 1 ? 'human' : 'agent',
+        'login_token': 'login-jwt-$id',
+        'login_expires_at': '2027-11-20T00:00:00Z',
         'turms': <String, Object?>{
-          'user_id': 1,
-          'credential': 'turms-jwt',
+          'user_id': id,
+          'credential': 'turms-jwt-$id',
           'gateway_url': 'ws://localhost:20510',
         },
-        'expires_at': '2026-11-11T10:00:00Z',
+        'expires_at': '2027-11-11T10:00:00Z',
       }, 200);
     }
     if (method == 'GET' && path == '/api/accounts/mine') {
-      return _json(<String, Object?>{'items': <Object?>[_account(1, '阿月')]}, 200);
+      return _json(<String, Object?>{
+        'items': <Object?>[_account(1, '阿月'), _account(2, '小助手', type: 'agent')],
+      }, 200);
     }
     if (method == 'GET' && path == '/api/friendships') {
       final bool wantPending = req.url.queryParameters['status'] == 'pending';

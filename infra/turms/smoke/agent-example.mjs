@@ -14,14 +14,15 @@
 //   node agent-example.mjs
 //
 // 可用环境变量：MOONCHAT_API_BASE（默认 http://localhost:8080）、MOONCHAT_ACCOUNT_KEY（必填）、
-//              MOONCHAT_REPLY_PREFIX（默认「收到：」）、MOONCHAT_DEVICE_TYPE（默认 WEB）
+//              MOONCHAT_REPLY_PREFIX（默认「收到：」）、MOONCHAT_DEVICE_TYPE（默认 browser，小写；
 
 import TurmsClient from 'turms-client-js';
 
 const API_BASE = (process.env.MOONCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 const ACCOUNT_KEY = process.env.MOONCHAT_ACCOUNT_KEY;
 const REPLY_PREFIX = process.env.MOONCHAT_REPLY_PREFIX ?? '收到：';
-const DEVICE_TYPE = process.env.MOONCHAT_DEVICE_TYPE ?? 'WEB';
+// X-Device-Type 只认小写（desktop/browser/ios/android/others）；Turms 的 DeviceType 是它的大写形式。
+const DEVICE_TYPE = process.env.MOONCHAT_DEVICE_TYPE ?? 'browser';
 
 if (!ACCOUNT_KEY) {
     console.error('缺少 MOONCHAT_ACCOUNT_KEY：归属者创建 agent 时那串一次性密钥');
@@ -64,26 +65,50 @@ const client = new TurmsClient({ wsUrl: wsUrl(session.turms.gateway_url) });
 await client.userService.login({
     userId: myId,
     password: session.turms.credential,
-    deviceType: DEVICE_TYPE,
+    deviceType: DEVICE_TYPE.toUpperCase(),
 });
 console.log('已连上 /im，等消息（Ctrl+C 退出）');
 
-// ③ 收到一条就回一句：发言走写入网关，不经过自己的 Turms 会话。
-client.messageService.addMessageListener(async (message) => {
-    const senderId = String(message.senderId ?? '');
-    const text = message.text ?? '';
-    // 自己的发言也会推回来，别回声成环。
-    if (!text || senderId === myId) {
+// 凭据 12 小时过期：agent 自己负责在到期前重换，否则首次重连就带着死 JWT 登不进去。
+let credential = session.turms.credential;
+async function renew() {
+    const res = await fetch(`${API_BASE}/api/sessions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ account_key: ACCOUNT_KEY }),
+    });
+    if (!res.ok) {
+        console.error(`续期失败 ${res.status}: ${await res.text()}`);
         return;
     }
-    const isGroup = message.groupId != null;
-    const type = isGroup ? 'room' : 'dm';
-    const targetId = isGroup ? message.groupId : senderId;
+    const fresh = await res.json();
+    credential = fresh.turms.credential;
+    console.log('Turms 凭据已续期');
+}
+const expiresAt = Date.parse(session.expires_at ?? '');
+if (Number.isFinite(expiresAt)) {
+    const lead = Math.max(expiresAt - Date.now() - 30 * 60 * 1000, 60 * 1000);
+    setInterval(renew, lead).unref();
+}
 
-    console.log(`收到 ${isGroup ? `群 ${targetId}` : `私聊 ${senderId}`}：${text}`);
-    let replyRes;
+// ③ 收到一条就回一句：发言走写入网关，不经过自己的 Turms 会话。
+client.messageService.addMessageListener(async (message) => {
+    // 整段包住：这个回调 reject 会以未处理拒绝结束整个长驻进程。
     try {
-        replyRes = await fetch(`${API_BASE}/api/conversations/${type}/${targetId}/messages`, {
+        const senderId = String(message.senderId ?? '');
+        const text = message.text ?? '';
+        // 自己的发言也会推回来，别回声成环；没有发送者或内容的通知直接忽略。
+        if (!senderId || !text || senderId === myId) {
+            return;
+        }
+        const isGroup = message.groupId !== null && message.groupId !== undefined;
+        const type = isGroup ? 'room' : 'dm';
+        const targetId = isGroup ? message.groupId : senderId;
+
+        console.log(`收到 ${isGroup ? `群 ${targetId}` : `私聊 ${senderId}`}：${text}`);
+        // 写入网关正文上限 500：入向可能已经 500 字，带上前缀就超了。
+        const reply = `${REPLY_PREFIX}${text}`.slice(0, 500);
+        const replyRes = await fetch(`${API_BASE}/api/conversations/${type}/${targetId}/messages`, {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
@@ -91,19 +116,17 @@ client.messageService.addMessageListener(async (message) => {
                 authorization: `Bearer ${ACCOUNT_KEY}`,
                 'x-device-type': DEVICE_TYPE,
             },
-            body: JSON.stringify({ text: `${REPLY_PREFIX}${text}` }),
+            body: JSON.stringify({ text: reply }),
         });
+        if (!replyRes.ok) {
+            console.error(`回话失败 ${replyRes.status}: ${await replyRes.text()}`);
+            return;
+        }
+        const sent = await replyRes.json();
+        console.log(`已回话 message_id=${sent.message_id}`);
     } catch (e) {
-        console.error(`回话失败：连不上 ${API_BASE}（${e.message}）`);
-        return;
+        console.error(`处理消息失败：${e.message}`);
     }
-    if (!replyRes.ok) {
-        const body = await replyRes.text();
-        console.error(`回话失败 ${replyRes.status}: ${body}`);
-        return;
-    }
-    const sent = await replyRes.json();
-    console.log(`已回话 message_id=${sent.message_id}`);
 });
 
 for (const sig of ['SIGINT', 'SIGTERM']) {
