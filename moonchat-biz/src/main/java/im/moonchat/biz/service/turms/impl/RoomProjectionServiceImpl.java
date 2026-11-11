@@ -6,6 +6,7 @@ import im.moonchat.biz.client.turms.TurmsAdminClient;
 import im.moonchat.biz.common.ApiException;
 import im.moonchat.biz.entity.RoomInfo;
 import im.moonchat.biz.entity.RoomMember;
+import im.moonchat.biz.entity.TurmsSyncState;
 import im.moonchat.biz.mapper.room.RoomInfoMapper;
 import im.moonchat.biz.mapper.room.RoomMemberMapper;
 import im.moonchat.biz.service.turms.RoomProjectionService;
@@ -25,9 +26,6 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class RoomProjectionServiceImpl implements RoomProjectionService {
-
-    private static final String PENDING = "pending";
-    private static final String SYNCED = "synced";
 
     private final RoomInfoMapper roomInfoMapper;
     private final RoomMemberMapper roomMemberMapper;
@@ -66,7 +64,7 @@ public class RoomProjectionServiceImpl implements RoomProjectionService {
     public void replayPending() {
         Set<Long> pendingRoomIds = new HashSet<>();
         roomInfoMapper.selectList(new LambdaQueryWrapper<RoomInfo>()
-                        .eq(RoomInfo::getTurmsSyncState, PENDING))
+                        .eq(RoomInfo::getTurmsSyncState, TurmsSyncState.PENDING))
                 .forEach(room -> pendingRoomIds.add(room.getId()));
         if (pendingRoomIds.isEmpty()) {
             return;
@@ -98,7 +96,7 @@ public class RoomProjectionServiceImpl implements RoomProjectionService {
     private void markSynced(long roomId) {
         roomInfoMapper.update(null, new LambdaUpdateWrapper<RoomInfo>()
                 .eq(RoomInfo::getId, roomId)
-                .set(RoomInfo::getTurmsSyncState, SYNCED)
+                .set(RoomInfo::getTurmsSyncState, TurmsSyncState.SYNCED)
                 .set(RoomInfo::getUpdatedAt, OffsetDateTime.now()));
     }
 }

@@ -9,6 +9,7 @@ import im.moonchat.biz.dto.account.AccountRequests;
 import im.moonchat.biz.dto.account.AccountResponses;
 import im.moonchat.biz.entity.Account;
 import im.moonchat.biz.entity.AccountInfo;
+import im.moonchat.biz.entity.TurmsSyncState;
 import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.account.AccountMapper;
 import im.moonchat.biz.service.account.AccountKeyService;
@@ -151,7 +152,7 @@ public class AccountServiceImpl implements AccountService {
 
         accountMapper.updateById(Account.builder()
                 .id(me.accountId())
-                .turmsSyncState("synced")
+                .turmsSyncState(TurmsSyncState.SYNCED)
                 .updatedAt(now)
                 .build());
 
@@ -218,7 +219,7 @@ public class AccountServiceImpl implements AccountService {
         Account account = Account.builder()
                 .type(type)
                 .ownerAccountId(ownerAccountId)
-                .turmsSyncState("pending")
+                .turmsSyncState(TurmsSyncState.PENDING)
                 .build();
         accountMapper.insert(account);
 
@@ -233,7 +234,7 @@ public class AccountServiceImpl implements AccountService {
 
         accountMapper.updateById(Account.builder()
                 .id(account.getId())
-                .turmsSyncState("synced")
+                .turmsSyncState(TurmsSyncState.SYNCED)
                 .updatedAt(OffsetDateTime.now())
                 .build());
         return account;

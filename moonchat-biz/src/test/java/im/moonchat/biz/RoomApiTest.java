@@ -1,6 +1,7 @@
 package im.moonchat.biz;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,10 +9,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import im.moonchat.biz.entity.RoomMember;
+import im.moonchat.biz.mapper.room.RoomMemberMapper;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
@@ -20,6 +27,9 @@ import org.springframework.http.MediaType;
  * 以及「成员操作只有真人能做」与群主不能退群。
  */
 class RoomApiTest extends ApiTestSupport {
+
+    @Autowired
+    RoomMemberMapper roomMemberMapper;
 
     @Test
     void 建群后回填turms群id且群主是成员() throws Exception {
@@ -358,6 +368,43 @@ class RoomApiTest extends ApiTestSupport {
                                 """.formatted(member.accountId())))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("account_frozen"));
+    }
+
+    /**
+     * 两个并发请求可能都读到「无行」：主键兜底，落败方拿 409，而不是 500。
+     * 窗口约 1ms，不保证每次都撞上，所以断言只写「不落在 5xx」与「最终只有一行」。
+     */
+    @Test
+    void 并发拉同一个人不会出现服务端错误() throws Exception {
+        Caller owner = newCaller();
+        Caller target = newCaller();
+        long roomId = createRoom(owner, "并发群");
+
+        List<Integer> codes = racePost("/api/rooms/" + roomId + "/members", owner.token(), """
+                {"account_id":%d}
+                """.formatted(target.accountId()));
+
+        assertThat(codes).allMatch(code -> code == 201 || code == 409).contains(201);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from room_member where room_id = ? and account_id = ? and deleted_at is null
+                """, Long.class, roomId, target.accountId())).isEqualTo(1);
+    }
+
+    /**
+     * 钉住 catch 依赖的那件事：这个栈里 PG 的 23505 被翻成 `DuplicateKeyException`
+     * （相同的 MyBatis + DataSource 也给好友申请那条兜底用）。
+     */
+    @Test
+    void 重复插入成员行翻成DuplicateKeyException() throws Exception {
+        Caller owner = newCaller();
+        long roomId = createRoom(owner, "撞键");
+
+        assertThatThrownBy(() -> roomMemberMapper.insert(RoomMember.builder()
+                .roomId(roomId)
+                .accountId(owner.accountId())
+                .joinedAt(OffsetDateTime.now())
+                .build()))
+                .isInstanceOf(DuplicateKeyException.class);
     }
 
     private long createRoom(Caller owner, String name) throws Exception {

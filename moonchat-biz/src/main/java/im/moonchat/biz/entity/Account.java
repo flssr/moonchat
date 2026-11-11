@@ -25,7 +25,7 @@ public class Account {
 
     private Long ownerAccountId;
 
-    private String turmsSyncState;
+    private TurmsSyncState turmsSyncState;
 
     private OffsetDateTime createdAt;
 

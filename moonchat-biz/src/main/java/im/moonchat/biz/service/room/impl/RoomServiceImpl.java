@@ -10,6 +10,7 @@ import im.moonchat.biz.entity.AccountInfo;
 import im.moonchat.biz.entity.AccountRoom;
 import im.moonchat.biz.entity.RoomInfo;
 import im.moonchat.biz.entity.RoomMember;
+import im.moonchat.biz.entity.TurmsSyncState;
 import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.room.AccountRoomMapper;
 import im.moonchat.biz.mapper.room.RoomInfoMapper;
@@ -24,6 +25,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -37,7 +39,6 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @RequiredArgsConstructor
 public class RoomServiceImpl implements RoomService {
 
-    private static final String PENDING = "pending";
     private static final String FROZEN = "frozen";
     private static final String ACCEPTED = "accepted";
     private static final int MAX_PAGE_SIZE = 100;
@@ -60,7 +61,7 @@ public class RoomServiceImpl implements RoomService {
         RoomInfo room = RoomInfo.builder()
                 .name(request.name())
                 .ownerAccountId(me.accountId())
-                .turmsSyncState(PENDING)
+                .turmsSyncState(TurmsSyncState.PENDING)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
@@ -210,19 +211,27 @@ public class RoomServiceImpl implements RoomService {
         });
     }
 
-    /** 入群：没行就插入，purge 前重进就复用原行并刷新加入时间。 */
+    /**
+     * 入群：没行就插入，purge 前重进就复用原行并刷新加入时间。
+     * 两个并发请求可能都读到「无行」：主键兜底，落败方回 409（与 #16 的预查同义）。
+     * PG 已经中止了本事务，这里只是把唯一键冲突翻成契约里那个码。
+     */
     private void join(long roomId, long accountId, OffsetDateTime now) {
         if (findMember(roomId, accountId) == null) {
-            roomMemberMapper.insert(RoomMember.builder()
-                    .roomId(roomId)
-                    .accountId(accountId)
-                    .joinedAt(now)
-                    .build());
-            accountRoomMapper.insert(AccountRoom.builder()
-                    .accountId(accountId)
-                    .roomId(roomId)
-                    .joinedAt(now)
-                    .build());
+            try {
+                roomMemberMapper.insert(RoomMember.builder()
+                        .roomId(roomId)
+                        .accountId(accountId)
+                        .joinedAt(now)
+                        .build());
+                accountRoomMapper.insert(AccountRoom.builder()
+                        .accountId(accountId)
+                        .roomId(roomId)
+                        .joinedAt(now)
+                        .build());
+            } catch (DuplicateKeyException e) {
+                throw ApiException.conflict("这个账号已经在群里");
+            }
             return;
         }
         roomMemberMapper.update(null, new LambdaUpdateWrapper<RoomMember>()
@@ -253,7 +262,7 @@ public class RoomServiceImpl implements RoomService {
     private void markPending(long roomId, OffsetDateTime now) {
         roomInfoMapper.update(null, new LambdaUpdateWrapper<RoomInfo>()
                 .eq(RoomInfo::getId, roomId)
-                .set(RoomInfo::getTurmsSyncState, PENDING)
+                .set(RoomInfo::getTurmsSyncState, TurmsSyncState.PENDING)
                 .set(RoomInfo::getUpdatedAt, now));
     }
 

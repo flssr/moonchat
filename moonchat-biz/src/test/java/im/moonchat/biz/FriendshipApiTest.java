@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -346,6 +347,27 @@ class FriendshipApiTest extends ApiTestSupport {
                         .header(HttpHeaders.AUTHORIZATION, bearer(peer.token())))
                 .andExpect(jsonPath("$.items[0].peer_account_id").value(agent.accountId()))
                 .andExpect(jsonPath("$.items[0].display_name").value("小助手"));
+    }
+
+    /**
+     * 两个并发申请可能都读到「无行」：`friendship_pair_uq` 兜底，落败方拿 409，而不是 500。
+     * 窗口约 1ms，不保证每次都撞上，所以断言只写「不落在 5xx」与「最终只有一行」。
+     */
+    @Test
+    void 并发申请同一个人不会出现服务端错误() throws Exception {
+        Caller from = newCaller();
+        Caller peer = newCaller();
+
+        List<Integer> codes = racePost("/api/friendships", from.token(), """
+                {"peer_account_id":%d}
+                """.formatted(peer.accountId()));
+
+        assertThat(codes).allMatch(code -> code == 201 || code == 409).contains(201);
+        assertThat(jdbc.queryForObject("""
+                select count(*) from friendship
+                where account_id = ? and peer_account_id = ? and deleted_at is null
+                """, Long.class, Math.min(from.accountId(), peer.accountId()),
+                Math.max(from.accountId(), peer.accountId()))).isEqualTo(1);
     }
 
     private void requestFriend(Caller from, long peerAccountId) throws Exception {

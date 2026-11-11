@@ -32,7 +32,7 @@ public class RoomInfo {
     private Long turmsGroupId;
 
     /** `pending` / `synced`：成员或群资料变化后回到 `pending`，重放器按 PG 重算。 */
-    private String turmsSyncState;
+    private TurmsSyncState turmsSyncState;
 
     private OffsetDateTime createdAt;
 

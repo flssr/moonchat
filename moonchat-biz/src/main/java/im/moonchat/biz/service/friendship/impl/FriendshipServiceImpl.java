@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -113,17 +114,22 @@ public class FriendshipServiceImpl implements FriendshipService {
                     .createdAt(now)
                     .updatedAt(now)
                     .build();
-            friendshipMapper.insert(row);
+            // 两个并发申请可能都读到「无行」：唯一键兜底，落败方回 409（与上面的预查同义）
+            try {
+                friendshipMapper.insert(row);
+                reverseMapper.insert(FriendshipReverse.builder()
+                        .accountId(higher)
+                        .peerAccountId(lower)
+                        .friendshipId(row.getId())
+                        .status(PENDING)
+                        .requestedBy(meId)
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build());
+            } catch (DuplicateKeyException e) {
+                throw ApiException.conflict("对这个人已经有好友关系或待处理的申请");
+            }
             friendshipId = row.getId();
-            reverseMapper.insert(FriendshipReverse.builder()
-                    .accountId(higher)
-                    .peerAccountId(lower)
-                    .friendshipId(friendshipId)
-                    .status(PENDING)
-                    .requestedBy(meId)
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build());
         } else {
             // 被拒绝过或删过：复用原行，不插入第二个同 pair 行
             friendshipId = existing.getId();

@@ -11,6 +11,12 @@ import com.nimbusds.jwt.SignedJWT;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +125,36 @@ abstract class ApiTestSupport {
         assertThat(jwt.verify(new MACVerifier(TestStack.LOGIN_JWT_SECRET.getBytes(StandardCharsets.UTF_8))))
                 .isTrue();
         return jwt.getJWTClaimsSet();
+    }
+
+    /**
+     * 两枪并发打同一个 POST：撞的是「先查后写」的窗口（约 1ms），不命中也是正常结果，
+     * 所以调用方的断言只能是「状态码不落在 5xx」。
+     */
+    List<Integer> racePost(String path, String token, String body) throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+        try {
+            List<Future<Integer>> shots = new ArrayList<>();
+            for (int i = 0; i < 2; i++) {
+                shots.add(pool.submit(() -> {
+                    start.await();
+                    return mockMvc.perform(post(path)
+                                    .header(HttpHeaders.AUTHORIZATION, bearer(token))
+                                    .contentType(MediaType.APPLICATION_JSON)
+                                    .content(body))
+                            .andReturn().getResponse().getStatus();
+                }));
+            }
+            start.countDown();
+            List<Integer> codes = new ArrayList<>();
+            for (Future<Integer> shot : shots) {
+                codes.add(shot.get());
+            }
+            return codes;
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     /** 建 agent 账号的接口在 S2，所以 S1 的测试直接落一行 agent（归属、资料齐全）。 */

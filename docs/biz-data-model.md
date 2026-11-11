@@ -196,6 +196,7 @@ create index friendship_deleted_at_idx
 - **`requested_by` 用于区分收发申请**：待处理列表必须据此只返回发给当前账号的申请，并在同意或拒绝时校验操作方；该字段不能由两个账号 id 或状态推导。
 - **拒绝 = 软删**：状态枚举仍只有 `pending` / `accepted`，拒绝写 `deleted_at`；对方可以再申请，V1 没有冷却期也没有拉黑（拉黑在 V2）。
 - **删除后重新申请 = 复用原行**：在 purge 前重新加好友时，清空 `deleted_at`，把状态置回 `pending`，更新 `requested_by` 与时间；不插入第二个同 pair 行。
+- **`friendship_pair_uq` 同时是并发申请的守卫**：两个请求可能都读到「无行」、都去插入，后插入者撞唯一键、整笔事务回滚，接口回 `conflict` 409（`moonchat-api` §1.5）；数据侧始终只有一行。
 - **没有 `turms_*` 列**：好友永不投影进 Turms，这类列永远不会有值。
 - **删好友不动任何设置**：会话保留、历史只读由 Turms 保证；没有任何投递设置随好友关系删除。
 
@@ -297,6 +298,7 @@ create index room_member_deleted_at_idx
 - **建群是一次事务**：写 `room_info` 一行 + 给群主写 `room_member`、`account_room` 各一行，然后才投影；「群主一定是成员」是事务产物。
 - **退群 / 被移除 = 同步写 `deleted_at`**：没有独立 `left_at`；「重进群只看到增量」不需要历史。
 - **重新进群 = 复用原行**：在 purge 前重新进群时清空 `deleted_at`，把 `joined_at` 更新为本次加入时间，不插入第二个同 pair 行。
+- **`room_member_pk` 同时是并发拉人的守卫**：两个请求可能都读到「无行」、都去插入，后插入者撞主键、整笔事务（含 `account_room` 镜像行）回滚，接口回 `conflict` 409（`moonchat-api` §1.5）；数据侧始终只有一行。
 - **Turms 投影只读本表**：投影按 full reconcile 整组重算（`moonchat-messaging`）。
 
 ### 4.7 account_room
