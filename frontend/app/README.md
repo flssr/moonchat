@@ -29,7 +29,7 @@ lib/
 │  └─ api_client.dart     20 条 /api/* 的唯一调用点；错误码 → 界面文案
 ├─ state/app_state.dart   身份、账号、好友、群、发言；登录 JWT 与 Turms 凭据续期
 ├─ ui/                    登录、消息、联系人、账号、资料页、通用组件
-└─ turms/                 （待接）Turms 会话：收消息与历史分页
+└─ turms/                 Turms 会话：收消息与历史分页（Web 经 js_interop 调 turms-client-js）
 ```
 
 ## 现状
@@ -39,8 +39,7 @@ lib/
 - **读取通道已接**：`lib/turms/` 用 `dart:js_interop` 调 `turms-client-js`，登录取 `POST /api/sessions`
   给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻。非 Web 平台走
   `realtime_stub.dart`（官方 Dart 客户端是 TCP 传输，Web 上不可用）。
-- **尚未在真实 Turms 上跑过**：起 Turms 要 Docker（Turms + PG + Redis），本机没有，所以服务器侧的
-  proto 字段、会话可见范围、限流真实行为都还没有证据；S5 的六条验收判据也因此未验。
+- **尚未在真实 Turms 上跑过的是浏览器里的读取通道**：服务端链路、凭据签发、群投影与写入网关已经在真 Turms + 真 Biz 上跑通（`infra/turms/smoke` 的 `identity` / `e2e-biz` / 示例端点），六条验收判据也已用 node 的 Turms 客户端跑通；但 Flutter Web 里的 `js_interop` 这一层只对着假 `TurmsClient` 验过，没有在真 Turms 上驱动过浏览器。
 - 界面规则只从 `docs/friends.md`（私聊入口只有好友列表与资料页）与
   `docs/account-and-ownership.md`（主页字段）里读；需要新规则时先补 spec。
 
