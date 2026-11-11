@@ -9,7 +9,6 @@
   --d1: 120ms;
   --d2: 200ms;
   --d3: 320ms;
-  --d4: 560ms;
   --ease: cubic-bezier(.2, .7, .2, 1);
   --ease-out: cubic-bezier(.16, 1, .3, 1);
 }
@@ -30,7 +29,6 @@
   --bubble-them: #efebe3;
   --bubble-me: #eae7df;
   --bubble-me-ink: #1a1917;
-  --flash: #fffefb;
   color-scheme: light;
 }
 
@@ -50,7 +48,6 @@
   --bubble-them: #211f1d;
   --bubble-me: #232120;
   --bubble-me-ink: #ede9e1;
-  --flash: #ece7dc;
   color-scheme: dark;
 }
 
@@ -316,18 +313,10 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   padding: 40px 38px;
   border-right: 1px solid var(--line);
 }
-.loginStatus {
-  position: absolute; inset: 0;
-  display: grid; place-items: center;
-  padding: 40px;
-  text-align: center;
-  font-size: 13px; color: var(--ink-3);
-  opacity: 0; pointer-events: none;
-  transition: opacity var(--d2) var(--ease);
+.srOnly {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-.screen[data-phase="closing"] .loginStatus,
-.screen[data-phase="armed"] .loginStatus,
-.screen[data-phase="launching"] .loginStatus { opacity: 1; }
 .loginCopy { max-width: 30ch; }
 .loginTitle { font-size: clamp(26px, 3vw, 34px); font-weight: 400; line-height: 1.2; letter-spacing: -.03em; margin-top: 12px; }
 .loginCopy__sub { margin-top: 12px; font-size: 13px; line-height: 1.7; color: var(--ink-2); }
@@ -408,7 +397,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   overflow: hidden;
   min-height: 420px;
 }
-.stage__caption { position: absolute; top: 20px; left: 24px; z-index: 5; font: 10px/1.4 var(--mono); letter-spacing: .1em; color: var(--ink-3); text-transform: uppercase; }
+.stage__label { position: absolute; left: 24px; bottom: 18px; z-index: 5; font: 10px/1.4 var(--mono); letter-spacing: .1em; color: var(--ink-3); text-transform: uppercase; }
 .stage__moon {
   position: absolute; top: 48px; right: 44px;
   width: 168px; height: 168px; border-radius: 50%;
@@ -429,13 +418,13 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   position: absolute; bottom: 12%; left: 50%;
   width: 210px; height: 340px;
   transform: translateX(-50%);
-  transition: transform var(--d4) var(--ease);
+  transition: opacity var(--d2) var(--ease);
 }
 .rocket__img {
   position: absolute; inset: 0;
   width: 100%; height: 100%; object-fit: contain;
   opacity: 0;
-  transition: opacity 260ms var(--ease);
+  transition: opacity 180ms var(--ease);
   filter: saturate(.88);
 }
 .rocket__img.is-on { opacity: 1; }
@@ -447,69 +436,24 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   border: 1px solid var(--line);
   opacity: .5;
 }
-.enterBtn {
-  position: absolute; z-index: 6;
-  left: 64.5%; top: 41%;
-  width: 62px; height: 62px;
-  border: 0; border-radius: 50%;
-  background: var(--accent); color: var(--accent-ink);
-  font-size: 12px; font-weight: 600; letter-spacing: .06em;
-  opacity: 0;
-  transform: translate(-50%, -50%) scale(.84);
-  pointer-events: none;
-  transition: opacity var(--d2) var(--ease), transform var(--d3) var(--ease-out);
-}
-.enterBtn::after {
-  content: ""; position: absolute; inset: -7px; border-radius: 50%;
-  border: 1px solid var(--accent); opacity: .35;
-}
-.screen[data-phase="armed"] .enterBtn {
-  opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
-  pointer-events: auto;
-}
-.screen[data-phase="launching"] .enterBtn,
-.screen[data-phase="arrived"] .enterBtn { opacity: 0; }
 
-/* phase: closing */
-.screen[data-phase="closing"] .auth,
-.screen[data-phase="armed"] .auth,
+/* phase: launching —— 表单先退，关门后短促离地；没有第二次确认。 */
 .screen[data-phase="launching"] .auth,
 .screen[data-phase="arrived"] .auth {
   opacity: 0;
-  transform: translate(140%, -18%) scale(.18);
-  transform-origin: right center;
+  transform: translateY(-6px);
   pointer-events: none;
 }
-.auth { transition: opacity 420ms var(--ease), transform 520ms var(--ease); }
-.screen[data-phase="closing"] .loginCopy,
-.screen[data-phase="armed"] .loginCopy,
-.screen[data-phase="launching"] .loginCopy,
-.screen[data-phase="arrived"] .loginCopy { opacity: .35; transition: opacity 400ms var(--ease); }
+.auth { transition: opacity 420ms var(--ease), transform 420ms var(--ease); }
 
-/* phase: launching */
 .screen[data-phase="launching"] .rocket {
-  animation: lift 1.4s var(--ease-out) forwards;
+  animation: lift 620ms var(--ease-out) 180ms forwards;
 }
 .screen[data-phase="launching"] .stage__ground { opacity: 0; transition: opacity 300ms var(--ease); }
 .screen[data-phase="arrived"] .rocket { opacity: 0; }
 @keyframes lift {
-  0% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); }
-  18% { transform: translateX(-50%) translateY(4px) rotate(0) scale(1); }
-  52% { transform: translate(46%, -34%) rotate(10deg) scale(.62); }
-  100% { transform: translate(150%, -120%) rotate(22deg) scale(.12); opacity: 0; }
-}
-
-.flash {
-  position: absolute; inset: 0; z-index: 8;
-  background: var(--flash); opacity: 0;
-  pointer-events: none;
-}
-.screen[data-phase="arrived"] .flash { animation: flashOut 620ms var(--ease) forwards; }
-@keyframes flashOut {
-  0% { opacity: 0; }
-  22% { opacity: .92; }
-  100% { opacity: 0; }
+  0% { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+  100% { transform: translateX(-50%) translateY(-56px) scale(.94); opacity: .15; }
 }
 
 .arrived {
@@ -518,7 +462,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   padding: 32px;
   background: var(--surface);
   opacity: 0; pointer-events: none;
-  transition: opacity 300ms var(--ease);
+  transition: opacity var(--d2) var(--ease);
 }
 .screen[data-phase="arrived"] .arrived { opacity: 1; pointer-events: auto; }
 .arrived__room {
@@ -1076,8 +1020,7 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
   .stage { min-height: 300px; }
   .rocket { width: 150px; height: 240px; bottom: 10%; }
   .stage__moon { width: 110px; height: 110px; top: 24px; right: 24px; }
-  .enterBtn { width: 52px; height: 52px; font-size: 11px; }
-  .stage__caption { top: 14px; left: 16px; }
+  .stage__label { bottom: 14px; left: 16px; }
   .arrived { padding: 20px; }
   .swatches { grid-template-columns: repeat(2, 1fr); }
   .modeToggle { margin-bottom: 4px; }

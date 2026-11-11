@@ -1,10 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:moonchat/api/api_client.dart';
+import 'package:moonchat/main.dart';
 import 'package:moonchat/state/app_state.dart';
 import 'package:moonchat/theme.dart';
+import 'package:moonchat/ui/home_shell.dart';
 import 'package:moonchat/ui/login_screen.dart';
 
 /// 记录调用次数的假 Biz：用来断言「校验没过就一个请求都不发」。
@@ -87,5 +91,78 @@ void main() {
 
     expect(find.text('名字 1–20 字'), findsOneWidget);
     expect(recorder.calls, 0);
+  });
+
+  testWidgets('登录成功后先播完登舱过渡再切主界面', (WidgetTester tester) async {
+    final AppState state = AppState(
+      api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
+    );
+    addTearDown(state.dispose);
+    await tester.pumpWidget(MoonChatApp(state: state));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).at(0), 'a@b.c');
+    await tester.enterText(find.byType(TextField).at(1), 'password1');
+    await tester.tap(find.text('登录'));
+
+    // 等 REST 链路跑完；此时登录态已经 ready，但过渡还没播完。
+    for (int i = 0; i < 10 && !state.isReady; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(state.isReady, isTrue);
+    expect(find.byType(HomeShell), findsNothing, reason: '登录成功不能同帧换屏，否则登舱过渡永远看不到');
+    expect(find.text('MoonChat'), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeShell), findsOneWidget);
+
+    // 登录会排 7 天 / 12 小时的续期定时器；测试结束前拆掉，别让 fake_async 报残留。
+    await tester.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+}
+
+/// 只跑登录链路：登录 → 换 Turms 凭据 → 拉账号 / 好友 / 群。
+MockClient _loginBiz() {
+  http.Response ok(Object? body, [int status = 200]) => http.Response(
+        jsonEncode(body),
+        status,
+        headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+      );
+  return MockClient((http.Request req) async {
+    switch (req.url.path) {
+      case '/api/auth/login':
+        return ok(<String, Object?>{
+          'token': 'login-jwt',
+          'expires_at': '2026-11-20T00:00:00Z',
+          'account': <String, Object?>{'account_id': 1, 'display_name': '阿月', 'type': 'human'},
+        });
+      case '/api/sessions':
+        return ok(<String, Object?>{
+          'account_id': 1,
+          'display_name': '阿月',
+          'type': 'human',
+          'login_token': 'login-jwt-1',
+          'login_expires_at': '2026-11-20T00:00:00Z',
+          'turms': <String, Object?>{
+            'user_id': 1,
+            'credential': 'turms-jwt-1',
+            'gateway_url': 'ws://localhost:20510',
+          },
+          'expires_at': '2026-11-11T10:00:00Z',
+        });
+      case '/api/accounts/mine':
+        return ok(<String, Object?>{
+          'items': <Object?>[
+            <String, Object?>{'account_id': 1, 'display_name': '阿月', 'type': 'human'},
+          ],
+        });
+      case '/api/friendships':
+        return ok(<String, Object?>{'items': <Object?>[]});
+      case '/api/rooms':
+        return ok(<String, Object?>{'items': <Object?>[]});
+      default:
+        return ok(<String, Object?>{'code': 'not_found', 'message': 'no route'}, 404);
+    }
   });
 }

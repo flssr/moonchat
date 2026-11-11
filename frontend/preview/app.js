@@ -70,8 +70,7 @@
     const passInput = $("#loginPass");
     const errEl = $("#loginErr");
     const eyeBtn = $("#eyeBtn");
-    const enterBtn = $("#enterBtn");
-    const caption = $("#stageCaption");
+    const boardBtn = $("#boardBtn");
     const arrived = $("#arrived");
     const boardLabel = $("#boardLabel");
     const timers = [];
@@ -87,23 +86,13 @@
 
     function setPhase(phase) {
       screen.dataset.phase = phase;
-      const captions = {
-        idle: "01 / 舱门开启",
-        closing: "02 / 舱门关闭中",
-        armed: "03 / 点击登录",
-        launching: "04 / 点火",
-        arrived: "05 / 已抵达 · 月面基地 A-07"
-      };
-      caption.textContent = captions[phase] || "";
-      const statusText = {
-        closing: "正在验证，舱门关闭中…",
-        armed: "验证通过。点击舱门上的登录按钮。",
-        launching: "点火，正在离开月面。"
-      };
       const status = $("#loginStatus");
-      if (status) status.textContent = statusText[phase] || "";
-      if (phase === "closing" || phase === "armed") setRocket(1);
-      else if (phase === "launching") setRocket(2);
+      if (status) {
+        status.textContent = phase === "launching"
+          ? "正在登舱。"
+          : phase === "arrived" ? "已抵达，可以进入客户端样机。" : "";
+      }
+      if (phase === "launching") setRocket(1);
       else if (phase === "arrived") setRocket(-1);
       else setRocket(0);
       arrived.setAttribute("aria-hidden", String(phase !== "arrived"));
@@ -120,8 +109,7 @@
       eyeBtn.setAttribute("aria-label", "显示密码");
       errEl.textContent = "";
       $$(".field", form).forEach((f) => f.classList.remove("is-error"));
-      enterBtn.disabled = false;
-      $("#boardBtn").disabled = false;
+      boardBtn.disabled = false;
       $$("input", form).forEach((input) => { input.disabled = false; });
     }
 
@@ -171,17 +159,16 @@
       errEl.textContent = "";
       $$(".field", form).forEach((f) => f.classList.remove("is-error"));
       $$("input", form).forEach((input) => { input.disabled = true; });
-      $("#boardBtn").disabled = true;
+      boardBtn.disabled = true;
 
+      // 一次点击就够：关门 180ms，离地 620ms，抵达卡 200ms 淡入。
       if (reduceMotion) {
-        setPhase("armed");
+        setPhase("arrived");
         return;
       }
-      setPhase("closing");
-      later(() => {
-        setPhase("armed");
-        enterBtn.focus();
-      }, 700);
+      setPhase("launching");
+      later(() => setRocket(2), 180);
+      later(() => setPhase("arrived"), 820);
     });
 
     $$(".modeToggle__btn").forEach((btn) => {
@@ -203,19 +190,6 @@
       passInput.type = show ? "text" : "password";
       eyeBtn.setAttribute("aria-pressed", String(show));
       eyeBtn.setAttribute("aria-label", show ? "隐藏密码" : "显示密码");
-    });
-
-    enterBtn.addEventListener("click", () => {
-      if (screen.dataset.phase !== "armed") return;
-      if (reduceMotion) {
-        setPhase("arrived");
-        return;
-      }
-      enterBtn.disabled = true;
-      setPhase("launching");
-      later(() => {
-        setPhase("arrived");
-      }, 1420);
     });
 
     $("#loginReset").addEventListener("click", reset);

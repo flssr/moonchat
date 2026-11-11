@@ -180,12 +180,12 @@
         </div>
 
         <div class="panel">
-          <div class="panel__head"><h3>动效</h3><span>3 + 1</span></div>
+          <div class="panel__head"><h3>动效</h3><span>3 + 3</span></div>
           <dl class="motionSpec">
             <div><dt>120ms</dt><dd>悬停、按下、发送状态</dd></div>
             <div><dt>200ms</dt><dd>主题、面板、抽屉</dd></div>
             <div><dt>320ms</dt><dd>会话切换、资料页</dd></div>
-            <div><dt>560ms</dt><dd>舱门</dd></div>
+            <div><dt>0.8s</dt><dd>登舱过渡（关门、离地、抵达）</dd></div>
             <div><dt>ease</dt><dd>cubic-bezier(.2,.7,.2,1)</dd></div>
           </dl>
           <p class="panel__note">没有回弹，没有无限循环的装饰动画。系统开启“减少动态效果”时，时长归零并直接跳到终态。</p>
@@ -245,26 +245,23 @@
             <p class="auth__alt">V1 不做邮箱验证，也不做找回密码。</p>
           </form>
           <p class="loginNote">静态演示 · 输入不会离开本页</p>
-          <div class="loginStatus" id="loginStatus" aria-live="polite"></div>
+          <p class="srOnly" id="loginStatus" aria-live="polite"></p>
         </div>
 
         <div class="stage">
-          <p class="stage__caption" id="stageCaption">01 / 舱门开启</p>
+          <p class="stage__label">发射基地 A-07</p>
           <div class="stage__moon" aria-hidden="true"><i></i></div>
           <div class="stage__horizon" aria-hidden="true"></div>
           <div class="rocket" id="rocket">
             <img class="rocket__img is-on" src="assets/rocket-open.png" alt="">
             <img class="rocket__img" src="assets/rocket-closed.png" alt="">
             <img class="rocket__img rocket__img--launch" src="assets/rocket-launch.png" alt="">
-            <button class="enterBtn" id="enterBtn" type="button">登 录</button>
           </div>
           <div class="stage__ground" aria-hidden="true"></div>
         </div>
 
-        <div class="flash" id="flash" aria-hidden="true"></div>
-
         <div class="arrived" id="arrived" aria-hidden="true">
-          <p class="micro">05 / 已抵达 · 月面基地 A-07</p>
+          <p class="micro">月面基地 A-07</p>
           <div class="arrived__room" role="img" aria-label="进入后的会话界面示意图">
             <div class="arrived__head"><b>Luna</b><span>好友 · 私聊</span></div>
             <div class="arrived__msgs">
@@ -283,8 +280,8 @@
 
       <div class="annot">
         <div><b>01 表单</b><p>登录与注册不跳页，只换字段和按钮文案。错误贴在字段下方，不弹窗；登录失败不区分“邮箱不存在”和“密码错”。</p></div>
-        <div><b>02 关门</b><p>字段收进舱门，插画从“开启”换到“关闭”，560ms。门上出现红色登录按钮，这是第二次确认。</p></div>
-        <div><b>03 发射</b><p>点火 1.4s 后进入月面，白光转场。全程没有音效依赖，静音环境下流程完整。</p></div>
+        <div><b>02 关门</b><p>登录成功后表单淡出，插画从“开启”换到“关闭”，约 180ms。不做第二次确认，也不需要再点一次门上的按钮。</p></div>
+        <div><b>03 离地</b><p>关门后短促抬升约 620ms：上移 56px、轻微缩小并淡出。没有白光、转向或飞出画面；减少动态时直接到终态。</p></div>
       </div>
     </section>
 
@@ -520,8 +517,10 @@
             <tr><td>悬停、按下、发送状态</td><td>120ms</td><td>standard</td><td>只改底色、描边和透明度</td></tr>
             <tr><td>主题切换、弹层</td><td>200ms</td><td>standard</td><td>颜色过渡，不做遮罩闪烁</td></tr>
             <tr><td>会话切换、资料页</td><td>320ms</td><td>standard</td><td>内容淡入 8px，不做横向滑动</td></tr>
-            <tr><td>舱门关闭</td><td>560ms</td><td>standard</td><td>字段收束与插画切换同时结束</td></tr>
-            <tr><td>发射转场</td><td>1400ms</td><td>ease-out</td><td>可跳过；减少动态时直接到终态</td></tr>
+            <tr><td>登录表单收束</td><td>420ms</td><td>standard</td><td>表单淡出并上移 6px，不飞入舱门</td></tr>
+            <tr><td>舱门</td><td>180ms</td><td>standard</td><td>插画“开启 → 关闭”交叉淡入，不做第二次确认</td></tr>
+            <tr><td>离地</td><td>620ms</td><td>ease-out</td><td>上移 56px、缩到 .94 并淡出；不旋转、不出画、不闪白</td></tr>
+            <tr><td>抵达</td><td>200ms</td><td>standard</td><td>主界面或抵达卡淡入；减少动态时直接到终态</td></tr>
           </tbody>
         </table>
       </div>

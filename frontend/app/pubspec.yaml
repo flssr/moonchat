@@ -20,3 +20,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/rocket-open.png
+    - assets/rocket-closed.png
+    - assets/rocket-launch.png

@@ -5,21 +5,34 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'widgets.dart';
 
-/// S1 登录 / 注册（`SCREEN-MAP.md` §4）。
-/// 表单在左，右侧是静态舞台；发射那套动效已删除——它从来没被看见过（登录成功同一帧就换屏）。
+/// S1 登录 / 注册 + S2 登舱过渡（`SCREEN-MAP.md` §4）。
+/// 表单在左，右侧是月面舞台；登录成功后播一次短促离场，再交给外壳换屏。
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.state});
+  const LoginScreen({super.key, required this.state, this.onArrived});
 
   final AppState state;
+
+  /// 登舱过渡播完（或减少动态时直接跳过）后回调；外壳据此切到主界面。
+  final VoidCallback? onArrived;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _name = TextEditingController();
+
+  /// 800ms 的登舱过渡，只分三个节拍：关门（0–22%）、点火（22–34%）、离地（22–100%）。
+  /// 不做旋转、不出画、不闪白；登录是高频动作，整段控制在 1 秒内。
+  late final AnimationController _arrival = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 800),
+  );
+
+  /// 过渡已经开始：表单淡出并停用，避免用户在这 800ms 里继续操作。
+  bool _arriving = false;
 
   bool _registerMode = false;
   bool _submitting = false;
@@ -33,6 +46,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _email.dispose();
     _password.dispose();
     _name.dispose();
+    _arrival.dispose();
     super.dispose();
   }
 
@@ -78,6 +92,7 @@ class _LoginScreenState extends State<LoginScreen> {
         registered = true;
       }
       await widget.state.login(email: _email.text.trim(), password: _password.text);
+      await _playArrival();
     } on ApiException catch (e) {
       setState(() {
         if (registered) {
@@ -101,6 +116,22 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  /// 登录成功后的登舱过渡；减少动态时直接交棒，不强制看完。
+  Future<void> _playArrival() async {
+    if (!mounted) {
+      return;
+    }
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      widget.onArrived?.call();
+      return;
+    }
+    setState(() => _arriving = true);
+    await _arrival.forward();
+    if (mounted) {
+      widget.onArrived?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
@@ -109,7 +140,16 @@ class _LoginScreenState extends State<LoginScreen> {
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
-          final Widget form = _buildForm(context);
+          // 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
+          final Widget form = IgnorePointer(
+            ignoring: _arriving,
+            child: AnimatedOpacity(
+              opacity: _arriving ? 0 : 1,
+              duration: const Duration(milliseconds: 420),
+              curve: Curves.easeOutCubic,
+              child: _buildForm(context),
+            ),
+          );
           final Widget stage = _buildStage(context);
           return Center(
             child: SingleChildScrollView(
@@ -228,40 +268,81 @@ class _LoginScreenState extends State<LoginScreen> {
     final MoonPalette p = context.moon;
     return Container(
       color: p.stage,
-      child: Stack(
-        children: <Widget>[
-          // 地平线与月盘：只用描边与明度，不加渐变。
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 96,
-            child: Container(height: 1, color: p.ink3.withValues(alpha: 0.85)),
-          ),
-          Positioned(
-            right: 56,
-            top: 64,
-            child: Container(
-              width: 96,
-              height: 96,
-              decoration: BoxDecoration(
-                color: p.surface2,
-                shape: BoxShape.circle,
-                border: Border.all(color: p.lineStrong),
+      child: AnimatedBuilder(
+        animation: _arrival,
+        builder: (BuildContext context, Widget? _) {
+          final double t = _arrival.value;
+          // 关门先于离地：0–22% 换关；22–34% 点火；之后一直抬升。
+          final double door = (t / 0.22).clamp(0.0, 1.0);
+          final double ignite = ((t - 0.22) / 0.12).clamp(0.0, 1.0);
+          final double lift = Curves.easeOutCubic.transform(((t - 0.22) / 0.78).clamp(0.0, 1.0));
+          return Stack(
+            children: <Widget>[
+              // 地平线与月盘：只用描边与明度，不加渐变。
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 96,
+                child: Container(height: 1, color: p.ink3.withValues(alpha: 0.85)),
               ),
-            ),
-          ),
-          Center(
-            child: Image.asset('assets/rocket-open.png', width: 240, fit: BoxFit.contain),
-          ),
-          Positioned(
-            left: 24,
-            bottom: 20,
-            child: Text(
-              '月面基地',
-              style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
-            ),
-          ),
-        ],
+              Positioned(
+                right: 56,
+                top: 64,
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  decoration: BoxDecoration(
+                    color: p.surface2,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: p.lineStrong),
+                  ),
+                ),
+              ),
+              Center(
+                child: Transform.translate(
+                  offset: Offset(0, -56 * lift),
+                  child: Transform.scale(
+                    scale: 1 - 0.06 * lift,
+                    child: Opacity(
+                      opacity: 1 - 0.85 * lift,
+                      child: SizedBox(
+                        width: 240,
+                        child: AspectRatio(
+                          aspectRatio: 420 / 649,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: <Widget>[
+                              Opacity(
+                                opacity: 1 - door,
+                                child: Image.asset('assets/rocket-open.png', fit: BoxFit.contain),
+                              ),
+                              Opacity(
+                                opacity: door * (1 - ignite),
+                                child: Image.asset('assets/rocket-closed.png', fit: BoxFit.contain),
+                              ),
+                              Opacity(
+                                opacity: ignite,
+                                child: Image.asset('assets/rocket-launch.png', fit: BoxFit.contain),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 24,
+                bottom: 20,
+                child: Text(
+                  '发射基地',
+                  style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
