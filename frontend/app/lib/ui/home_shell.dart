@@ -7,14 +7,6 @@ import 'contacts_view.dart';
 import 'messages_view.dart';
 import 'profile_panel.dart';
 
-/// 容器断点：单点定义，代码与本文件说明、`DESIGN-SPEC.md` §5 三处对齐。
-class MoonBreakpoints {
-  const MoonBreakpoints._();
-
-  static const double hideInfo = 860;
-  static const double hideList = 620;
-}
-
 /// 客户端外壳：56 导航 + 各视图自己的列表 / 内容 / 信息栏。
 /// 当前视图与当前会话都在 `AppState` 里，这里只负责布局与窄屏的列表开关。
 class HomeShell extends StatefulWidget {
@@ -55,8 +47,10 @@ class _HomeShellState extends State<HomeShell> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
-            final bool narrow = c.maxWidth < MoonBreakpoints.hideList;
-            final bool showInfo = c.maxWidth >= MoonBreakpoints.hideInfo;
+            // 断点按整个客户端宽度判定（`DESIGN-SPEC.md` §5 的容器查询对象是 .app），
+            // 联系人与账号页也复用同一个 narrow，避免各自再按「扣掉导航栏后的宽度」量一次。
+            final bool narrow = c.maxWidth <= MoonBreakpoints.hideList;
+            final bool showInfo = c.maxWidth > MoonBreakpoints.hideInfo;
             // 选中/清空会话后回到自动模式，否则窄屏会卡在「列表 + 被挤扁的消息区」。
             if (state.activeConversationKey != _lastActiveKey) {
               _lastActiveKey = state.activeConversationKey;
@@ -66,8 +60,8 @@ class _HomeShellState extends State<HomeShell> {
                 (_listOpen ?? (state.activeConversationKey == null));
 
             final Widget body = switch (state.view) {
-              'contacts' => ContactsView(state: state),
-              'account' => AccountView(state: state),
+              'contacts' => ContactsView(state: state, narrow: narrow),
+              'account' => AccountView(state: state, narrow: narrow),
               _ => MessagesView(
                   state: state,
                   showInfo: showInfo,

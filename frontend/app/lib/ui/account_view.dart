@@ -8,9 +8,12 @@ import 'widgets.dart';
 
 /// S7 账号：我的真人账号与 agent、创建 agent、一次性密钥、切进账号。
 class AccountView extends StatefulWidget {
-  const AccountView({super.key, required this.state});
+  const AccountView({super.key, required this.state, required this.narrow});
 
   final AppState state;
+
+  /// 外壳按整个客户端宽度判定的 ≤620：与消息页共用同一个断点来源。
+  final bool narrow;
 
   @override
   State<AccountView> createState() => _AccountViewState();
@@ -62,16 +65,23 @@ class _AccountViewState extends State<AccountView> {
     final Account? me = widget.state.account;
     final bool isHuman = me != null && !me.isAgent;
 
-    return Row(
-      children: <Widget>[
-        Container(
-          width: 320,
-          decoration: BoxDecoration(
-            color: p.surface,
-            border: Border(right: BorderSide(color: p.line)),
-          ),
-          child: Column(
-            children: <Widget>[
+    return MoonSplitLayout(
+      narrow: widget.narrow,
+      list: _list(p, me, widget.narrow),
+      detail: _detail(p, me, isHuman),
+    );
+  }
+
+  Widget _list(MoonPalette p, Account? me, bool narrow) {
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: narrow
+            ? Border(bottom: BorderSide(color: p.line))
+            : Border(right: BorderSide(color: p.line)),
+      ),
+      child: Column(
+        children: <Widget>[
               Container(
                 height: 56,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -148,15 +158,19 @@ class _AccountViewState extends State<AccountView> {
               ),
             ],
           ),
-        ),
-        Expanded(
-          child: Container(
-            color: p.bg,
-            child: SingleChildScrollView(
+    );
+  }
+
+  Widget _detail(MoonPalette p, Account? me, bool isHuman) {
+    return Container(
+      color: p.bg,
+      child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 460),
-                child: Column(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text('当前账号', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
@@ -263,11 +277,9 @@ class _AccountViewState extends State<AccountView> {
                     ),
                   ],
                 ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
     );
   }
 }

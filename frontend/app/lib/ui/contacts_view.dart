@@ -11,9 +11,12 @@ import 'widgets.dart';
 /// S5 联系人：好友、待处理、按账号 ID 加好友、建群。
 /// 没有搜人：定位账号只有账号 ID 与主页链接两条路。
 class ContactsView extends StatefulWidget {
-  const ContactsView({super.key, required this.state});
+  const ContactsView({super.key, required this.state, required this.narrow});
 
   final AppState state;
+
+  /// 外壳按整个客户端宽度判定的 ≤620：与消息页共用同一个断点来源。
+  final bool narrow;
 
   @override
   State<ContactsView> createState() => _ContactsViewState();
@@ -118,16 +121,15 @@ class _ContactsViewState extends State<ContactsView> {
     final List<Friendship> friends = widget.state.friends;
     final List<Friendship> pending = widget.state.pending;
 
-    return Row(
-      children: <Widget>[
-        Container(
-          width: 320,
-          decoration: BoxDecoration(
-            color: p.surface,
-            border: Border(right: BorderSide(color: p.line)),
-          ),
-          child: Column(
-            children: <Widget>[
+    return MoonSplitLayout(
+      narrow: widget.narrow,
+      list: _list(p, friends, pending, widget.narrow),
+      detail: _detail(p, widget.narrow),
+    );
+  }
+
+  Widget _list(MoonPalette p, List<Friendship> friends, List<Friendship> pending, bool narrow) {
+    final List<Widget> header = <Widget>[
               Container(
                 height: 56,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -267,14 +269,17 @@ class _ContactsViewState extends State<ContactsView> {
                   ],
                 ),
               ),
-              Expanded(
-                child: _tab == 'friends'
+            ];
+    // 窄屏整段可滚：固定头 + 表单 + 列表一起滚，键盘压缩高度时不会把 Column 撑爆。
+    final Widget entries = _tab == 'friends'
                     ? (friends.isEmpty
                         ? const MoonEmpty(
                             title: '还没有好友',
                             hint: '加好友需要对方的账号 ID 或主页链接。',
                           )
                         : ListView.builder(
+                            shrinkWrap: narrow,
+                            physics: narrow ? const NeverScrollableScrollPhysics() : null,
                             itemCount: friends.length,
                             itemBuilder: (BuildContext context, int i) {
                               final Friendship f = friends[i];
@@ -311,6 +316,8 @@ class _ContactsViewState extends State<ContactsView> {
                     : (pending.isEmpty
                         ? const MoonEmpty(title: '没有待处理的申请。')
                         : ListView.builder(
+                            shrinkWrap: narrow,
+                            physics: narrow ? const NeverScrollableScrollPhysics() : null,
                             itemCount: pending.length,
                             itemBuilder: (BuildContext context, int i) {
                               final Friendship f = pending[i];
@@ -344,32 +351,46 @@ class _ContactsViewState extends State<ContactsView> {
                                 ),
                               );
                             },
-                          )),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Container(
-            color: p.bg,
-            child: _selectedId == null
-                ? const MoonEmpty(
-                    title: '选一个人',
-                    hint: '群成员、好友、按账号 ID 查找的结果都在这里打开资料页。',
-                  )
-                : SingleChildScrollView(
-                    child: SizedBox(
-                      width: 420,
-                      child: ProfilePanel(
-                        state: widget.state,
-                        accountId: _selectedId!,
-                        onMessage: () => widget.state.selectConversation('dm:$_selectedId'),
-                      ),
-                    ),
-                  ),
-          ),
-        ),
+                          ));
+    final Widget content = Column(
+      children: <Widget>[
+        ...header,
+        if (narrow) entries else Expanded(child: entries),
       ],
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: narrow
+            ? Border(bottom: BorderSide(color: p.line))
+            : Border(right: BorderSide(color: p.line)),
+      ),
+      child: narrow ? SingleChildScrollView(child: content) : content,
+    );
+  }
+
+  Widget _detail(MoonPalette p, bool narrow) {
+    return Container(
+      color: p.bg,
+      padding: narrow ? const EdgeInsets.all(18) : EdgeInsets.zero,
+      child: _selectedId == null
+          ? const MoonEmpty(
+              title: '选一个人',
+              hint: '群成员、好友、按账号 ID 查找的结果都在这里打开资料页。',
+            )
+          : SingleChildScrollView(
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: ProfilePanel(
+                    state: widget.state,
+                    accountId: _selectedId!,
+                    onMessage: () => widget.state.selectConversation('dm:$_selectedId'),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

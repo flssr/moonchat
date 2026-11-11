@@ -10,6 +10,7 @@ import 'package:moonchat/state/app_state.dart';
 import 'package:moonchat/theme.dart';
 import 'package:moonchat/turms/realtime.dart';
 import 'package:moonchat/ui/home_shell.dart';
+import 'package:moonchat/ui/profile_panel.dart';
 
 /// 读取通道在测试里不连 Turms：只验证 REST 链路与状态机。
 class _FakeRealtime implements RealtimeClient {
@@ -404,6 +405,61 @@ void main() {
     await tester.tap(find.byTooltip('联系人'));
     await tester.pumpAndSettle();
     expect(state.activeConversationKey, isNull);
+    state.dispose();
+  });
+
+  testWidgets('窄屏下联系人与账号上下堆叠，不横向溢出', (WidgetTester tester) async {
+    // 正好 620 也要堆叠（DESIGN-SPEC 的 ≤620）；再缩到 390 验窄屏不溢出。
+    tester.view.physicalSize = const Size(620, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('联系人'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    state.setSelectedContact(2);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    // 详情要真的渲染出来，否则「不溢出」是空转；位置也要在列表下方，而不是并排。
+    expect(find.text('发消息'), findsOneWidget, reason: '窄屏下详情也要真的渲染出来');
+    expect(
+      tester.getTopLeft(find.byType(ProfilePanel)).dy,
+      greaterThan(tester.getTopLeft(find.text('联系人')).dy),
+      reason: '详情在列表下方，不是并排',
+    );
+
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('账号'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    state.dispose();
+  });
+
+  testWidgets('窄屏建群表单展开且高度被键盘压缩时联系人不溢出', (WidgetTester tester) async {
+    // 390×500 模拟移动端键盘弹出后的正文高度：固定头 + 表单曾会把 Column 撑爆。
+    tester.view.physicalSize = const Size(390, 500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('联系人'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('建群'));
+    await tester.pumpAndSettle();
+    expect(find.text('创建'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     state.dispose();
   });
 

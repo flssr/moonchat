@@ -362,3 +362,36 @@ String formatClock(DateTime? utc) {
   final String mm = local.minute.toString().padLeft(2, '0');
   return '$hh:$mm';
 }
+
+/// 列表 + 详情：宽屏并排，容器 ≤620 时上下两段（`DESIGN-SPEC.md` §5）。
+/// 断点由外壳统一给出，联系人页与账号页不再各自按父容器宽度算一次。
+class MoonSplitLayout extends StatelessWidget {
+  const MoonSplitLayout({
+    super.key,
+    required this.narrow,
+    required this.list,
+    required this.detail,
+  });
+
+  final bool narrow;
+  final Widget list;
+  final Widget detail;
+
+  @override
+  Widget build(BuildContext context) {
+    if (narrow) {
+      return Column(
+        children: <Widget>[
+          Expanded(flex: 6, child: list),
+          Expanded(flex: 5, child: detail),
+        ],
+      );
+    }
+    return Row(
+      children: <Widget>[
+        SizedBox(width: 320, child: list),
+        Expanded(child: detail),
+      ],
+    );
+  }
+}

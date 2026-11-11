@@ -161,6 +161,14 @@ const List<String> kMonoFallback = <String>[
   'monospace',
 ];
 
+/// 容器断点：单点定义，代码与 `DESIGN-SPEC.md` §5 对齐。
+class MoonBreakpoints {
+  const MoonBreakpoints._();
+
+  static const double hideInfo = 860;
+  static const double hideList = 620;
+}
+
 ThemeData buildMoonTheme(Brightness brightness) {
   final MoonPalette p = brightness == Brightness.light ? MoonPalette.light : MoonPalette.dark;
   final ColorScheme scheme = ColorScheme.fromSeed(
