@@ -9,46 +9,48 @@ import 'profile_panel.dart';
 import 'widgets.dart';
 
 /// S3 消息：会话列表 + 消息区 + 信息栏（`SCREEN-MAP.md` §4）。
+/// 当前会话、筛选、跳转都在 `AppState` 里，这里只读状态、只调动作。
 class MessagesView extends StatefulWidget {
   const MessagesView({
     super.key,
     required this.state,
-    required this.activeKey,
-    required this.onSelect,
-    required this.filter,
-    required this.onFilter,
-    required this.onOpenProfile,
     this.showInfo = true,
     this.showList = true,
+    this.onToggleList,
   });
 
   final AppState state;
-  final String? activeKey;
-  final ValueChanged<String> onSelect;
-  final String filter; // all | dm | room
-  final ValueChanged<String> onFilter;
-  final ValueChanged<int> onOpenProfile;
 
-  /// 容器 ≤1000 收起信息栏，≤700 收起会话列表（DESIGN-SPEC §5）。
+  /// 容器 ≤860 收起信息栏，≤620 收起会话列表（`MoonBreakpoints`）。
   final bool showInfo;
   final bool showList;
+
+  /// 窄屏下的列表开关；宽屏为 null。
+  final VoidCallback? onToggleList;
 
   @override
   State<MessagesView> createState() => _MessagesViewState();
 }
 
 class _MessagesViewState extends State<MessagesView> {
-  final TextEditingController _composer = TextEditingController();
+  /// 草稿按会话存：给 A 打的话切到 B 不会跟着过去。
+  final Map<String, TextEditingController> _drafts = <String, TextEditingController>{};
   final FocusNode _composerFocus = FocusNode();
-  String? _sendError;
+
+  /// 发送错误也按会话存。
+  final Map<String, String> _sendErrors = <String, String>{};
   bool _sending = false;
 
   @override
   void dispose() {
-    _composer.dispose();
+    for (final TextEditingController c in _drafts.values) {
+      c.dispose();
+    }
     _composerFocus.dispose();
     super.dispose();
   }
+
+  TextEditingController _draftFor(String key) => _drafts.putIfAbsent(key, TextEditingController.new);
 
   @override
   void initState() {
@@ -59,14 +61,12 @@ class _MessagesViewState extends State<MessagesView> {
   @override
   void didUpdateWidget(covariant MessagesView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.activeKey != widget.activeKey) {
-      _loadActive();
-    }
+    _loadActive();
   }
 
   /// 打开会话时拉一页历史；游标与去重在 `AppState.loadHistory` 里。
   void _loadActive() {
-    final String? key = widget.activeKey;
+    final String? key = widget.state.activeConversationKey;
     if (key == null) {
       return;
     }
@@ -78,32 +78,33 @@ class _MessagesViewState extends State<MessagesView> {
 
   List<Conversation> get _filtered {
     final List<Conversation> all = widget.state.conversations;
-    if (widget.filter == 'dm') {
+    if (widget.state.filter == 'dm') {
       return all.where((Conversation c) => c.type == 'dm').toList();
     }
-    if (widget.filter == 'room') {
+    if (widget.state.filter == 'room') {
       return all.where((Conversation c) => c.isRoom).toList();
     }
     return all;
   }
 
   Future<void> _send(Conversation conv) async {
-    final String text = _composer.text;
+    final TextEditingController composer = _draftFor(conv.key);
+    final String text = composer.text;
     if (text.trim().isEmpty || _sending) {
       return;
     }
     setState(() {
       _sending = true;
-      _sendError = null;
+      _sendErrors.remove(conv.key);
     });
     try {
       await widget.state.sendMessage(conv, text);
       if (mounted) {
-        _composer.clear();
+        composer.clear();
       }
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _sendError = e.displayText);
+        setState(() => _sendErrors[conv.key] = e.displayText);
       }
     } finally {
       if (mounted) {
@@ -115,8 +116,9 @@ class _MessagesViewState extends State<MessagesView> {
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
-    final Conversation? active =
-        widget.activeKey == null ? null : widget.state.conversationOf(widget.activeKey!);
+    final Conversation? active = widget.state.activeConversationKey == null
+        ? null
+        : widget.state.conversationOf(widget.state.activeConversationKey!);
 
     return Row(
       children: <Widget>[
@@ -139,7 +141,15 @@ class _MessagesViewState extends State<MessagesView> {
                   children: <Widget>[
                     Text('消息', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
                     const Spacer(),
-                    const MoonTag(text: 'V1'),
+                    if (widget.onToggleList != null)
+                      IconButton(
+                        tooltip: '收起会话列表',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: widget.onToggleList,
+                        icon: Icon(Icons.chevron_left, size: 18, color: p.ink3),
+                      )
+                    else
+                      const MoonTag(text: 'V1'),
                   ],
                 ),
               ),
@@ -154,13 +164,13 @@ class _MessagesViewState extends State<MessagesView> {
                     ])
                       Expanded(
                         child: InkWell(
-                          onTap: () => widget.onFilter(key),
+                          onTap: () => widget.state.setFilter(key),
                           child: Container(
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               border: Border(
                                 bottom: BorderSide(
-                                  color: widget.filter == key ? p.ink : Colors.transparent,
+                                  color: widget.state.filter == key ? p.ink : Colors.transparent,
                                   width: 1,
                                 ),
                               ),
@@ -169,7 +179,7 @@ class _MessagesViewState extends State<MessagesView> {
                               label,
                               style: TextStyle(
                                 fontSize: 11.5,
-                                color: widget.filter == key ? p.ink : p.ink3,
+                                color: widget.state.filter == key ? p.ink : p.ink3,
                               ),
                             ),
                           ),
@@ -189,9 +199,9 @@ class _MessagesViewState extends State<MessagesView> {
                         itemCount: _filtered.length,
                         itemBuilder: (BuildContext context, int i) {
                           final Conversation c = _filtered[i];
-                          final bool selected = c.key == widget.activeKey;
+                          final bool selected = c.key == widget.state.activeConversationKey;
                           return InkWell(
-                            onTap: () => widget.onSelect(c.key),
+                            onTap: () => widget.state.selectConversation(c.key),
                             child: Container(
                               height: 52,
                               padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -275,6 +285,13 @@ class _MessagesViewState extends State<MessagesView> {
                       ),
                       child: Row(
                         children: <Widget>[
+                          if (!widget.showList)
+                            IconButton(
+                              tooltip: '会话列表',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: widget.onToggleList,
+                              icon: Icon(Icons.menu, size: 18, color: p.ink3),
+                            ),
                           MoonAvatar(name: active.title, seed: active.targetId, size: 30),
                           const SizedBox(width: 10),
                           Column(
@@ -304,18 +321,19 @@ class _MessagesViewState extends State<MessagesView> {
                       child: Container(
                         color: p.surface,
                         child: _MessageList(
+                          key: PageStorageKey<String>(active.key),
                           state: widget.state,
                           conversation: active,
                           onRetry: (ChatMessage m) => widget.state.retryMessage(active, m),
                         ),
                       ),
                     ),
-                    if (_sendError != null)
+                    if (_sendErrors[active.key] != null)
                       Container(
                         width: double.infinity,
                         color: p.surface,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        child: Text(_sendError!, style: TextStyle(fontSize: 11.5, color: p.accent)),
+                        child: Text(_sendErrors[active.key]!, style: TextStyle(fontSize: 11.5, color: p.accent)),
                       ),
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
@@ -334,7 +352,7 @@ class _MessagesViewState extends State<MessagesView> {
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               child: TextField(
-                                controller: _composer,
+                                controller: _draftFor(active.key),
                                 focusNode: _composerFocus,
                                 minLines: 1,
                                 maxLines: 4,
@@ -356,7 +374,8 @@ class _MessagesViewState extends State<MessagesView> {
                           MoonButton(
                             label: '发送',
                             busy: _sending,
-                            onPressed: _composer.text.trim().isEmpty ? null : () => _send(active),
+                            onPressed:
+                                _draftFor(active.key).text.trim().isEmpty ? null : () => _send(active),
                           ),
                         ],
                       ),
@@ -364,7 +383,7 @@ class _MessagesViewState extends State<MessagesView> {
                   ],
                 ),
         ),
-        // 信息栏：236 宽，容器 ≤1000 时收起（由外层控制）。
+        // 信息栏：236 宽，容器 ≤860 时收起（由外层控制）。
         if (active != null && widget.showInfo)
           Container(
             width: 236,
@@ -373,7 +392,7 @@ class _MessagesViewState extends State<MessagesView> {
               border: Border(left: BorderSide(color: p.line)),
             ),
             child: active.isRoom
-                ? _RoomInfo(state: widget.state, roomId: active.targetId, onOpenProfile: widget.onOpenProfile)
+                ? _RoomInfo(key: ValueKey<int>(active.targetId), state: widget.state, roomId: active.targetId)
                 : SingleChildScrollView(
                     child: ProfilePanel(
                       state: widget.state,
@@ -388,7 +407,12 @@ class _MessagesViewState extends State<MessagesView> {
 }
 
 class _MessageList extends StatefulWidget {
-  const _MessageList({required this.state, required this.conversation, required this.onRetry});
+  const _MessageList({
+    super.key,
+    required this.state,
+    required this.conversation,
+    required this.onRetry,
+  });
 
   final AppState state;
   final Conversation conversation;
@@ -504,11 +528,10 @@ class _MessageListState extends State<_MessageList> {
 
 /// S4 群信息：群名、群主、成员、邀请、退群 / 移人。
 class _RoomInfo extends StatefulWidget {
-  const _RoomInfo({required this.state, required this.roomId, required this.onOpenProfile});
+  const _RoomInfo({super.key, required this.state, required this.roomId});
 
   final AppState state;
   final int roomId;
-  final ValueChanged<int> onOpenProfile;
 
   @override
   State<_RoomInfo> createState() => _RoomInfoState();
@@ -516,8 +539,6 @@ class _RoomInfo extends StatefulWidget {
 
 class _RoomInfoState extends State<_RoomInfo> {
   final TextEditingController _invite = TextEditingController();
-  RoomDetail? _detail;
-  Paged<RoomMember>? _members;
   String? _inviteError;
   bool _busy = false;
 
@@ -533,19 +554,13 @@ class _RoomInfoState extends State<_RoomInfo> {
     super.dispose();
   }
 
+  /// 数据都由状态层持有：这里只触发加载，不在视图里存第二份。
   Future<void> _load() async {
     try {
-      final List<Object> r = await Future.wait(<Future<Object>>[
-        widget.state.api.room(token: widget.state.loginToken!, roomId: widget.roomId),
+      await Future.wait(<Future<Object>>[
+        widget.state.loadRoom(widget.roomId),
         widget.state.loadMembers(widget.roomId, force: true),
       ]);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _detail = r[0] as RoomDetail;
-        _members = r[1] as Paged<RoomMember>;
-      });
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _inviteError = e.displayText);
@@ -564,9 +579,9 @@ class _RoomInfoState extends State<_RoomInfo> {
       _inviteError = null;
     });
     try {
+      // `addMember` 已经把成员刷新过了，这里不再整群重拉。
       await widget.state.addMember(widget.roomId, id);
       _invite.clear();
-      await _load();
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _inviteError = e.displayText);
@@ -581,10 +596,8 @@ class _RoomInfoState extends State<_RoomInfo> {
   Future<void> _leave() async {
     setState(() => _busy = true);
     try {
+      // 退群是显式动作：状态层会把当前会话清掉，不再用 `-1` 哨兵通知外层。
       await widget.state.leaveRoom(widget.roomId);
-      if (mounted) {
-        widget.onOpenProfile(-1); // 触发外层重算会话
-      }
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _inviteError = e.displayText);
@@ -600,7 +613,9 @@ class _RoomInfoState extends State<_RoomInfo> {
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
     final int me = widget.state.account?.accountId ?? 0;
-    final bool isOwner = _detail?.ownerAccountId == me;
+    final RoomDetail? detail = widget.state.roomOf(widget.roomId);
+    final Paged<RoomMember>? members = widget.state.membersOf(widget.roomId);
+    final bool isOwner = detail?.ownerAccountId == me;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
@@ -610,13 +625,13 @@ class _RoomInfoState extends State<_RoomInfo> {
           style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 4),
-        MonoText('群 ${widget.roomId} · ${_detail?.memberCount ?? 0} 人'),
+        MonoText('群 ${widget.roomId} · ${detail?.memberCount ?? 0} 人'),
         const SizedBox(height: 16),
         Text('成员', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
         const SizedBox(height: 6),
-        for (final RoomMember m in _members?.items ?? const <RoomMember>[])
+        for (final RoomMember m in members?.items ?? const <RoomMember>[])
           InkWell(
-            onTap: () => widget.onOpenProfile(m.accountId),
+            onTap: () => widget.state.openProfile(m.accountId),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
@@ -631,7 +646,7 @@ class _RoomInfoState extends State<_RoomInfo> {
                       style: TextStyle(fontSize: 12.5, color: p.ink),
                     ),
                   ),
-                  if (m.accountId == _detail?.ownerAccountId) const MoonTag(text: '群主', strong: true),
+                  if (m.accountId == detail?.ownerAccountId) const MoonTag(text: '群主', strong: true),
                   if (isOwner && m.accountId != me)
                     IconButton(
                       tooltip: '移除',
@@ -641,7 +656,6 @@ class _RoomInfoState extends State<_RoomInfo> {
                           : () async {
                               try {
                                 await widget.state.removeMember(widget.roomId, m.accountId);
-                                await _load();
                               } on ApiException catch (e) {
                                 if (context.mounted) {
                                   setState(() => _inviteError = e.displayText);

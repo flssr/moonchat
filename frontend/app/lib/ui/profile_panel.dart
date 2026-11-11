@@ -8,28 +8,26 @@ import 'widgets.dart';
 
 /// S6 资料页的内容：只有名字、账号 ID、关系状态（`SCREEN-MAP.md` §4）。
 /// 非好友只有「加好友」，好友才有「发消息」「删除好友」。
+///
+/// 数据从 `AppState` 读（`profileOf` / `loadProfile`），不再自己请求；
+/// 内嵌与覆盖层共用这一个组件，行为只有一份。
 class ProfilePanel extends StatefulWidget {
   const ProfilePanel({
     super.key,
     required this.state,
     required this.accountId,
     this.onMessage,
-    this.onChanged,
   });
 
   final AppState state;
   final int accountId;
   final VoidCallback? onMessage;
 
-  /// 关系变化后通知外层刷新（同意申请后私聊入口立刻出现）。
-  final VoidCallback? onChanged;
-
   @override
   State<ProfilePanel> createState() => _ProfilePanelState();
 }
 
 class _ProfilePanelState extends State<ProfilePanel> {
-  Profile? _profile;
   String? _error;
   bool _busy = false;
 
@@ -43,7 +41,6 @@ class _ProfilePanelState extends State<ProfilePanel> {
   void didUpdateWidget(covariant ProfilePanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.accountId != widget.accountId) {
-      _profile = null;
       _error = null;
       _load();
     }
@@ -51,19 +48,11 @@ class _ProfilePanelState extends State<ProfilePanel> {
 
   Future<void> _load() async {
     try {
-      final Profile p = await widget.state.profile(widget.accountId);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _profile = p;
-        _error = null;
-      });
+      await widget.state.loadProfile(widget.accountId);
     } on ApiException catch (e) {
-      if (!mounted) {
-        return;
+      if (mounted) {
+        setState(() => _error = e.displayText);
       }
-      setState(() => _error = e.displayText);
     }
   }
 
@@ -71,8 +60,8 @@ class _ProfilePanelState extends State<ProfilePanel> {
     setState(() => _busy = true);
     try {
       await action();
+      // 关系动作会让状态层清掉资料页缓存，重新拉一次拿最新的 is_friend。
       await _load();
-      widget.onChanged?.call();
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +85,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
     if (_error != null) {
       return MoonEmpty(title: _error!);
     }
-    final Profile? profile = _profile;
+    final Profile? profile = widget.state.profileOf(widget.accountId);
     if (profile == null) {
       return const Padding(
         padding: EdgeInsets.all(24),
@@ -117,7 +106,8 @@ class _ProfilePanelState extends State<ProfilePanel> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(profile.displayName, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink)),
+                    Text(profile.displayName,
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink)),
                     const SizedBox(height: 2),
                     MonoText('#${profile.accountId}', selectable: true),
                   ],
@@ -212,75 +202,70 @@ class _ProfilePanelState extends State<ProfilePanel> {
     );
     if (ok == true) {
       await _run(() => widget.state.deleteFriend(profile.accountId));
-      widget.onChanged?.call();
     }
   }
 }
 
-/// 右侧抽屉形态的资料页（群成员、会话信息栏用）。
-Future<void> showProfileSheet(BuildContext context, AppState state, int accountId, {VoidCallback? onMessage}) {
-  return showGeneralDialog<void>(
-    context: context,
-    barrierDismissible: true,
-    barrierLabel: '关闭资料页',
-    barrierColor: Colors.black.withValues(alpha: 0.18),
-    transitionDuration: const Duration(milliseconds: 200),
-    pageBuilder: (BuildContext context, Animation<double> a, Animation<double> b) => const SizedBox.shrink(),
-    transitionBuilder: (BuildContext context, Animation<double> a, Animation<double> b, Widget child) {
-      final Animation<Offset> slide = Tween<Offset>(
-        begin: const Offset(0.04, 0),
-        end: Offset.zero,
-      ).animate(CurvedAnimation(parent: a, curve: const Cubic(.2, .7, .2, 1)));
-      return Align(
-        alignment: Alignment.centerRight,
-        child: FractionalTranslation(
-          translation: slide.value,
-          child: Material(
-            color: context.moon.surface,
-            child: Container(
-              width: MediaQuery.sizeOf(context).width < 480
-                  ? MediaQuery.sizeOf(context).width * 0.88
-                  : 352,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                border: Border(left: BorderSide(color: context.moon.line)),
-              ),
-              child: SafeArea(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: Icon(Icons.close, size: 16, color: context.moon.ink3),
-                          tooltip: '关闭',
+/// 资料页覆盖层：由外壳按 `AppState.profileAccountId` 渲染。
+/// 旧实现把内容放在 `showGeneralDialog` 的 `transitionBuilder` 里、page 是空的，
+/// 现在内容归组件、开关归状态，不再依赖一个空路由。
+class ProfileOverlay extends StatelessWidget {
+  const ProfileOverlay({super.key, required this.state});
+
+  final AppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    final int accountId = state.profileAccountId!;
+    return GestureDetector(
+      onTap: state.closeProfile,
+      child: ColoredBox(
+        color: Colors.black.withValues(alpha: 0.18),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: GestureDetector(
+            onTap: () {},
+            child: Material(
+              color: p.surface,
+              child: Container(
+                width: MediaQuery.sizeOf(context).width < 480
+                    ? MediaQuery.sizeOf(context).width * 0.88
+                    : 352,
+                height: double.infinity,
+                decoration: BoxDecoration(border: Border(left: BorderSide(color: p.line))),
+                child: SafeArea(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: IconButton(
+                            onPressed: state.closeProfile,
+                            icon: Icon(Icons.close, size: 16, color: p.ink3),
+                            tooltip: '关闭',
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: ProfilePanel(
-                          state: state,
-                          accountId: accountId,
-                          onMessage: onMessage == null
-                              ? null
-                              : () {
-                                  onMessage();
-                                  Navigator.of(context).pop();
-                                },
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: ProfilePanel(
+                            state: state,
+                            accountId: accountId,
+                            onMessage: () => state.selectConversation('dm:$accountId'),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
 }

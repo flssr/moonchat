@@ -85,18 +85,105 @@ class AppState extends ChangeNotifier {
   final Map<int, Paged<RoomMember>> _members = <int, Paged<RoomMember>>{};
   final Map<String, List<ChatMessage>> _messages = <String, List<ChatMessage>>{};
 
-  String? lastError;
   Timer? _renewTimer;
   Timer? _turmsTimer;
 
-  /// 历史翻页的运行状态：同一个会话不并发拉，翻到空页即到底。
+  // —— 导航状态：唯一一份，登出与切账号都会复位 ——
+  /// 当前视图：`messages` / `contacts` / `account`（`SCREEN-MAP.md` §2）。
+  String view = 'messages';
+  String? activeConversationKey;
+  String filter = 'all'; // all | dm | room
+  String contactsTab = 'friends'; // friends | pending
+  int? selectedContactId;
+
+  /// 资料页正在看的账号；null 表示没开。
+  int? profileAccountId;
+
+  void showView(String v) {
+    view = v;
+    if (v != 'messages') {
+      activeConversationKey = null;
+    }
+    notifyListeners();
+  }
+
+  void selectConversation(String? key) {
+    view = 'messages';
+    activeConversationKey = key;
+    if (key != null) {
+      // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
+      _historyFailed.remove(key);
+    }
+    notifyListeners();
+  }
+
+  void setFilter(String f) {
+    filter = f;
+    notifyListeners();
+  }
+
+  void setContactsTab(String t) {
+    contactsTab = t;
+    notifyListeners();
+  }
+
+  void setSelectedContact(int? id) {
+    selectedContactId = id;
+    notifyListeners();
+  }
+
+  void openProfile(int id) {
+    profileAccountId = id;
+    notifyListeners();
+  }
+
+  void closeProfile() {
+    profileAccountId = null;
+    notifyListeners();
+  }
+
+  void _resetNavigation() {
+    view = 'messages';
+    activeConversationKey = null;
+    filter = 'all';
+    contactsTab = 'friends';
+    selectedContactId = null;
+    profileAccountId = null;
+  }
+
+  /// 历史翻页的运行状态：同一个会话不并发拉；空页即到底；失败后先不重试。
   final Set<String> _historyLoading = <String>{};
   final Set<String> _historyDone = <String>{};
+  final Set<String> _historyFailed = <String>{};
+
+  // 资料页与群详情的缓存：视图只读，不再各自请求（避免 token 与错误映射出现第二份）。
+  final Map<int, Profile> _profiles = <int, Profile>{};
+  final Map<int, RoomDetail> _roomDetails = <int, RoomDetail>{};
 
   bool get isReady => phase == AuthPhase.ready;
   bool get isBusy => phase == AuthPhase.busy;
 
   Paged<RoomMember>? membersOf(int roomId) => _members[roomId];
+
+  Profile? profileOf(int accountId) => _profiles[accountId];
+
+  RoomDetail? roomOf(int roomId) => _roomDetails[roomId];
+
+  /// 资料页取数：视图只读 `profileOf`，写只走这里。
+  Future<Profile> loadProfile(int accountId) async {
+    final Profile p = await api.profile(token: loginToken!, accountId: accountId);
+    _profiles[accountId] = p;
+    notifyListeners();
+    return p;
+  }
+
+  /// 群详情取数（成员数、群主）。
+  Future<RoomDetail> loadRoom(int roomId) async {
+    final RoomDetail d = await api.room(token: loginToken!, roomId: roomId);
+    _roomDetails[roomId] = d;
+    notifyListeners();
+    return d;
+  }
 
   List<ChatMessage> messagesOf(String key) => _messages[key] ?? const <ChatMessage>[];
 
@@ -139,7 +226,6 @@ class AppState extends ChangeNotifier {
 
   Future<void> login({required String email, required String password}) async {
     phase = AuthPhase.busy;
-    lastError = null;
     notifyListeners();
     try {
       final LoginResult result = await api.login(email: email, password: password);
@@ -252,7 +338,13 @@ class AppState extends ChangeNotifier {
   /// 反复调用就是持续往前翻，翻到空页就认为到底了。
   Future<void> loadHistory(Conversation conv) async {
     final int me = account?.accountId ?? 0;
-    if (me == 0 || _historyLoading.contains(conv.key) || _historyDone.contains(conv.key)) {
+    // 读通道没连上时 `history()` 返回空数组，那不是「到底了」——不能据此写死 `_historyDone`，
+    // 否则凭据续期/重连窗口里打开过的会话，重登后永远拉不到历史。
+    if (me == 0 ||
+        !realtimeUp ||
+        _historyLoading.contains(conv.key) ||
+        _historyDone.contains(conv.key) ||
+        _historyFailed.contains(conv.key)) {
       return;
     }
     _historyLoading.add(conv.key);
@@ -275,7 +367,8 @@ class AppState extends ChangeNotifier {
         _ingest(m);
       }
     } catch (_) {
-      // 读通道不可用时只是没有历史，不影响发送与其它动作。
+      // 失败就停手，别在滚动里反复打；重新打开会话会清掉这个标记。
+      _historyFailed.add(conv.key);
     } finally {
       _historyLoading.remove(conv.key);
       notifyListeners();
@@ -301,6 +394,12 @@ class AppState extends ChangeNotifier {
     rooms = const <Room>[];
     _members.clear();
     _messages.clear();
+    _profiles.clear();
+    _roomDetails.clear();
+    _historyDone.clear();
+    _historyLoading.clear();
+    _historyFailed.clear();
+    _resetNavigation();
     phase = AuthPhase.loggedOut;
     notifyListeners();
   }
@@ -339,6 +438,8 @@ class AppState extends ChangeNotifier {
     friends = results[1] as List<Friendship>;
     pending = (results[2] as List<Friendship>).where((Friendship f) => f.incoming).toList();
     rooms = results[3] as List<Room>;
+    // 关系变了之后资料页的 `is_friend` 会过期，清掉让下次打开重新取。
+    _profiles.clear();
     notifyListeners();
   }
 
@@ -349,6 +450,12 @@ class AppState extends ChangeNotifier {
     try {
       _members.clear();
       _messages.clear();
+      _profiles.clear();
+      _roomDetails.clear();
+      _historyDone.clear();
+      _historyLoading.clear();
+      _historyFailed.clear();
+      _resetNavigation();
       await _openSession(accountId);
       phase = AuthPhase.ready;
     } finally {
@@ -362,8 +469,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     return created;
   }
-
-  Future<Profile> profile(int accountId) => api.profile(token: loginToken!, accountId: accountId);
 
   // —— 好友 ——
 

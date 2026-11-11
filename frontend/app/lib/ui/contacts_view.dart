@@ -11,31 +11,24 @@ import 'widgets.dart';
 /// S5 联系人：好友、待处理、按账号 ID 加好友、建群。
 /// 没有搜人：定位账号只有账号 ID 与主页链接两条路。
 class ContactsView extends StatefulWidget {
-  const ContactsView({
-    super.key,
-    required this.state,
-    required this.onMessage,
-    required this.onSelectConversation,
-  });
+  const ContactsView({super.key, required this.state});
 
   final AppState state;
-  final ValueChanged<int> onMessage;
-
-  /// 建群后跳到该群会话。
-  final ValueChanged<String> onSelectConversation;
 
   @override
   State<ContactsView> createState() => _ContactsViewState();
 }
 
 class _ContactsViewState extends State<ContactsView> {
-  String _tab = 'friends';
-  int? _selectedId;
   final TextEditingController _lookup = TextEditingController();
   final TextEditingController _roomName = TextEditingController();
   String? _lookupError;
   bool _showRoomForm = false;
   bool _busy = false;
+
+  /// 页签与选中项都在状态层（`SCREEN-MAP.md` §2 的 `friendsTab` / `selectedContact`）。
+  String get _tab => widget.state.contactsTab;
+  int? get _selectedId => widget.state.selectedContactId;
 
   @override
   void dispose() {
@@ -55,8 +48,8 @@ class _ContactsViewState extends State<ContactsView> {
       _busy = true;
     });
     try {
-      final Profile p = await widget.state.profile(id);
-      setState(() => _selectedId = p.accountId);
+      await widget.state.loadProfile(id);
+      widget.state.setSelectedContact(id);
     } on ApiException catch (e) {
       setState(() => _lookupError = e.displayText);
     } finally {
@@ -80,7 +73,7 @@ class _ContactsViewState extends State<ContactsView> {
       final Room room = await widget.state.createRoom(name);
       _roomName.clear();
       setState(() => _showRoomForm = false);
-      widget.onSelectConversation('room:${room.roomId}');
+      widget.state.selectConversation('room:${room.roomId}');
     } on ApiException catch (e) {
       setState(() => _lookupError = e.displayText);
     } finally {
@@ -218,7 +211,7 @@ class _ContactsViewState extends State<ContactsView> {
                     ])
                       Expanded(
                         child: InkWell(
-                          onTap: () => setState(() => _tab = key),
+                          onTap: () => widget.state.setContactsTab(key),
                           child: Container(
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
@@ -253,7 +246,7 @@ class _ContactsViewState extends State<ContactsView> {
                             itemBuilder: (BuildContext context, int i) {
                               final Friendship f = friends[i];
                               return InkWell(
-                                onTap: () => setState(() => _selectedId = f.peerAccountId),
+                                onTap: () => widget.state.setSelectedContact(f.peerAccountId),
                                 child: Container(
                                   height: 52,
                                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -273,7 +266,7 @@ class _ContactsViewState extends State<ContactsView> {
                                       IconButton(
                                         tooltip: '发消息',
                                         visualDensity: VisualDensity.compact,
-                                        onPressed: () => widget.onMessage(f.peerAccountId),
+                                        onPressed: () => widget.state.selectConversation('dm:${f.peerAccountId}'),
                                         icon: Icon(Icons.chat_bubble_outline, size: 15, color: p.ink3),
                                       ),
                                     ],
@@ -337,8 +330,7 @@ class _ContactsViewState extends State<ContactsView> {
                       child: ProfilePanel(
                         state: widget.state,
                         accountId: _selectedId!,
-                        onMessage: () => widget.onMessage(_selectedId!),
-                        onChanged: () => setState(() {}),
+                        onMessage: () => widget.state.selectConversation('dm:$_selectedId'),
                       ),
                     ),
                   ),
