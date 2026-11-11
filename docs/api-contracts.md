@@ -385,7 +385,10 @@ Authorization: Bearer <token>
 
 ### 6.2 `GET /api/rooms`
 
-**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`。
+**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`、`turms_group_id`。
+
+- `turms_group_id` 是 Turms 生成的群句柄（雪花值，按**字符串**给，避免 JS 精度丢失）；投影还没回填时为 `null`。它**只在这个列表接口出现**，用途只有一个：客户端/agent 用它把 Turms 推送里的 `groupId` 与群历史查询对回 `room_id`。
+- 对外的群标识仍是 `room_id`：写接口（#16–#19）的 `id`、成员列表、资料页都只认 `room_id`。
 
 **读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——客户端现在建不了新群，但 Turms 里仍可能有残留的游离群，它的群列表不等于业务列表（`moonchat-messaging` 的已知缺口）。
 
@@ -529,7 +532,7 @@ Authorization: Bearer <token>
 | `account_info` | #1、#5、#6 | #2、#3、#4、#7、#15 | `credential_hash`、`email`、`status`、时间列 |
 | `friendship` | #9、#10、#11 | #7（`is_friend`）、#8、#15（`is_friend`）、#19（授权） | `id`、`requested_by`（对外是 `incoming`）、`deleted_at`、时间列（只暴露 `requested_at`） |
 | `friendship_reverse` | #9、#10、#11（同事务镜像） | #8（按较大 id 查） | 全部列；它只是查询镜像 |
-| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_group_id`、`turms_sync_state`、`updated_at` |
+| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_sync_state`、`updated_at`；`turms_group_id` 只在 #13 以字符串出现（投递句柄，不是对外标识） |
 | `room_member` | #12、#16、#17、#18 | #14（计数）、#15、#19（授权） | `deleted_at`；不暴露角色（没有该列） |
 | `account_room` | #12、#16、#17、#18（同事务镜像） | #13 | 全部列；`joined_at` 通过 `room_member` 语义暴露 |
 

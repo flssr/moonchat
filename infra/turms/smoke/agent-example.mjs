@@ -15,6 +15,7 @@
 //
 // 可用环境变量：MOONCHAT_API_BASE（默认 http://localhost:8080）、MOONCHAT_ACCOUNT_KEY（必填）、
 //              MOONCHAT_REPLY_PREFIX（默认「收到：」）、MOONCHAT_DEVICE_TYPE（默认 browser，小写；
+//              连 Turms 时转成大写，例如 browser → BROWSER、others → OTHERS）。
 
 import TurmsClient from 'turms-client-js';
 
@@ -69,42 +70,54 @@ await client.userService.login({
 });
 console.log('已连上 /im，等消息（Ctrl+C 退出）');
 
-// 凭据 12 小时过期：agent 自己负责在到期前重换，否则首次重连就带着死 JWT 登不进去。
-let credential = session.turms.credential;
-async function renew() {
-    const res = await fetch(`${API_BASE}/api/sessions`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ account_key: ACCOUNT_KEY }),
-    });
-    if (!res.ok) {
-        console.error(`续期失败 ${res.status}: ${await res.text()}`);
-        return;
-    }
-    const fresh = await res.json();
-    credential = fresh.turms.credential;
-    console.log('Turms 凭据已续期');
-}
-const expiresAt = Date.parse(session.expires_at ?? '');
-if (Number.isFinite(expiresAt)) {
-    const lead = Math.max(expiresAt - Date.now() - 30 * 60 * 1000, 60 * 1000);
-    setInterval(renew, lead).unref();
-}
+// 凭据 12 小时过期：示例是短命进程，重启时重跑一遍即可。
+// 长驻 agent 要在到期前重调 /api/sessions，并用新 JWT 重新 login（只换局部变量不会生效）。
 
 // ③ 收到一条就回一句：发言走写入网关，不经过自己的 Turms 会话。
+// 群推送里的 groupId 是 Turms 句柄，不是 Biz 的 room_id；用 GET /api/rooms 建映射再回话。
+const roomIdsByTurmsGroupId = new Map();
+
+async function roomIdFor(turmsGroupId) {
+    const key = String(turmsGroupId);
+    if (roomIdsByTurmsGroupId.has(key)) {
+        return roomIdsByTurmsGroupId.get(key);
+    }
+    const res = await fetch(`${API_BASE}/api/rooms`, {
+        headers: { authorization: `Bearer ${ACCOUNT_KEY}` },
+    });
+    if (!res.ok) {
+        console.error(`读群列表失败 ${res.status}: ${await res.text()}`);
+        return null;
+    }
+    const body = await res.json();
+    for (const room of body.items ?? []) {
+        if (room.turms_group_id != null) {
+            roomIdsByTurmsGroupId.set(String(room.turms_group_id), room.room_id);
+        }
+    }
+    return roomIdsByTurmsGroupId.get(key) ?? null;
+}
+
 client.messageService.addMessageListener(async (message) => {
     // 整段包住：这个回调 reject 会以未处理拒绝结束整个长驻进程。
     try {
         const senderId = String(message.senderId ?? '');
         const text = message.text ?? '';
-        // 自己的发言也会推回来，别回声成环；没有发送者或内容的通知直接忽略。
-        if (!senderId || !text || senderId === myId) {
+        // 自己的发言也会推回来，别回声成环；别的 agent 已经回过前缀的也不再接。
+        if (!senderId || !text || senderId === myId || text.startsWith(REPLY_PREFIX)) {
             return;
         }
         const isGroup = message.groupId !== null && message.groupId !== undefined;
-        const type = isGroup ? 'room' : 'dm';
-        const targetId = isGroup ? message.groupId : senderId;
+        let targetId = senderId;
+        if (isGroup) {
+            targetId = await roomIdFor(message.groupId);
+            if (targetId == null) {
+                console.error(`收到未映射的群消息：groupId=${message.groupId}`);
+                return;
+            }
+        }
 
+        const type = isGroup ? 'room' : 'dm';
         console.log(`收到 ${isGroup ? `群 ${targetId}` : `私聊 ${senderId}`}：${text}`);
         // 写入网关正文上限 500：入向可能已经 500 字，带上前缀就超了。
         const reply = `${REPLY_PREFIX}${text}`.slice(0, 500);

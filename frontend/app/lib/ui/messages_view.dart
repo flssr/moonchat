@@ -151,7 +151,7 @@ class _MessagesViewState extends State<MessagesView> {
                   children: <Widget>[
                     Text('消息', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
                     const Spacer(),
-                    if (widget.onToggleList != null)
+                    if (widget.onToggleList != null && widget.state.activeConversationKey != null)
                       IconButton(
                         tooltip: '收起会话列表',
                         visualDensity: VisualDensity.compact,

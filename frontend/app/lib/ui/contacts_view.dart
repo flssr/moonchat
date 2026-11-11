@@ -44,6 +44,9 @@ class _ContactsViewState extends State<ContactsView> {
   }
 
   Future<void> _find() async {
+    if (_busy) {
+      return;
+    }
     final int? id = int.tryParse(_lookup.text.trim());
     if (id == null) {
       setState(() => _lookupError = '需要数字账号 ID');
@@ -87,6 +90,9 @@ class _ContactsViewState extends State<ContactsView> {
   }
 
   Future<void> _createRoom() async {
+    if (_busy) {
+      return;
+    }
     final String name = _roomName.text.trim();
     if (name.isEmpty || name.length > 20) {
       setState(() => _roomError = '群名 1–20 字');

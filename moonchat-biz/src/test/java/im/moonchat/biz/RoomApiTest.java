@@ -41,7 +41,8 @@ class RoomApiTest extends ApiTestSupport {
                     and a.joined_at = m.joined_at and a.deleted_at is null
                 """, Long.class, roomId, owner.accountId())).isEqualTo(1);
 
-        // 对外的群标识只有 room_id：turms_group_id 与 turms_sync_state 一概不出门
+        // 对外的群标识只有 room_id：详情里不出现 turms_group_id / turms_sync_state
+        // （列表 #13 例外，它要给出投递句柄，见下一条用例）
         mockMvc.perform(get("/api/rooms/" + roomId)
                         .header(HttpHeaders.AUTHORIZATION, bearer(owner.token())))
                 .andExpect(status().isOk())
@@ -58,13 +59,18 @@ class RoomApiTest extends ApiTestSupport {
         Caller owner = newCaller();
         Caller outsider = newCaller();
         long roomId = createRoom(owner, "读书会");
+        Long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
+        assertThat(turmsGroupId).isNotNull();
 
         mockMvc.perform(get("/api/rooms")
                         .header(HttpHeaders.AUTHORIZATION, bearer(owner.token())))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].room_id").value(roomId))
-                .andExpect(jsonPath("$.items[0].joined_at").exists());
+                .andExpect(jsonPath("$.items[0].joined_at").exists())
+                // 群历史/推送归并要的 Turms 句柄：字符串，避免前端 JS 丢精度
+                .andExpect(jsonPath("$.items[0].turms_group_id").value(turmsGroupId.toString()));
 
         mockMvc.perform(get("/api/rooms")
                         .header(HttpHeaders.AUTHORIZATION, bearer(outsider.token())))

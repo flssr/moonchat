@@ -111,20 +111,31 @@ require(room.status === 201 && room.json.room_id, '建群', `status=${room.statu
 const roomId = room.json.room_id;
 const invite = await post(`/api/rooms/${roomId}/members`, { account_id: B }, tokenA);
 check('拉人进群 201', invite.status === 201, `${invite.status}`);
-// 拉人要先投影进 Turms 才轮得到投递；发一条、等一会儿，最多重试三次。
-let gsend;
-for (let attempt = 1; attempt <= 3; attempt++) {
-    gsend = await post(`/api/conversations/room/${roomId}/messages`, { text: '群里的第一条' }, tokenA);
-    if (gsend.status === 201) {
-        break;
-    }
-    await new Promise((r) => setTimeout(r, 1500));
-}
-check('群消息 201', gsend?.status === 201, `message_id=${gsend?.json.message_id} status=${gsend?.status}`);
+// 拉人返回时投影已同步跑完；A 发群消息不再需要重试。
+const gsend = await post(`/api/conversations/room/${roomId}/messages`, { text: '群里的第一条' }, tokenA);
+check('群消息 201', gsend.status === 201, `message_id=${gsend.json.message_id} status=${gsend.status}`);
 const gotGroup = await waitFor('群消息推送', () => received.includes('群里的第一条'));
 check('B 收到群消息推送', gotGroup, JSON.stringify(received));
 
-// ⑨ 资料页只返回三项
+// ⑨ 群历史要拿列表里的 turms_group_id 去查，不是 room_id
+const roomList = await get('/api/rooms', tokenA);
+const roomItem = (roomList.json.items ?? []).find((item) => item.room_id === roomId);
+check('群列表带字符串 turms_group_id',
+    typeof roomItem?.turms_group_id === 'string' && /^\d+$/.test(roomItem.turms_group_id),
+    `turms_group_id=${roomItem?.turms_group_id}`);
+const groupHistory = roomItem?.turms_group_id
+    ? await BClient.messageService.queryMessages({
+        areGroupMessages: true,
+        fromIds: [roomItem.turms_group_id],
+        maxCount: 50,
+        descending: true,
+    })
+    : { data: [] };
+check('B 能用 turms_group_id 查到群历史',
+    (groupHistory.data ?? []).some((m) => m.text === '群里的第一条'),
+    `查到 ${(groupHistory.data ?? []).length} 条`);
+
+// ⑩ 资料页只返回三项
 const prof = await get(`/api/accounts/${B}`, tokenA);
 const keys = Object.keys(prof.json).sort().join(',');
 check('资料页字段只有三样', keys === 'account_id,display_name,is_friend', keys);

@@ -16,17 +16,18 @@ class IncomingMessage {
   final String text;
   final int senderId;
   final DateTime? sentAt;
-  final int? groupId;
+
+  /// Turms 的群句柄（雪花 id，字符串）：不是 PG `room_id`，归并与历史查询都要先映射。
+  final String? groupId;
   final int? recipientId;
 
   bool get isGroupMessage => groupId != null;
 
-  /// 群消息归到 `room:<groupId>`，私聊归到对端账号。
-  /// 解不出来的（自己发的私聊却没有 `recipientId`）返回空串，由调用方丢弃——
-  /// 否则会落到 `dm:<自己>` 这种点不开的幽灵会话。
+  /// 私聊归到对端账号；群消息的 key 由 `AppState` 用 `turms_group_id → room_id` 映射后拼，
+  /// 这里返回空串，由调用方丢弃或改走群映射。
   String conversationKeyFor(int myAccountId) {
     if (groupId != null) {
-      return 'room:$groupId';
+      return '';
     }
     final int? peer = senderId == myAccountId ? recipientId : senderId;
     if (peer == null || peer == myAccountId) {
@@ -49,9 +50,10 @@ abstract class RealtimeClient {
   });
 
   /// 按 `deliveryDate` 往回翻；`before` 传当前最早一条的时间。
+  /// `targetId` 是 Turms 认的 id：私聊是对端账号 id，群是 `turms_group_id`。
   Future<List<IncomingMessage>> history({
     required String conversationType,
-    required int targetId,
+    required String targetId,
     DateTime? before,
     int maxCount = 50,
   });

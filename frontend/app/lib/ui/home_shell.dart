@@ -56,8 +56,10 @@ class _HomeShellState extends State<HomeShell> {
               _lastActiveKey = state.activeConversationKey;
               _listOpen = null;
             }
+            // 没有选中会话时列表就是唯一可用的导航，不能再被收起；选中后才允许手动开合。
             final bool listVisible = !narrow ||
-                (_listOpen ?? (state.activeConversationKey == null));
+                state.activeConversationKey == null ||
+                (_listOpen ?? false);
 
             final Widget body = switch (state.view) {
               'contacts' => ContactsView(state: state, narrow: narrow),

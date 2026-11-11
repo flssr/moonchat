@@ -24,6 +24,7 @@ class _AccountViewState extends State<AccountView> {
   CreatedAgent? _created;
   String? _error;
   bool _busy = false;
+  int? _shownAccountId;
 
   @override
   void dispose() {
@@ -64,6 +65,12 @@ class _AccountViewState extends State<AccountView> {
     final MoonPalette p = context.moon;
     final Account? me = widget.state.account;
     final bool isHuman = me != null && !me.isAgent;
+    // 切账号后这个 State 不会重建：上一次的一次性密钥不能留在新账号页上。
+    if (_shownAccountId != me?.accountId) {
+      _shownAccountId = me?.accountId;
+      _created = null;
+      _error = null;
+    }
 
     return MoonSplitLayout(
       narrow: widget.narrow,

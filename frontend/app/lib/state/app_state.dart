@@ -18,6 +18,7 @@ class Conversation {
     required this.title,
     this.ownerAccountId,
     this.memberCount,
+    this.turmsGroupId,
   });
 
   final String type; // 'dm' | 'room'
@@ -25,6 +26,9 @@ class Conversation {
   final String title;
   final int? ownerAccountId;
   final int? memberCount;
+
+  /// 群会话的 Turms 句柄：查历史与归并推送用，不参与 Biz 写接口。
+  final String? turmsGroupId;
 
   String get key => '$type:$targetId';
   bool get isRoom => type == 'room';
@@ -78,6 +82,11 @@ class AppState extends ChangeNotifier {
 
   /// 切账号进行中：外壳保持挂载，只显示忙碌态。
   bool switching = false;
+
+  /// 归属者的登录 JWT：切号与 `GET /api/accounts/mine` 永远用它。
+  /// 切进 agent 后 `loginToken` 会变成该 agent 的 JWT，但 agent 不能替归属者再切号。
+  String? identityToken;
+
   String? loginToken;
   DateTime? loginExpiresAt;
   Account? account;
@@ -91,6 +100,9 @@ class AppState extends ChangeNotifier {
 
   final Map<int, Paged<RoomMember>> _members = <int, Paged<RoomMember>>{};
   final Map<String, List<ChatMessage>> _messages = <String, List<ChatMessage>>{};
+
+  /// Turms group id → PG room id：群推送归并与群历史查询都靠它。
+  final Map<String, int> _roomIdByTurmsGroupId = <String, int>{};
 
   Timer? _renewTimer;
   Timer? _turmsTimer;
@@ -175,6 +187,15 @@ class AppState extends ChangeNotifier {
   bool get isReady => phase == AuthPhase.ready;
   bool get isBusy => phase == AuthPhase.busy;
 
+  /// 晚到的异步回调可能在 dispose 之后才 notify：统一在这里挡掉。
+  @override
+  void notifyListeners() {
+    if (_disposed) {
+      return;
+    }
+    super.notifyListeners();
+  }
+
   Paged<RoomMember>? membersOf(int roomId) => _members[roomId];
 
   Profile? profileOf(int accountId) => _profiles[accountId];
@@ -211,6 +232,7 @@ class AppState extends ChangeNotifier {
           title: r.name,
           ownerAccountId: r.ownerAccountId,
           memberCount: _members[r.roomId]?.total,
+          turmsGroupId: r.turmsGroupId,
         ),
     ];
     return out;
@@ -241,6 +263,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final LoginResult result = await api.login(email: email, password: password);
+      identityToken = result.token;
       loginToken = result.token;
       loginExpiresAt = result.expiresAt;
       account = result.account;
@@ -258,7 +281,8 @@ class AppState extends ChangeNotifier {
 
   /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`HANDOFF.md` §4）。
   Future<void> _openSession(int accountId) async {
-    final AccountSession session = await api.sessionForOwner(token: loginToken!, accountId: accountId);
+    // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
+    final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);
     account = session.account;
     turms = session.turms;
     if (session.loginToken != null) {
@@ -334,9 +358,20 @@ class AppState extends ChangeNotifier {
     if (me == 0) {
       return;
     }
-    final String key = incoming.conversationKeyFor(me);
-    if (key.isEmpty) {
-      return;
+    final String key;
+    if (incoming.groupId != null) {
+      final int? roomId = _roomIdByTurmsGroupId[incoming.groupId];
+      if (roomId == null) {
+        // 这个群还没出现在「我的群」里（刚被拉入、客户端尚未刷新）：先不落，
+        // 刷新后历史会把这段时间的消息补进来。
+        return;
+      }
+      key = 'room:$roomId';
+    } else {
+      key = incoming.conversationKeyFor(me);
+      if (key.isEmpty) {
+        return;
+      }
     }
     final List<ChatMessage> list = _messages.putIfAbsent(key, () => <ChatMessage>[]);
     if (incoming.id.isNotEmpty &&
@@ -386,6 +421,17 @@ class AppState extends ChangeNotifier {
         _historyFailed.contains(conv.key)) {
       return;
     }
+    // 群历史查的是 Turms 的 group id，不是 room_id；句柄还没回填就先不查。
+    final String targetId;
+    if (conv.isRoom) {
+      final String? handle = conv.turmsGroupId;
+      if (handle == null || handle.isEmpty) {
+        return;
+      }
+      targetId = handle;
+    } else {
+      targetId = '${conv.targetId}';
+    }
     _historyLoading.add(conv.key);
     final List<ChatMessage> existing = _messages[conv.key] ?? const <ChatMessage>[];
     // 游标只认服务端确认过的消息：乐观消息的时间戳是客户端时钟，会算偏。
@@ -403,7 +449,7 @@ class AppState extends ChangeNotifier {
     try {
       final List<IncomingMessage> page = await realtime.history(
         conversationType: conv.type,
-        targetId: conv.targetId,
+        targetId: targetId,
         before: cursor,
       );
       for (final IncomingMessage m in page.reversed) {
@@ -431,8 +477,10 @@ class AppState extends ChangeNotifier {
     _turmsTimer?.cancel();
     realtime.disconnect();
     realtimeUp = false;
+    identityToken = null;
     loginToken = null;
     loginExpiresAt = null;
+    _turmsRenewFailures = 0;
     account = null;
     turms = null;
     accounts = const <Account>[];
@@ -441,6 +489,7 @@ class AppState extends ChangeNotifier {
     rooms = const <Room>[];
     _members.clear();
     _messages.clear();
+    _roomIdByTurmsGroupId.clear();
     _profiles.clear();
     _roomDetails.clear();
     _historyDone.clear();
@@ -460,9 +509,17 @@ class AppState extends ChangeNotifier {
     final Duration lead = expires.difference(DateTime.now().toUtc()) - const Duration(hours: 1);
     final Duration wait = lead.isNegative ? const Duration(minutes: 5) : lead;
     _renewTimer = Timer(wait, () async {
+      final String? token = identityToken;
+      if (token == null) {
+        return;
+      }
       try {
-        final LoginResult r = await api.refresh(loginToken!);
-        loginToken = r.token;
+        final LoginResult r = await api.refresh(token);
+        identityToken = r.token;
+        // 当前账号就是归属者时，数据调用也跟着换成新 token；切在 agent 上时别覆盖它的 JWT。
+        if (loginToken == token) {
+          loginToken = r.token;
+        }
         loginExpiresAt = r.expiresAt;
         _scheduleLoginRenewal();
       } catch (_) {
@@ -475,8 +532,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> refreshAll() async {
     final String token = loginToken!;
+    final String ownerToken = identityToken ?? token;
     final results = await Future.wait(<Future<Object>>[
-      api.mine(token),
+      // 账号列表永远按归属者查：切进 agent 后也要能把真人账号切回来。
+      api.mine(ownerToken),
       api.friendships(token: token, status: 'accepted'),
       api.friendships(token: token, status: 'pending'),
       api.rooms(token),
@@ -485,6 +544,10 @@ class AppState extends ChangeNotifier {
     friends = results[1] as List<Friendship>;
     pending = (results[2] as List<Friendship>).where((Friendship f) => f.incoming).toList();
     rooms = results[3] as List<Room>;
+    _roomIdByTurmsGroupId
+      ..clear()
+      ..addEntries(rooms.where((Room r) => r.turmsGroupId != null)
+          .map((Room r) => MapEntry<String, int>(r.turmsGroupId!, r.roomId)));
     // 关系变了之后资料页的 `is_friend` 与群详情的成员数都会过期，清掉重取。
     _profiles.clear();
     _roomDetails.clear();
@@ -497,8 +560,12 @@ class AppState extends ChangeNotifier {
     switching = true;
     notifyListeners();
     try {
+      _renewTimer?.cancel();
+      _turmsTimer?.cancel();
+      _turmsRenewFailures = 0;
       _members.clear();
       _messages.clear();
+      _roomIdByTurmsGroupId.clear();
       _profiles.clear();
       _roomDetails.clear();
       _historyDone.clear();
@@ -506,6 +573,7 @@ class AppState extends ChangeNotifier {
       _historyFailed.clear();
       _resetNavigation();
       await _openSession(accountId);
+      _scheduleLoginRenewal();
       phase = AuthPhase.ready;
     } catch (e) {
       // 换号失败就把会话收回登录页，别把界面留在切换中。
@@ -519,7 +587,12 @@ class AppState extends ChangeNotifier {
 
   Future<CreatedAgent> createAgent(String displayName) async {
     final CreatedAgent created = await api.createAgent(token: loginToken!, displayName: displayName);
-    accounts = await api.mine(loginToken!);
+    // 密钥只在创建响应里出现一次；列表刷新失败不能把这次响应一起吞掉，否则密钥永久丢失。
+    try {
+      accounts = await api.mine(identityToken ?? loginToken!);
+    } catch (_) {
+      // 账号列表下次 refreshAll 会补回来；这里保住 created 才是第一优先级。
+    }
     notifyListeners();
     return created;
   }
@@ -538,6 +611,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteFriend(int peerAccountId) async {
     await api.deleteFriend(token: loginToken!, peerAccountId: peerAccountId);
+    if (activeConversationKey == 'dm:$peerAccountId') {
+      activeConversationKey = null;
+    }
     await refreshAll();
   }
 
@@ -557,6 +633,9 @@ class AppState extends ChangeNotifier {
 
   Future<void> leaveRoom(int roomId) async {
     await api.leaveRoom(token: loginToken!, roomId: roomId);
+    if (activeConversationKey == 'room:$roomId') {
+      activeConversationKey = null;
+    }
     _members.remove(roomId);
     await refreshAll();
   }
@@ -598,10 +677,11 @@ class AppState extends ChangeNotifier {
     try {
       final SentMessage sent =
           await api.sendMessage(token: loginToken!, type: conv.type, id: conv.targetId, text: body);
+      // `message_id` 在 Web 上会丢精度，不能拿来当去重键：保留服务端 id 只作展示/内部用，
+      // 真正的精确 id 等 Turms 推送回来再认领（见 `_ingest`）。
       local
         ..state = MessageState.sent
         ..serverId = sent.messageId
-        ..serverIdText = sent.messageId.toString()
         ..sentAt = sent.sentAt ?? local.sentAt;
     } catch (e) {
       local.state = MessageState.failed;
@@ -620,7 +700,6 @@ class AppState extends ChangeNotifier {
       message
         ..state = MessageState.sent
         ..serverId = sent.messageId
-        ..serverIdText = sent.messageId.toString()
         ..sentAt = sent.sentAt ?? message.sentAt;
     } catch (e) {
       message.state = MessageState.failed;

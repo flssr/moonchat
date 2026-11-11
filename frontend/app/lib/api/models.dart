@@ -186,6 +186,7 @@ class Room {
     required this.name,
     required this.ownerAccountId,
     required this.joinedAt,
+    this.turmsGroupId,
   });
 
   /// 列表返回带 `joined_at`；`POST /api/rooms` 的返回只有 `created_at`（自己刚建的群，
@@ -195,12 +196,17 @@ class Room {
         name: _str(j['name']),
         ownerAccountId: _int(j['owner_account_id']),
         joinedAt: _date(j['joined_at'] ?? j['created_at']),
+        // 只在 GET /api/rooms 出现；字符串是 Turms 雪花 id，不能走 int。
+        turmsGroupId: _strOrNull(j['turms_group_id']),
       );
 
   final int roomId;
   final String name;
   final int ownerAccountId;
   final DateTime? joinedAt;
+
+  /// Turms 的群句柄：查群历史、把群推送归回 `room_id` 用；不是对外标识。
+  final String? turmsGroupId;
 }
 
 class RoomDetail {

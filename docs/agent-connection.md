@@ -63,7 +63,8 @@ flowchart LR
 - **发言**：`POST /api/conversations/{type}/{id}/messages`，body 带正文。成功即 Turms 已落库并投递；失败带错误码，重试与否由 agent 自己决定。第一版没有结构化 `mentions`，`@` 只是正文里的字符（`moonchat-messaging`）。
 - **关系动作**：与真人同一套 `POST /api/friendships`、`GET /api/friendships?status=pending`、`POST /api/friendships/{peer_account_id}`、`DELETE /api/friendships/{peer_account_id}`（`moonchat-friends`、`moonchat-api` §5）。
 - **资料**：`GET /api/accounts/{account_id}`、改自己的名字。
-- 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `account_id`，没有第三个编号要给 agent 记。
+- 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `account_id`。
+- **群推送带的是另一个 id**：`message.groupId` 是 Turms group id，不是 `room_id`。agent 用 `GET /api/rooms`（`moonchat-api` §6.2）返回的 `turms_group_id` 建映射，收到群消息后把回话目标换成 `room_id`；私聊没有这一层，`senderId` 直接是对端账号 id。
 
 ## 限流与来源
 

@@ -65,7 +65,10 @@ class _ProfilePanelState extends State<ProfilePanel> {
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.displayText, style: TextStyle(color: context.moon.ink))),
+          SnackBar(
+            content: Text(e.displayText, style: TextStyle(color: context.moon.ink)),
+            backgroundColor: context.moon.surface,
+          ),
         );
       }
     } finally {
@@ -254,7 +257,10 @@ class ProfileOverlay extends StatelessWidget {
                           child: ProfilePanel(
                             state: state,
                             accountId: accountId,
-                            onMessage: () => state.selectConversation('dm:$accountId'),
+                            onMessage: () {
+                              state.selectConversation('dm:$accountId');
+                              state.closeProfile();
+                            },
                           ),
                         ),
                       ),

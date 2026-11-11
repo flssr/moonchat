@@ -84,7 +84,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → 生成消息 id → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`id` / `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
 
 **读历史**
-客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻（Turms 的客户端查询只接受时间范围 + `maxCount` + `descending`，没有消息 id 范围参数）。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。
+客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻（Turms 的客户端查询只接受时间范围 + `maxCount` + `descending`，没有消息 id 范围参数）。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。群历史查询要的是 Turms 的 group id，不是对外的 `room_id`；客户端从 `GET /api/rooms` 的 `turms_group_id` 拿这个句柄（`moonchat-api` §6.2），推送里的 `groupId` 也用它映射回 `room:<room_id>`。
 
 ## 不变量
 

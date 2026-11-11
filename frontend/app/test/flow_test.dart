@@ -19,8 +19,9 @@ class _FakeRealtime implements RealtimeClient {
   void Function(IncomingMessage message)? _onMessage;
   void Function(Object error)? _onError;
 
-  /// 每次 `history()` 收到的游标，以及要返回的页（按调用顺序消费）。
+  /// 每次 `history()` 收到的游标与目标 id，以及要返回的页（按调用顺序消费）。
   final List<DateTime?> beforeCursors = <DateTime?>[];
+  final List<String> targetIds = <String>[];
   final List<List<IncomingMessage>> pages = <List<IncomingMessage>>[];
 
   @override
@@ -51,10 +52,11 @@ class _FakeRealtime implements RealtimeClient {
   @override
   Future<List<IncomingMessage>> history({
     required String conversationType,
-    required int targetId,
+    required String targetId,
     DateTime? before,
     int maxCount = 50,
   }) async {
+    targetIds.add(targetId);
     beforeCursors.add(before);
     if (pages.isEmpty) {
       return const <IncomingMessage>[];
@@ -158,6 +160,7 @@ MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
             'name': '月球基地',
             'owner_account_id': 1,
             'joined_at': '2026-11-09T10:00:00Z',
+            'turms_group_id': '7000000000000000007',
           },
         ],
       }, 200);
@@ -287,7 +290,27 @@ void main() {
     expect(list.single.mine, isFalse);
   });
 
-  test('加好友：申请成功后重新拉取，待处理里出现对方', () async {
+  test('群推送按 turms_group_id 归到 room:<room_id>，群历史用句柄查', () async {
+    final _FakeRealtime realtime = _FakeRealtime();
+    final AppState state = _newState(realtime: realtime);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    realtime.emit(const IncomingMessage(
+      id: '9001',
+      text: '群里说的',
+      senderId: 2,
+      groupId: '7000000000000000007',
+      sentAt: null,
+    ));
+    expect(state.messagesOf('room:7').length, 1, reason: 'Turms 群 id 要映射回 PG room_id');
+
+    final Conversation room = state.conversations.firstWhere((Conversation c) => c.isRoom);
+    await state.loadHistory(room);
+    expect(realtime.targetIds.last, '7000000000000000007', reason: '群历史查的是 Turms 句柄');
+  });
+
+  test('发好友申请后重新拉取，outgoing 不混进待处理', () async {
     final _FakeBiz biz = _FakeBiz();
     final AppState state = _stateOn(biz);
     addTearDown(state.dispose);
@@ -296,16 +319,24 @@ void main() {
 
     await state.requestFriend(4);
 
-    expect(biz.pending.single['peer_account_id'], 4);
-    expect(state.pending.single.peerAccountId, 4);
+    // GET /api/friendships?status=pending 只返回发给我的申请（§5.1），
+    // 我发出去的那条不能出现在 state.pending 里。
+    expect(biz.outgoing.single['peer_account_id'], 4);
+    expect(state.pending, isEmpty);
   });
 
   test('同意申请：申请移出待处理、进好友列表', () async {
     final _FakeBiz biz = _FakeBiz();
+    biz.pending.add(<String, Object?>{
+      'peer_account_id': 4,
+      'display_name': '阿星',
+      'status': 'pending',
+      'incoming': true,
+      'requested_at': '2026-11-10T09:00:00Z',
+    });
     final AppState state = _stateOn(biz);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
-    await state.requestFriend(4);
 
     await state.respondFriend(4, 'accept');
 
@@ -341,16 +372,18 @@ void main() {
     expect(state.conversations.map((Conversation c) => c.key), contains('room:${room.roomId}'));
   });
 
-  test('退群：群列表移除，会话也消失', () async {
+  test('退群：群列表移除，当前群会话也清掉', () async {
     final _FakeBiz biz = _FakeBiz();
     final AppState state = _stateOn(biz);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
+    state.selectConversation('room:7');
 
     await state.leaveRoom(7);
 
     expect(state.rooms, isEmpty);
     expect(state.conversations.map((Conversation c) => c.key), isNot(contains('room:7')));
+    expect(state.activeConversationKey, isNull, reason: '窄屏不能停在一个已经不存在的会话上');
   });
 
   test('401 一律回登录页并清掉凭据', () async {
@@ -422,6 +455,8 @@ void main() {
     await tester.tap(find.byTooltip('联系人'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    // 没有选中会话时列表就是唯一导航，不能再给「收起会话列表」。
+    expect(find.byTooltip('收起会话列表'), findsNothing);
     state.setSelectedContact(2);
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
@@ -535,6 +570,7 @@ void main() {
 
     await state.loadHistory(dm);
     expect(rt.beforeCursors.first, isNull, reason: '首屏没有游标');
+    expect(rt.targetIds.first, '2', reason: '私聊查的是对端账号 id');
     expect(state.messagesOf(dm.key).length, 2);
     expect(state.isHistoryDone(dm.key), isFalse);
 
@@ -581,7 +617,45 @@ void main() {
     status = 201;
     await state.retryMessage(dm, bubble);
     expect(state.messagesOf(dm.key).single.state, MessageState.sent);
-    expect(state.messagesOf(dm.key).single.serverIdText, '9001');
+    expect(state.messagesOf(dm.key).single.serverId, 9001);
+    // message_id 在 Web 上会丢精度，精确去重键等 Turms 推送回来再填。
+    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+  });
+
+  test('自己消息推送回来认领本地气泡，不插重复', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    await state.sendMessage(dm, '回声');
+    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000001',
+      text: '回声',
+      senderId: 1,
+      recipientId: 2,
+      sentAt: null,
+    ));
+    expect(state.messagesOf(dm.key), hasLength(1), reason: '同一条消息不能一真一假两条');
+    expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
+  });
+
+  test('切进 agent 后还能切回真人：账号列表用归属者 token 查', () async {
+    final AppState state = _stateOn(_FakeBiz());
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    await state.switchAccount(2);
+    expect(state.loginToken, 'login-jwt-2');
+    expect(state.accounts.length, 2, reason: 'agent 视角的 mine 只回它自己，切号列表会丢真人');
+
+    // 切回来必须用归属者的 JWT，而不是 agent 的 JWT。
+    await state.switchAccount(1);
+    expect(state.account?.accountId, 1);
+    expect(state.loginToken, 'login-jwt-1');
   });
 
   test('401 之后读通道要拆掉，本地消息清空', () async {
@@ -652,12 +726,14 @@ class _FakeBiz {
     },
   ];
   final List<Map<String, Object?>> pending = <Map<String, Object?>>[];
+  final List<Map<String, Object?>> outgoing = <Map<String, Object?>>[];
   final List<Map<String, Object?>> rooms = <Map<String, Object?>>[
     <String, Object?>{
       'room_id': 7,
       'name': '月球基地',
       'owner_account_id': 1,
       'joined_at': '2026-11-09T10:00:00Z',
+      'turms_group_id': '7000000000000000007',
     },
   ];
   bool unauthorized = false;
@@ -723,6 +799,11 @@ class _FakeBiz {
     if (method == 'POST' && path == '/api/sessions') {
       // 回显请求的 account_id：写死的话，切账号/多账号的用例永远看不出身份错位。
       final int id = (body['account_id'] as num?)?.toInt() ?? 1;
+      final String auth = req.headers['authorization'] ?? req.headers['Authorization'] ?? '';
+      // agent 的 JWT 切不回它归属者的真人账号；真实服务端也会 403。
+      if (auth == 'Bearer login-jwt-2' && id != 2) {
+        return _json(<String, Object?>{'code': 'forbidden', 'message': '这个账号不在你名下'}, 403);
+      }
       return _json(<String, Object?>{
         'account_id': id,
         'display_name': id == 1 ? '阿月' : '小助手',
@@ -738,8 +819,13 @@ class _FakeBiz {
       }, 200);
     }
     if (method == 'GET' && path == '/api/accounts/mine') {
+      final String auth = req.headers['authorization'] ?? req.headers['Authorization'] ?? '';
+      // 与真实 #4 一致：按当前账号查，agent 查不到归属者的账号。
+      final bool asAgent = auth == 'Bearer login-jwt-2';
       return _json(<String, Object?>{
-        'items': <Object?>[_account(1, '阿月'), _account(2, '小助手', type: 'agent')],
+        'items': asAgent
+            ? <Object?>[_account(2, '小助手', type: 'agent')]
+            : <Object?>[_account(1, '阿月'), _account(2, '小助手', type: 'agent')],
       }, 200);
     }
     if (method == 'GET' && path == '/api/friendships') {
@@ -748,11 +834,11 @@ class _FakeBiz {
     }
     if (method == 'POST' && path == '/api/friendships') {
       final int peer = (body['peer_account_id'] as num).toInt();
-      pending.add(<String, Object?>{
+      outgoing.add(<String, Object?>{
         'peer_account_id': peer,
         'display_name': '阿星',
         'status': 'pending',
-        'incoming': true,
+        'incoming': false,
         'requested_at': '2026-11-10T09:00:00Z',
       });
       return _json(<String, Object?>{
@@ -786,11 +872,14 @@ class _FakeBiz {
       return _json(<String, Object?>{'items': rooms}, 200);
     }
     if (method == 'POST' && path == '/api/rooms') {
+      final int roomId = _nextRoom++;
       final Map<String, Object?> room = <String, Object?>{
-        'room_id': _nextRoom++,
+        'room_id': roomId,
         'name': body['name'],
         'owner_account_id': 1,
-        'joined_at': '2026-11-10T12:00:00Z',
+        // 建群响应只有 created_at；joined_at 只出现在 GET /api/rooms 的列表里。
+        'created_at': '2026-11-10T12:00:00Z',
+        'turms_group_id': '7000000000000000$roomId',
       };
       rooms.add(room);
       return _json(room, 201);

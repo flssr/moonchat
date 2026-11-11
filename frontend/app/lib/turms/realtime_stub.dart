@@ -19,11 +19,11 @@ class UnsupportedRealtime implements RealtimeClient {
   @override
   Future<List<IncomingMessage>> history({
     required String conversationType,
-    required int targetId,
+    required String targetId,
     DateTime? before,
     int maxCount = 50,
   }) async =>
-      const <IncomingMessage>[];
+      throw StateError('这个平台没有 Turms Web 客户端');
 
   @override
   Future<void> disconnect() async {}
