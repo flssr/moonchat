@@ -36,6 +36,12 @@ class _MoonChatAppState extends State<MoonChatApp> {
     setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
   }
 
+  /// 缓存外壳：`HomeShell` 自己监听状态，这里只在「登录态或亮度变了」时重建，
+  /// 否则每次 notifyListeners 都会把整棵树重建一遍（并触发 didUpdateWidget）。
+  Widget? _gate;
+  bool? _gateReady;
+  Brightness? _gateBrightness;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -44,17 +50,19 @@ class _MoonChatAppState extends State<MoonChatApp> {
       theme: buildMoonTheme(Brightness.light),
       darkTheme: buildMoonTheme(Brightness.dark),
       themeMode: _mode,
-      home: AnimatedBuilder(
-        animation: _state,
+      home: ListenableBuilder(
+        listenable: _state,
         builder: (BuildContext context, Widget? _) {
-          if (!_state.isReady) {
-            return LoginScreen(state: _state);
+          final bool ready = _state.isReady;
+          final Brightness brightness = Theme.of(context).brightness;
+          if (_gate == null || ready != _gateReady || brightness != _gateBrightness) {
+            _gateReady = ready;
+            _gateBrightness = brightness;
+            _gate = ready
+                ? HomeShell(state: _state, onToggleTheme: _toggleTheme, brightness: brightness)
+                : LoginScreen(state: _state);
           }
-          return HomeShell(
-            state: _state,
-            onToggleTheme: _toggleTheme,
-            brightness: Theme.of(context).brightness,
-          );
+          return _gate!;
         },
       ),
     );

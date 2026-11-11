@@ -39,6 +39,7 @@ class ChatMessage {
     required this.state,
     required this.mine,
     this.serverId,
+    this.serverIdText,
     this.senderName,
   });
 
@@ -48,7 +49,10 @@ class ChatMessage {
   DateTime sentAt;
   MessageState state;
   final bool mine;
+
+  /// 雪花 id 超过 JS 的 2^53，`int` 在 Web 上会丢精度；比较一律用 [serverIdText]。
   int? serverId;
+  String? serverIdText;
   String? senderName;
 }
 
@@ -71,6 +75,9 @@ class AppState extends ChangeNotifier {
   bool realtimeUp = false;
 
   AuthPhase phase = AuthPhase.loggedOut;
+
+  /// 切账号进行中：外壳保持挂载，只显示忙碌态。
+  bool switching = false;
   String? loginToken;
   DateTime? loginExpiresAt;
   Account? account;
@@ -156,6 +163,11 @@ class AppState extends ChangeNotifier {
   final Set<String> _historyDone = <String>{};
   final Set<String> _historyFailed = <String>{};
 
+  /// Turms 续期失败后的重试计数：连续失败 3 次才认为读通道不可用。
+  int _turmsRenewFailures = 0;
+
+  bool _disposed = false;
+
   // 资料页与群详情的缓存：视图只读，不再各自请求（避免 token 与错误映射出现第二份）。
   final Map<int, Profile> _profiles = <int, Profile>{};
   final Map<int, RoomDetail> _roomDetails = <int, RoomDetail>{};
@@ -236,7 +248,8 @@ class AppState extends ChangeNotifier {
       phase = AuthPhase.ready;
       _scheduleLoginRenewal();
     } catch (e) {
-      phase = AuthPhase.loggedOut;
+      // 会话可能已经建了一半（token、读通道、推送订阅）：清干净再回登录页。
+      logout();
       rethrow;
     } finally {
       notifyListeners();
@@ -277,12 +290,18 @@ class AppState extends ChangeNotifier {
           loginToken = session.loginToken;
           loginExpiresAt = session.loginExpiresAt;
         }
+        _turmsRenewFailures = 0;
         await _connectRealtime();
         _scheduleTurmsRenewal();
       } catch (_) {
-        // 续不上就先断开读通道：界面还能用 REST 写，读会缺席。
-        realtimeUp = false;
-        notifyListeners();
+        // 单次续期失败不等于读通道死了：先按 1 分钟退避重试，连续 3 次才认输。
+        _turmsRenewFailures++;
+        if (_turmsRenewFailures >= 3) {
+          realtimeUp = false;
+          notifyListeners();
+          return;
+        }
+        _turmsTimer = Timer(const Duration(minutes: 1), _scheduleTurmsRenewal);
       }
     });
   }
@@ -309,17 +328,36 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// 推送进来的一条消息：按会话坐标落到本地列表，同一个 `messageId` 不重复插入。
+  /// 推送进来的一条消息：按会话坐标落到本地列表，同一条只落一次。
   void _ingest(IncomingMessage incoming) {
     final int me = account?.accountId ?? 0;
     if (me == 0) {
       return;
     }
     final String key = incoming.conversationKeyFor(me);
+    if (key.isEmpty) {
+      return;
+    }
     final List<ChatMessage> list = _messages.putIfAbsent(key, () => <ChatMessage>[]);
     if (incoming.id.isNotEmpty &&
-        list.any((ChatMessage m) => m.serverId != null && m.serverId.toString() == incoming.id)) {
+        list.any((ChatMessage m) => m.serverIdText == incoming.id)) {
       return;
+    }
+    // Turms 会把发送者自己的消息也推回来。若本地那条「发送中」还没拿到 REST 回执，
+    // 认领它而不是再插一条，否则同一个气泡会一真一假地留在列表里。
+    if (incoming.id.isNotEmpty) {
+      for (final ChatMessage m in list) {
+        if (m.serverIdText == null && m.mine && m.text == incoming.text) {
+          m
+            ..serverIdText = incoming.id
+            ..serverId = int.tryParse(incoming.id)
+            ..sentAt = incoming.sentAt ?? m.sentAt
+            ..state = MessageState.sent;
+          list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
+          notifyListeners();
+          return;
+        }
+      }
     }
     list.add(ChatMessage(
       localId: 'srv:${incoming.id}',
@@ -329,6 +367,7 @@ class AppState extends ChangeNotifier {
       state: MessageState.sent,
       mine: incoming.senderId == me,
       serverId: int.tryParse(incoming.id),
+      serverIdText: incoming.id.isEmpty ? null : incoming.id,
     ));
     list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
     notifyListeners();
@@ -349,22 +388,30 @@ class AppState extends ChangeNotifier {
     }
     _historyLoading.add(conv.key);
     final List<ChatMessage> existing = _messages[conv.key] ?? const <ChatMessage>[];
+    // 游标只认服务端确认过的消息：乐观消息的时间戳是客户端时钟，会算偏。
+    DateTime? oldest;
+    for (final ChatMessage m in existing) {
+      if (m.serverIdText != null) {
+        oldest = m.sentAt;
+        break;
+      }
+    }
     // 游标要排除边界那条消息本身：`deliveryDateEnd` 是闭区间，原样传会把最早一条再取回来一次，
     // 去重后没有进展，滚动续翻就会原地打转。
-    final DateTime? cursor =
-        existing.isEmpty ? null : existing.first.sentAt.subtract(const Duration(milliseconds: 1));
+    final DateTime? cursor = oldest?.subtract(const Duration(milliseconds: 1));
+    final int beforeCount = existing.length;
     try {
       final List<IncomingMessage> page = await realtime.history(
         conversationType: conv.type,
         targetId: conv.targetId,
         before: cursor,
       );
-      if (page.isEmpty) {
-        // 这一页空了：这个会话的历史到头了，不再重复请求。
-        _historyDone.add(conv.key);
-      }
       for (final IncomingMessage m in page.reversed) {
         _ingest(m);
+      }
+      // 空页，或整页都是重复（游标没前进）：都说明这个会话到头了。
+      if (page.isEmpty || (_messages[conv.key]?.length ?? 0) == beforeCount) {
+        _historyDone.add(conv.key);
       }
     } catch (_) {
       // 失败就停手，别在滚动里反复打；重新打开会话会清掉这个标记。
@@ -438,14 +485,16 @@ class AppState extends ChangeNotifier {
     friends = results[1] as List<Friendship>;
     pending = (results[2] as List<Friendship>).where((Friendship f) => f.incoming).toList();
     rooms = results[3] as List<Room>;
-    // 关系变了之后资料页的 `is_friend` 会过期，清掉让下次打开重新取。
+    // 关系变了之后资料页的 `is_friend` 与群详情的成员数都会过期，清掉重取。
     _profiles.clear();
+    _roomDetails.clear();
     notifyListeners();
   }
 
   /// 切到自己名下的另一个账号：与新登录同一条签发路径。
+  /// 用独立的 [switching] 而不是 `phase`，否则外壳会被拆掉、整屏跳回登录页。
   Future<void> switchAccount(int accountId) async {
-    phase = AuthPhase.busy;
+    switching = true;
     notifyListeners();
     try {
       _members.clear();
@@ -458,7 +507,12 @@ class AppState extends ChangeNotifier {
       _resetNavigation();
       await _openSession(accountId);
       phase = AuthPhase.ready;
+    } catch (e) {
+      // 换号失败就把会话收回登录页，别把界面留在切换中。
+      logout();
+      rethrow;
     } finally {
+      switching = false;
       notifyListeners();
     }
   }
@@ -519,6 +573,8 @@ class AppState extends ChangeNotifier {
     }
     final Paged<RoomMember> page = await api.members(token: loginToken!, roomId: roomId);
     _members[roomId] = page;
+    // 视图读 `membersOf`，不通知的话它要等下一次无关的状态变化才会看到这批成员。
+    notifyListeners();
     return page;
   }
 
@@ -545,6 +601,7 @@ class AppState extends ChangeNotifier {
       local
         ..state = MessageState.sent
         ..serverId = sent.messageId
+        ..serverIdText = sent.messageId.toString()
         ..sentAt = sent.sentAt ?? local.sentAt;
     } catch (e) {
       local.state = MessageState.failed;
@@ -563,6 +620,7 @@ class AppState extends ChangeNotifier {
       message
         ..state = MessageState.sent
         ..serverId = sent.messageId
+        ..serverIdText = sent.messageId.toString()
         ..sentAt = sent.sentAt ?? message.sentAt;
     } catch (e) {
       message.state = MessageState.failed;
@@ -580,8 +638,15 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) {
+      return;
+    }
+    _disposed = true;
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
+    // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。
+    api.onUnauthenticated = null;
+    realtime.disconnect();
     api.close();
     super.dispose();
   }

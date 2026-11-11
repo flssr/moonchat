@@ -30,7 +30,8 @@ class ApiException implements Exception {
   String get displayText {
     switch (code) {
       case 'validation_failed':
-        return field == null ? '输入不合法，请检查后重试' : '「$field」不合法';
+        // `field` 是契约里的字段名（可能是 `X-Device-Type` 这种头名），不直接给用户看。
+        return '有一项输入不合法，请检查后重试';
       case 'unauthenticated':
         return '邮箱或密码不对';
       case 'forbidden':
@@ -42,7 +43,8 @@ class ApiException implements Exception {
       case 'not_room_member':
         return '你已不在这个群里';
       case 'not_found':
-        return '账号或群不存在';
+        // 好友关系、群成员也有 `not_found`，别把用户指向错误的对象。
+        return '目标不存在或状态已经变了，刷新后再试';
       case 'conflict':
         return '状态已经变了，刷新后再试';
       case 'owner_cannot_leave':
@@ -66,7 +68,8 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),
-        _client = client ?? http.Client();
+        _client = client ?? http.Client(),
+        _ownsClient = client == null;
 
   /// 默认同源（nginx 反代 `/api`）；开发时用 `--dart-define=MOONCHAT_API_BASE=http://localhost:8080`。
   static const String defaultBaseUrl = String.fromEnvironment(
@@ -80,22 +83,36 @@ class ApiClient {
 
   final String _base;
   final http.Client _client;
+
+  /// 注入进来的 client 归调用方所有，`close()` 不能替它关。
+  final bool _ownsClient;
   static const Duration _timeout = Duration(seconds: 20);
 
   /// 401 的统一出口：由 `AppState` 挂上「清凭据回登录页」，不用每个调用点各判一次。
   void Function()? onUnauthenticated;
 
-  void close() => _client.close();
+  /// 只有自己创建的 client 才由自己关：注入进来的（如测试的 `MockClient`）归调用方。
+  void close() {
+    if (_ownsClient) {
+      _client.close();
+    }
+  }
 
   Uri _uri(String path, [Map<String, String>? query]) =>
       Uri.parse('$_base$path').replace(queryParameters: query);
 
+  /// 响应不是 JSON 信封（反代 502 HTML、GBK 错误页）时按上游不可用处理，
+  /// 别让 `FormatException`/`TypeError` 逃出 `ApiException` 这套分类。
   Future<Map<String, dynamic>> _json(http.Response res) async {
     if (res.body.isEmpty) {
       return const <String, dynamic>{};
     }
-    final Object? decoded = jsonDecode(utf8.decode(res.bodyBytes));
-    return (decoded as Map<String, dynamic>?) ?? const <String, dynamic>{};
+    try {
+      final Object? decoded = jsonDecode(utf8.decode(res.bodyBytes, allowMalformed: true));
+      return decoded is Map<String, dynamic> ? decoded : const <String, dynamic>{};
+    } on FormatException {
+      throw ApiException(code: 'upstream_unavailable', statusCode: res.statusCode);
+    }
   }
 
   Future<Map<String, dynamic>> _send(
@@ -121,7 +138,9 @@ class ApiClient {
 
     http.Response res;
     try {
-      res = await http.Response.fromStream(await _client.send(req)).timeout(_timeout);
+      // 两段都要设超时：只包读 body 的话，对端只接 socket 不回响应头时会永久挂住。
+      final http.StreamedResponse streamed = await _client.send(req).timeout(_timeout);
+      res = await http.Response.fromStream(streamed).timeout(_timeout);
     } on TimeoutException catch (e) {
       throw ApiException.network(e);
     } catch (e) {
@@ -138,7 +157,8 @@ class ApiClient {
       field: json['field'] as String?,
       statusCode: res.statusCode,
     );
-    if (error.isUnauthenticated) {
+    // 只有「带着凭据还被拒」才是会话失效；登录接口的 401 是密码错，不能顺手把会话拆了。
+    if (error.isUnauthenticated && token != null && token.isNotEmpty) {
       onUnauthenticated?.call();
     }
     throw error;

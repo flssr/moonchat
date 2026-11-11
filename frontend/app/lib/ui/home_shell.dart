@@ -34,8 +34,9 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
-  /// 窄屏下会话列表是否展开；宽屏恒为 false（由断点决定直接常显）。
-  bool _listOpen = false;
+  /// 窄屏下会话列表是否展开；null 表示按「有没有选中会话」自动决定。
+  bool? _listOpen;
+  String? _lastActiveKey;
 
   @override
   Widget build(BuildContext context) {
@@ -56,8 +57,13 @@ class _HomeShellState extends State<HomeShell> {
           builder: (BuildContext context, BoxConstraints c) {
             final bool narrow = c.maxWidth < MoonBreakpoints.hideList;
             final bool showInfo = c.maxWidth >= MoonBreakpoints.hideInfo;
-            // 窄屏默认收起列表；没有选中会话时直接展开，避免开局是一块空白。
-            final bool listVisible = !narrow || _listOpen || state.activeConversationKey == null;
+            // 选中/清空会话后回到自动模式，否则窄屏会卡在「列表 + 被挤扁的消息区」。
+            if (state.activeConversationKey != _lastActiveKey) {
+              _lastActiveKey = state.activeConversationKey;
+              _listOpen = null;
+            }
+            final bool listVisible = !narrow ||
+                (_listOpen ?? (state.activeConversationKey == null));
 
             final Widget body = switch (state.view) {
               'contacts' => ContactsView(state: state),
@@ -67,7 +73,7 @@ class _HomeShellState extends State<HomeShell> {
                   showInfo: showInfo,
                   showList: listVisible,
                   onToggleList: narrow
-                      ? () => setState(() => _listOpen = !_listOpen)
+                      ? () => setState(() => _listOpen = !listVisible)
                       : null,
                 ),
             };

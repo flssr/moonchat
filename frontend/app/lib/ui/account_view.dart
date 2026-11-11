@@ -40,10 +40,11 @@ class _AccountViewState extends State<AccountView> {
     });
     try {
       final CreatedAgent created = await widget.state.createAgent(name);
-      _name.clear();
-      if (mounted) {
-        setState(() => _created = created);
+      if (!mounted) {
+        return;
       }
+      _name.clear();
+      setState(() => _created = created);
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _error = e.displayText);

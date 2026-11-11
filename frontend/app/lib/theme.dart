@@ -137,7 +137,10 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
 }
 
 extension MoonColorsX on BuildContext {
-  MoonPalette get moon => Theme.of(this).extension<MoonPalette>()!;
+  /// 取不到扩展时按亮度回退，而不是让整个子树在 build 里崩。
+  MoonPalette get moon =>
+      Theme.of(this).extension<MoonPalette>() ??
+      (Theme.of(this).brightness == Brightness.dark ? MoonPalette.dark : MoonPalette.light);
 }
 
 /// 字体：系统字体栈，不加载网络字体（DESIGN-SPEC §3）。

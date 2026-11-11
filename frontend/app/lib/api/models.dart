@@ -2,7 +2,9 @@
 /// 字段名保持契约里的 snake_case，转换只在这一层做，UI 不碰 Map。
 library;
 
-int _int(Object? v) => v is int ? v : int.parse(v.toString());
+/// 契约里的整数可能是 Jackson 的 `long` 或 `double`（如 `1.0`），两种都接受；
+/// 解析不出来就让异常冒出去，由 `ApiClient` 统一转成 `upstream_unavailable`。
+int _int(Object? v) => v is num ? v.toInt() : int.parse(v.toString());
 int? _intOrNull(Object? v) => v == null ? null : _int(v);
 String _str(Object? v) => v as String? ?? '';
 String? _strOrNull(Object? v) => v as String?;

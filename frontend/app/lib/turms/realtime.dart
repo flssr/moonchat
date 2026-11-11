@@ -22,11 +22,16 @@ class IncomingMessage {
   bool get isGroupMessage => groupId != null;
 
   /// 群消息归到 `room:<groupId>`，私聊归到对端账号。
+  /// 解不出来的（自己发的私聊却没有 `recipientId`）返回空串，由调用方丢弃——
+  /// 否则会落到 `dm:<自己>` 这种点不开的幽灵会话。
   String conversationKeyFor(int myAccountId) {
     if (groupId != null) {
       return 'room:$groupId';
     }
-    final int peer = senderId == myAccountId ? (recipientId ?? myAccountId) : senderId;
+    final int? peer = senderId == myAccountId ? recipientId : senderId;
+    if (peer == null || peer == myAccountId) {
+      return '';
+    }
     return 'dm:$peer';
   }
 }

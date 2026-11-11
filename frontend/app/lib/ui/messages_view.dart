@@ -41,6 +41,9 @@ class _MessagesViewState extends State<MessagesView> {
   final Map<String, String> _sendErrors = <String, String>{};
   bool _sending = false;
 
+  /// 已经为哪个会话拉过历史：防止重建时反复翻页。
+  String? _loadedKey;
+
   @override
   void dispose() {
     for (final TextEditingController c in _drafts.values) {
@@ -61,7 +64,13 @@ class _MessagesViewState extends State<MessagesView> {
   @override
   void didUpdateWidget(covariant MessagesView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _loadActive();
+    // 外壳每次 notifyListeners 都会重建这个 widget；只有「换了个会话」才该拉历史，
+    // 否则新消息/筛选/资料页加载都会触发一次翻页，历史会被无声地整段抽干。
+    final String? key = widget.state.activeConversationKey;
+    if (key != _loadedKey) {
+      _loadedKey = key;
+      _loadActive();
+    }
   }
 
   /// 打开会话时拉一页历史；游标与去重在 `AppState.loadHistory` 里。
@@ -99,7 +108,8 @@ class _MessagesViewState extends State<MessagesView> {
     });
     try {
       await widget.state.sendMessage(conv, text);
-      if (mounted) {
+      // 发送期间用户可能接着打字：只有输入框还是刚发出去的那句时才清空。
+      if (mounted && composer.text.trim() == text.trim()) {
         composer.clear();
       }
     } on ApiException catch (e) {
@@ -324,7 +334,14 @@ class _MessagesViewState extends State<MessagesView> {
                           key: PageStorageKey<String>(active.key),
                           state: widget.state,
                           conversation: active,
-                          onRetry: (ChatMessage m) => widget.state.retryMessage(active, m),
+                          onRetry: (ChatMessage m) {
+                            // retry 失败会 rethrow：这里自己接住，别让它变成无人接的异步错误。
+                            widget.state.retryMessage(active, m).catchError((Object e) {
+                              if (mounted) {
+                                setState(() => _sendErrors[active.key] = e is ApiException ? e.displayText : '重试失败');
+                              }
+                            });
+                          },
                         ),
                       ),
                     ),
@@ -366,16 +383,18 @@ class _MessagesViewState extends State<MessagesView> {
                                   hintStyle: TextStyle(fontSize: 13.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _send(active),
-                                onChanged: (_) => setState(() {}),
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          MoonButton(
-                            label: '发送',
-                            busy: _sending,
-                            onPressed:
-                                _draftFor(active.key).text.trim().isEmpty ? null : () => _send(active),
+                          // 只让发送按钮跟着输入内容重建，别整屏（含消息列表）跟着每个按键重建。
+                          ValueListenableBuilder<TextEditingValue>(
+                            valueListenable: _draftFor(active.key),
+                            builder: (BuildContext context, TextEditingValue value, Widget? _) => MoonButton(
+                              label: '发送',
+                              busy: _sending,
+                              onPressed: value.text.trim().isEmpty ? null : () => _send(active),
+                            ),
                           ),
                         ],
                       ),
@@ -540,6 +559,9 @@ class _RoomInfo extends StatefulWidget {
 class _RoomInfoState extends State<_RoomInfo> {
   final TextEditingController _invite = TextEditingController();
   String? _inviteError;
+
+  /// 成员行上的错误（移除失败），与邀请输入框的错误分开显示。
+  String? _memberError;
   bool _busy = false;
 
   @override
@@ -555,12 +577,11 @@ class _RoomInfoState extends State<_RoomInfo> {
   }
 
   /// 数据都由状态层持有：这里只触发加载，不在视图里存第二份。
+  /// 顺序执行：两个都完成时各自 notify，成员列表不会因为先到的群详情而空着。
   Future<void> _load() async {
     try {
-      await Future.wait(<Future<Object>>[
-        widget.state.loadRoom(widget.roomId),
-        widget.state.loadMembers(widget.roomId, force: true),
-      ]);
+      await widget.state.loadRoom(widget.roomId);
+      await widget.state.loadMembers(widget.roomId, force: true);
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _inviteError = e.displayText);
@@ -654,11 +675,19 @@ class _RoomInfoState extends State<_RoomInfo> {
                       onPressed: _busy
                           ? null
                           : () async {
+                              setState(() {
+                                _busy = true;
+                                _memberError = null;
+                              });
                               try {
                                 await widget.state.removeMember(widget.roomId, m.accountId);
                               } on ApiException catch (e) {
-                                if (context.mounted) {
-                                  setState(() => _inviteError = e.displayText);
+                                if (mounted) {
+                                  setState(() => _memberError = e.displayText);
+                                }
+                              } finally {
+                                if (mounted) {
+                                  setState(() => _busy = false);
                                 }
                               }
                             },
@@ -668,7 +697,17 @@ class _RoomInfoState extends State<_RoomInfo> {
               ),
             ),
           ),
+        // 成员接口是唯一分页的接口（默认 50）；超过一页时明确告诉用户，别假装是全部。
+        if ((members?.total ?? 0) > (members?.items.length ?? 0))
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: MonoText('仅显示前 ${members!.items.length} 位，共 ${members.total} 位'),
+          ),
         const SizedBox(height: 16),
+        if (_memberError != null) ...<Widget>[
+          Text(_memberError!, style: TextStyle(fontSize: 11, color: p.accent)),
+          const SizedBox(height: 8),
+        ],
         Text('邀请', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
         const SizedBox(height: 6),
         Row(

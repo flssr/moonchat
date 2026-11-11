@@ -67,6 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _submitting = true;
       _formError = null;
     });
+    bool registered = false;
     try {
       if (_registerMode) {
         await widget.state.register(
@@ -74,11 +75,16 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _password.text,
           displayName: _name.text.trim(),
         );
+        registered = true;
       }
       await widget.state.login(email: _email.text.trim(), password: _password.text);
     } on ApiException catch (e) {
       setState(() {
-        if (e.isUnauthenticated) {
+        if (registered) {
+          // 账号已经建好了，失败的是随后的登录：切回登录模式，别让重试撞 `conflict`。
+          _registerMode = false;
+          _formError = '注册成功，请再登录一次';
+        } else if (e.isUnauthenticated) {
           _formError = '邮箱或密码不对';
         } else if (e.code == 'conflict') {
           _formError = '这个邮箱已经注册过了';

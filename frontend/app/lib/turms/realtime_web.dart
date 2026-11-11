@@ -11,7 +11,13 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
   external _TurmsClient(JSObject options);
   external _UserService get userService;
   external _MessageService get messageService;
+  external _Driver get driver;
   external JSPromise<JSAny?> close();
+}
+
+@JS()
+extension type _Driver._(JSObject _) implements JSObject {
+  external void addOnDisconnectedListener(JSFunction listener);
 }
 
 @JS()
@@ -131,16 +137,24 @@ class WebRealtime implements RealtimeClient {
       }
 
       client.messageService.addMessageListener(handler.toJS);
+      // 连接断了要让状态层知道：否则 UI 一直显示「实时」，推送静悄悄停掉。
+      client.driver.addOnDisconnectedListener(((JSObject info) {
+        _client = null;
+        onConnected?.call(false);
+      }).toJS);
 
       await client.userService
           .login(_object(<String, JSAny?>{
             'userId': '$myAccountId'.toJS,
             'password': credential.credential.toJS,
-            'deviceType': 'WEB'.toJS,
+            // Turms 的 DeviceType 是 DESKTOP/BROWSER/IOS/ANDROID/OTHERS/UNKNOWN，没有 WEB。
+            'deviceType': 'BROWSER'.toJS,
           }))
           .toDart;
       onConnected?.call(true);
     } catch (e) {
+      // 登录失败就别留着半开的连接：清掉再报，否则后续查询会撞 CLIENT_SESSION_HAS_BEEN_CLOSED。
+      await disconnect();
       onConnected?.call(false);
       onError?.call(e);
     }
@@ -155,7 +169,8 @@ class WebRealtime implements RealtimeClient {
   }) async {
     final _TurmsClient? client = _client;
     if (client == null) {
-      return const <IncomingMessage>[];
+      // 抛而不是返回空数组：空数组会被 `AppState` 当成「这个会话到底了」，从此拉不到历史。
+      throw StateError('Turms 会话尚未连接');
     }
     final JSObject params = _object(<String, JSAny?>{
       'areGroupMessages': (conversationType == 'room').toJS,

@@ -23,6 +23,9 @@ class _ContactsViewState extends State<ContactsView> {
   final TextEditingController _lookup = TextEditingController();
   final TextEditingController _roomName = TextEditingController();
   String? _lookupError;
+
+  /// 建群表单自己的错误，别借搜索框下面那行显示。
+  String? _roomError;
   bool _showRoomForm = false;
   bool _busy = false;
 
@@ -51,7 +54,28 @@ class _ContactsViewState extends State<ContactsView> {
       await widget.state.loadProfile(id);
       widget.state.setSelectedContact(id);
     } on ApiException catch (e) {
-      setState(() => _lookupError = e.displayText);
+      if (mounted) {
+        setState(() => _lookupError = e.displayText);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  /// 同意/拒绝走同一处：置忙、接住异常、复位，别把失败丢成无人接的异步错误。
+  Future<void> _respond(int peerAccountId, String action) async {
+    setState(() {
+      _busy = true;
+      _lookupError = null;
+    });
+    try {
+      await widget.state.respondFriend(peerAccountId, action);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _lookupError = e.displayText);
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -62,20 +86,25 @@ class _ContactsViewState extends State<ContactsView> {
   Future<void> _createRoom() async {
     final String name = _roomName.text.trim();
     if (name.isEmpty || name.length > 20) {
-      setState(() => _lookupError = '群名 1–20 字');
+      setState(() => _roomError = '群名 1–20 字');
       return;
     }
     setState(() {
       _busy = true;
-      _lookupError = null;
+      _roomError = null;
     });
     try {
       final Room room = await widget.state.createRoom(name);
+      if (!mounted) {
+        return;
+      }
       _roomName.clear();
       setState(() => _showRoomForm = false);
       widget.state.selectConversation('room:${room.roomId}');
     } on ApiException catch (e) {
-      setState(() => _lookupError = e.displayText);
+      if (mounted) {
+        setState(() => _roomError = e.displayText);
+      }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -198,6 +227,10 @@ class _ContactsViewState extends State<ContactsView> {
                       ),
                       const SizedBox(height: 8),
                       MoonButton(label: '创建', small: true, busy: _busy, onPressed: _createRoom),
+                      if (_roomError != null) ...<Widget>[
+                        const SizedBox(height: 6),
+                        Text(_roomError!, style: TextStyle(fontSize: 11, color: p.accent)),
+                      ],
                     ],
                   ),
                 ),
@@ -298,13 +331,13 @@ class _ContactsViewState extends State<ContactsView> {
                                     IconButton(
                                       tooltip: '同意',
                                       visualDensity: VisualDensity.compact,
-                                      onPressed: () => widget.state.respondFriend(f.peerAccountId, 'accept'),
+                                      onPressed: _busy ? null : () => _respond(f.peerAccountId, 'accept'),
                                       icon: Icon(Icons.check, size: 16, color: p.ink),
                                     ),
                                     IconButton(
                                       tooltip: '拒绝',
                                       visualDensity: VisualDensity.compact,
-                                      onPressed: () => widget.state.respondFriend(f.peerAccountId, 'reject'),
+                                      onPressed: _busy ? null : () => _respond(f.peerAccountId, 'reject'),
                                       icon: Icon(Icons.close, size: 16, color: p.accent),
                                     ),
                                   ],
