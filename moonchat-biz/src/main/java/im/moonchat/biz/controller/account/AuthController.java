@@ -4,6 +4,7 @@ import im.moonchat.biz.auth.CurrentAccount;
 import im.moonchat.biz.dto.account.AccountRequests;
 import im.moonchat.biz.dto.account.AccountResponses;
 import im.moonchat.biz.service.account.AccountService;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,6 +24,7 @@ public class AuthController {
 
     /** 注册不签发 JWT：注册与登录是两次独立请求。 */
     @PostMapping("/register")
+    @SecurityRequirements
     @ResponseStatus(HttpStatus.CREATED)
     public AccountResponses.RegisterResponse register(
             @Valid @RequestBody AccountRequests.RegisterRequest request) {
@@ -30,6 +32,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @SecurityRequirements
     public AccountResponses.TokenResponse login(@Valid @RequestBody AccountRequests.LoginRequest request) {
         return accountService.login(request);
     }

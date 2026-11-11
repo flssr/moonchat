@@ -1,5 +1,6 @@
 package im.moonchat.biz.dto.room;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 
@@ -7,6 +8,7 @@ import java.util.List;
  * #12–#18 的响应体。`turms_group_id` 与 `turms_sync_state` 一概不出门：对外的群标识只有 `room_id`
  * （docs/api-contracts.md §9 的「从不出现在响应里的列」）。成员列表也没有 `role`——群主就是
  * `owner_account_id`，是不是群主由客户端比较这两个 id 得出。
+ * `Item` / `ListResponse` 与好友那边同名，文档里靠 `@Schema(name)` 区分。
  */
 public final class RoomResponses {
 
@@ -16,9 +18,11 @@ public final class RoomResponses {
     public record CreateResponse(long roomId, String name, long ownerAccountId, Instant createdAt) {
     }
 
+    @Schema(name = "RoomItem")
     public record Item(long roomId, String name, long ownerAccountId, Instant joinedAt) {
     }
 
+    @Schema(name = "RoomListResponse")
     public record ListResponse(List<Item> items) {
     }
 

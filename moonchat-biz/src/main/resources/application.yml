@@ -24,6 +24,12 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
+# /v3/api-docs：docs/openapi.json 从它落盘（见 OpenApiDocTest）。
+springdoc:
+  # 控制器都没写 produces，默认给 */*；这里压成 json，Apifox 才会按 json 展示示例
+  default-produces-media-type: application/json
+  default-consumes-media-type: application/json
+
 # 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/account-and-ownership.md。
 moonchat:
   turms:

@@ -27,7 +27,7 @@ agent 不是插件、不是命令，而是通讯录里一个真的账号：它�
 ├── infra/               # 本地与部署的基础设施配置（Turms 覆盖、冒烟脚本）
 ├── vendor/turms/        # Turms 上游子模块，固定在具体提交
 ├── deliverables/        # 对外交付稿（不是 spec，不作为设计依据）
-└── docs/                # 12 份 spec，从 docs/README.md 的台账进
+└── docs/                # 12 份 spec（从 docs/README.md 的台账进）与 openapi.json
 ```
 
 ## 快速开始
@@ -60,6 +60,17 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 ```
 
 密钥文件在本地生成、不进仓库（`infra/turms/secrets/` 只跟踪它自己的 `.gitignore`）。密钥生成、Turms 冒烟与身份链路两条端到端脚本的跑法见 `docs/deployment.md` 与 `infra/turms/smoke/`。
+
+## 接口文档
+
+`docs/openapi.json` 是给 Apifox 导入的 OpenAPI 3.1 文件，由 biz 的 `/v3/api-docs` 落盘生成，不手写。
+改了控制器或 DTO 之后重新生成并一起提交（文件不存在时也会自动生成）：
+
+```powershell
+.\mvnw.cmd -pl moonchat-biz -Dtest=OpenApiDocTest -Dmoonchat.openapi.write=true test
+```
+
+`.\mvnw.cmd test` 会顺带校验这份文件与代码一致，忘了重新生成会让构建失败。
 
 ## 协作
 

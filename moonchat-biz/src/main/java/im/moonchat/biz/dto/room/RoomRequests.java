@@ -1,5 +1,6 @@
 package im.moonchat.biz.dto.room;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -11,6 +12,7 @@ public final class RoomRequests {
     }
 
     /** 群名 20 是我们自己定的（与账号名字对齐），Turms 侧没有这个配置。 */
+    @Schema(name = "RoomCreateRequest")
     public record CreateRequest(
             @NotBlank(message = "群名不能为空")
             @Size(max = 20, message = "群名最长 20 字符")

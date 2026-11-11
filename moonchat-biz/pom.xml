@@ -58,6 +58,12 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
+        <!-- /v3/api-docs 由代码生成，docs/openapi.json 是它的落盘副本（给 Apifox 导入） -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
         <!-- 版本由 Boot BOM 管（1.18.x），provided：编译期生成，不进产物 -->
         <dependency>
             <groupId>org.projectlombok</groupId>

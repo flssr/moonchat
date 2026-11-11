@@ -1,5 +1,6 @@
 package im.moonchat.biz.dto.friendship;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -10,6 +11,8 @@ public final class FriendshipRequests {
     private FriendshipRequests() {
     }
 
+    /** 与 `RoomRequests.CreateRequest` 同名，文档里靠 `@Schema(name)` 区分。 */
+    @Schema(name = "FriendshipCreateRequest")
     public record CreateRequest(@NotNull(message = "peer_account_id 不能为空") Long peerAccountId) {
     }
 

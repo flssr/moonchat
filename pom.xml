@@ -27,6 +27,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Boot 不管理的两个第三方版本，钉在这里而不是散落在模块里 -->
         <mybatis-plus.version>3.5.18</mybatis-plus.version>
+        <!-- 3.2.x 是与 Boot 4.1.2 对齐的那条线 -->
+        <springdoc.version>3.2.0</springdoc.version>
         <nimbus-jose-jwt.version>10.10</nimbus-jose-jwt.version>
     </properties>
 </project>
