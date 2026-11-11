@@ -61,15 +61,22 @@ public class MessageServiceImpl implements MessageService {
             case DM -> false;
             default -> throw ApiException.validationFailed("type", "type 只能是 room 或 dm");
         };
-        if (groupMessage) {
-            resolveRoom(conversationId);
-        } else {
+        // 群消息的投递句柄是 Turms 生成的 group id；对外标识始终是 `room_info.id`。
+        Long turmsGroupId = groupMessage ? resolveRoom(conversationId).getTurmsGroupId() : null;
+        if (!groupMessage) {
             resolvePeer(me, conversationId);
         }
 
         // 授权事实：群看 `room_member` 的有效行，私聊看 `friendship`（现查 PG，没有缓存）
+        // 投递目标在群分支里落到 Turms 的 group id，私聊就是会话 id；sendMessage 只拿基本类型。
+        long targetId = conversationId;
         if (groupMessage) {
             requireRoomMember(conversationId, senderId);
+            // 群还在 pending 时投影没回填投递句柄：跳过 Turms，别拿 room_id 当 group id 去撞。
+            if (turmsGroupId == null) {
+                throw ApiException.upstreamUnavailable();
+            }
+            targetId = turmsGroupId;
         } else if (!friendshipService.areFriends(senderId, conversationId)) {
             throw ApiException.notFriend();
         }
@@ -86,7 +93,7 @@ public class MessageServiceImpl implements MessageService {
 
         long messageId = nextMessageId();
         OffsetDateTime sentAt = OffsetDateTime.now();
-        turmsAdmin.sendMessage(messageId, senderId, senderDeviceType, groupMessage, conversationId, request.text(),
+        turmsAdmin.sendMessage(messageId, senderId, senderDeviceType, groupMessage, targetId, request.text(),
                 senderIp);
         return new MessageResponses.SendResponse(messageId,
                 new MessageResponses.Conversation(conversationType, conversationId), sentAt.toInstant());
@@ -100,11 +107,12 @@ public class MessageServiceImpl implements MessageService {
         return (System.currentTimeMillis() << 20) | (SEQUENCE.incrementAndGet() & 0xFFFFF);
     }
 
-    private void resolveRoom(long roomId) {
+    private RoomInfo resolveRoom(long roomId) {
         RoomInfo room = roomInfoMapper.selectById(roomId);
         if (room == null) {
             throw ApiException.notFound("群不存在");
         }
+        return room;
     }
 
     private void resolvePeer(CurrentAccount me, long peerAccountId) {
