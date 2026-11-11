@@ -5,8 +5,8 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'widgets.dart';
 
-/// S1 登录 / 注册 + S2 登录过渡（`SCREEN-MAP.md` §4）。
-/// 表单在左，仅在提交成功后播一次关门与发射，不做循环动画。
+/// S1 登录 / 注册（`SCREEN-MAP.md` §4）。
+/// 表单在左，右侧是静态舞台；发射那套动效已删除——它从来没被看见过（登录成功同一帧就换屏）。
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.state});
 
@@ -16,15 +16,10 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _email = TextEditingController();
   final TextEditingController _password = TextEditingController();
   final TextEditingController _name = TextEditingController();
-
-  late final AnimationController _launch = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  );
 
   bool _registerMode = false;
   bool _submitting = false;
@@ -38,7 +33,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _email.dispose();
     _password.dispose();
     _name.dispose();
-    _launch.dispose();
     super.dispose();
   }
 
@@ -82,10 +76,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         );
       }
       await widget.state.login(email: _email.text.trim(), password: _password.text);
-      if (!mounted) {
-        return;
-      }
-      await _launch.forward();
     } on ApiException catch (e) {
       setState(() {
         if (e.isUnauthenticated) {
@@ -232,60 +222,40 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final MoonPalette p = context.moon;
     return Container(
       color: p.stage,
-      child: AnimatedBuilder(
-        animation: _launch,
-        builder: (BuildContext context, Widget? _) {
-          final double t = Curves.easeOutCubic.transform(_launch.value);
-          final String asset = _launch.value == 0
-              ? 'assets/rocket-open.png'
-              : _launch.value < 0.35
-                  ? 'assets/rocket-closed.png'
-                  : 'assets/rocket-launch.png';
-          return Stack(
-            children: <Widget>[
-              // 地平线与月盘：只用描边与明度，不加渐变。
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 96,
-                child: Container(height: 1, color: p.ink3.withValues(alpha: 0.85)),
+      child: Stack(
+        children: <Widget>[
+          // 地平线与月盘：只用描边与明度，不加渐变。
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 96,
+            child: Container(height: 1, color: p.ink3.withValues(alpha: 0.85)),
+          ),
+          Positioned(
+            right: 56,
+            top: 64,
+            child: Container(
+              width: 96,
+              height: 96,
+              decoration: BoxDecoration(
+                color: p.surface2,
+                shape: BoxShape.circle,
+                border: Border.all(color: p.lineStrong),
               ),
-              Positioned(
-                right: 56,
-                top: 64,
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: p.surface2,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: p.lineStrong),
-                  ),
-                ),
-              ),
-              Center(
-                child: Transform.translate(
-                  offset: Offset(0, -120 * t),
-                  child: Transform.scale(
-                    scale: 1 - 0.35 * t,
-                    child: Opacity(
-                      opacity: 1 - 0.85 * t,
-                      child: Image.asset(asset, width: 240, fit: BoxFit.contain),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 24,
-                bottom: 20,
-                child: Text(
-                  _launch.value > 0.5 ? '抵达' : '月面基地',
-                  style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
-                ),
-              ),
-            ],
-          );
-        },
+            ),
+          ),
+          Center(
+            child: Image.asset('assets/rocket-open.png', width: 240, fit: BoxFit.contain),
+          ),
+          Positioned(
+            left: 24,
+            bottom: 20,
+            child: Text(
+              '月面基地',
+              style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
+            ),
+          ),
+        ],
       ),
     );
   }

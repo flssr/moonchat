@@ -1,12 +1,15 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:moonchat/api/api_client.dart';
 import 'package:moonchat/api/models.dart';
 import 'package:moonchat/state/app_state.dart';
+import 'package:moonchat/theme.dart';
 import 'package:moonchat/turms/realtime.dart';
+import 'package:moonchat/ui/home_shell.dart';
 
 /// 读取通道在测试里不连 Turms：只验证 REST 链路与状态机。
 class _FakeRealtime implements RealtimeClient {
@@ -21,6 +24,10 @@ class _FakeRealtime implements RealtimeClient {
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
+    // 替身也要看凭据：忽略 credential / myAccountId 的话，签发链路断了测试照样绿。
+    expect(credential.credential, isNotEmpty);
+    expect(credential.gatewayUrl, isNotEmpty);
+    expect(myAccountId, greaterThan(0));
     connected = true;
     _onMessage = onMessage;
     onConnected?.call(true);
@@ -344,7 +351,85 @@ void main() {
     await state.login(email: 'new@b.c', password: 'password1');
     expect(state.isReady, isTrue);
   });
+
+  testWidgets('三个主视图靠状态切换，切走时清掉当前会话', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('联系人'));
+    await tester.pumpAndSettle();
+    expect(state.view, 'contacts');
+    expect(find.text('好友 1'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('账号'));
+    await tester.pumpAndSettle();
+    expect(state.view, 'account');
+    expect(find.text('当前账号'), findsOneWidget);
+
+    // 选中会话后切到别的视图，当前会话要清掉，回来时不保留旧上下文。
+    state.selectConversation('dm:2');
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('联系人'));
+    await tester.pumpAndSettle();
+    expect(state.activeConversationKey, isNull);
+    state.dispose();
+  });
+
+  testWidgets('资料页由状态开关，内容只读状态', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+    expect(find.text('发消息'), findsNothing);
+
+    state.openProfile(2);
+    await tester.pumpAndSettle();
+    expect(find.text('小助手'), findsWidgets);
+    expect(find.text('发消息'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('关闭'));
+    await tester.pumpAndSettle();
+    expect(state.profileAccountId, isNull);
+    expect(find.text('发消息'), findsNothing);
+    state.dispose();
+  });
+
+  testWidgets('草稿按会话隔离：给 A 打的话不会跟着切到 B', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    state.selectConversation('dm:2');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '给甲的草稿');
+    await tester.pump();
+
+    await tester.tap(find.text('月球基地'));
+    await tester.pumpAndSettle();
+
+    final TextField composer = tester.widget<TextField>(find.byType(TextField).last);
+    expect(composer.controller?.text, isEmpty, reason: '群会话的输入框不该带着私聊的草稿');
+    expect(state.messagesOf('room:7'), isEmpty);
+    state.dispose();
+  });
 }
+
+/// 登录后的状态，供 widget 测试用。
+Future<AppState> _loggedIn() async {
+  final AppState state = _stateOn(_FakeBiz());
+  await state.login(email: 'a@b.c', password: 'password1');
+  return state;
+}
+
+Widget _shell(AppState state) => MaterialApp(
+      theme: buildMoonTheme(Brightness.light),
+      home: HomeShell(
+        state: state,
+        onToggleTheme: (Brightness _) {},
+        brightness: Brightness.light,
+      ),
+    );
+
 
 AppState _stateOn(_FakeBiz biz) => AppState(api: ApiClient(baseUrl: 'http://mock.local', client: biz.client), realtime: _FakeRealtime());
 
@@ -383,6 +468,25 @@ class _FakeBiz {
     final Map<String, dynamic> body = req.body.isEmpty
         ? <String, dynamic>{}
         : jsonDecode(req.body) as Map<String, dynamic>;
+
+    // 替身也校验契约头：头写错、凭据丢失必须被测试挡下（X-Device-Type 就是这么漏过去的）。
+    final bool needsAuth = path != '/api/auth/login' &&
+        path != '/api/auth/register' &&
+        !(path == '/api/sessions' && body.containsKey('account_key'));
+    if (needsAuth) {
+      final String? auth = req.headers['authorization'] ?? req.headers['Authorization'];
+      if (auth == null || !auth.startsWith('Bearer ') || auth.length <= 7) {
+        return _json(<String, Object?>{'code': 'unauthenticated', 'message': 'no token'}, 401);
+      }
+    }
+    if (path.startsWith('/api/conversations/')) {
+      final String device = req.headers['x-device-type'] ?? req.headers['X-Device-Type'] ?? '';
+      if (!const <String>['desktop', 'browser', 'ios', 'android', 'others'].contains(device)) {
+        return _json(
+            <String, Object?>{'code': 'validation_failed', 'message': 'device', 'field': 'x-device-type'},
+            400);
+      }
+    }
 
     if (method == 'POST' && path == '/api/auth/register') {
       registered.add(<String, Object?>{
@@ -484,6 +588,14 @@ class _FakeBiz {
       final int roomId = int.parse(path.split('/')[3]);
       rooms.removeWhere((Map<String, Object?> r) => r['room_id'] == roomId);
       return http.Response('', 204);
+    }
+    if (method == 'GET' && path.startsWith('/api/accounts/')) {
+      final int id = int.parse(path.split('/').last);
+      return _json(<String, Object?>{
+        'account_id': id,
+        'display_name': id == 2 ? '小助手' : '阿星',
+        'is_friend': id == 2,
+      }, 200);
     }
     return _json(<String, Object?>{'code': 'not_found', 'message': 'no route'}, 404);
   }
