@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/api_client.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'login_quotes.dart';
 import 'widgets.dart';
 
 /// S1 登录 / 注册 + S2 登舱过渡（`SCREEN-MAP.md` §4）。
@@ -33,6 +34,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   /// 过渡已经开始：表单淡出并停用，避免用户在这 800ms 里继续操作。
   bool _arriving = false;
+
+  /// 每次进入登录页取一句：State 只在进出登录页时重建，切主题或切注册模式都不会换。
+  late final LoginQuote _quote = nextLoginQuote();
 
   bool _registerMode = false;
   bool _submitting = false;
@@ -141,13 +145,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
           // 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
+          final Widget formBody = _buildForm(context);
           final Widget form = IgnorePointer(
             ignoring: _arriving,
             child: AnimatedOpacity(
               opacity: _arriving ? 0 : 1,
               duration: const Duration(milliseconds: 420),
               curve: Curves.easeOutCubic,
-              child: _buildForm(context),
+              // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
+              child: narrow ? formBody : SingleChildScrollView(child: formBody),
             ),
           );
           final Widget stage = _buildStage(context);
@@ -209,8 +215,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 8),
           Text(
-            '账号、好友、私聊、群聊。账号的能力可以被归属者之外的 agent 操控。',
-            style: TextStyle(fontSize: 13, height: 1.7, color: p.ink3),
+            '“${_quote.text}”',
+            style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '— ${_quote.author}',
+            style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
           ),
           const SizedBox(height: 28),
           if (_registerMode) ...<Widget>[

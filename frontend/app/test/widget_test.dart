@@ -9,6 +9,7 @@ import 'package:moonchat/main.dart';
 import 'package:moonchat/state/app_state.dart';
 import 'package:moonchat/theme.dart';
 import 'package:moonchat/ui/home_shell.dart';
+import 'package:moonchat/ui/login_quotes.dart';
 import 'package:moonchat/ui/login_screen.dart';
 
 /// 记录调用次数的假 Biz：用来断言「校验没过就一个请求都不发」。
@@ -26,10 +27,21 @@ Widget _page(AppState state) => MaterialApp(
       home: LoginScreen(state: state),
     );
 
+LoginQuote? _visibleQuote() {
+  for (final LoginQuote quote in kLoginQuotes) {
+    if (find.textContaining(quote.text).evaluate().isNotEmpty) {
+      return quote;
+    }
+  }
+  return null;
+}
+
 AppState _stateOn(_Recorder recorder) =>
     AppState(api: ApiClient(baseUrl: 'http://mock.local', client: recorder.client));
 
 void main() {
+  setUp(resetLoginQuoteHistory);
+
   testWidgets('登录页给出邮箱、密码与登录入口', (WidgetTester tester) async {
     final AppState state = AppState();
     addTearDown(state.dispose);
@@ -40,6 +52,50 @@ void main() {
     expect(find.text('邮箱'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
+  });
+
+  testWidgets('每次进入登录页显示不同的引言', (WidgetTester tester) async {
+    final AppState state = AppState();
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_page(state));
+    final LoginQuote? first = _visibleQuote();
+    expect(first, isNotNull);
+    expect(find.text('— ${first!.author}'), findsOneWidget);
+
+    // 切注册模式会 setState，但引言只属于这一次进入，不能跟着换。
+    await tester.tap(find.text('注册'));
+    await tester.pump();
+    expect(_visibleQuote()?.text, first.text);
+
+    // 卸载再挂载，模拟退出登录后重新进入登录页。
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(_page(state));
+    final LoginQuote? second = _visibleQuote();
+    expect(second, isNotNull);
+    expect(second!.text, isNot(first.text));
+    expect(find.text('— ${second.author}'), findsOneWidget);
+  });
+
+  testWidgets('宽屏注册表单全量错误不溢出', (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(920, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final AppState state = AppState();
+    addTearDown(state.dispose);
+    await tester.pumpWidget(_page(state));
+
+    await tester.tap(find.text('注册'));
+    await tester.pump();
+    await tester.tap(find.text('注册并登录'));
+    await tester.pump();
+
+    expect(find.text('名字 1–20 字'), findsOneWidget);
+    expect(find.text('需要一个带 @ 的邮箱'), findsOneWidget);
+    expect(find.text('密码 8–72 位'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('空邮箱提交后贴字段错误，不发请求', (WidgetTester tester) async {
