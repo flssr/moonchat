@@ -250,6 +250,53 @@ class MoonAvatar extends StatelessWidget {
   }
 }
 
+/// 可选胶囊：资料编辑的性别、设置页的字体/语言共用。
+class MoonChoicePill extends StatelessWidget {
+  const MoonChoicePill({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: IntrinsicWidth(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 40),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? p.surface2 : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: selected ? p.ink2 : p.line),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 12.5, color: selected ? p.ink : p.ink3),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 关系标记：20 高、全圆、1px 描边。
 class MoonTag extends StatelessWidget {
   const MoonTag({super.key, required this.text, this.strong = false});

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import '../i18n/moon_strings.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'account_view.dart';
@@ -8,6 +9,7 @@ import 'contacts_view.dart';
 import 'messages_view.dart';
 import 'profile_editor.dart';
 import 'profile_panel.dart';
+import 'settings_dialog.dart';
 import 'widgets.dart';
 
 /// 客户端外壳：56 导航 + 各视图自己的列表 / 内容 / 信息栏。
@@ -18,11 +20,19 @@ class HomeShell extends StatefulWidget {
     required this.state,
     required this.onToggleTheme,
     required this.brightness,
+    this.languageCode = 'zh',
+    this.textScale = 1.0,
+    this.onLanguageChanged,
+    this.onTextScaleChanged,
   });
 
   final AppState state;
   final ValueChanged<Brightness> onToggleTheme;
   final Brightness brightness;
+  final String languageCode;
+  final double textScale;
+  final ValueChanged<String>? onLanguageChanged;
+  final ValueChanged<double>? onTextScaleChanged;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -84,7 +94,17 @@ class _HomeShellState extends State<HomeShell> {
                     _NavRail(
                       view: state.view,
                       account: state.account,
+                      languageCode: widget.languageCode,
                       onOpenProfile: () => showProfileEditor(context, state),
+                      onOpenSettings: () => showSettingsDialog(
+                        context,
+                        textScale: widget.textScale,
+                        languageCode: widget.languageCode,
+                        onTextScaleChanged:
+                            widget.onTextScaleChanged ?? (double _) {},
+                        onLanguageChanged:
+                            widget.onLanguageChanged ?? (String _) {},
+                      ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,
                       brightness: widget.brightness,
@@ -110,7 +130,9 @@ class _NavRail extends StatelessWidget {
   const _NavRail({
     required this.view,
     required this.account,
+    required this.languageCode,
     required this.onOpenProfile,
+    required this.onOpenSettings,
     required this.onSelect,
     required this.pendingCount,
     required this.brightness,
@@ -120,7 +142,9 @@ class _NavRail extends StatelessWidget {
 
   final String view;
   final Account? account;
+  final String languageCode;
   final VoidCallback onOpenProfile;
+  final VoidCallback onOpenSettings;
   final ValueChanged<String> onSelect;
   final int pendingCount;
   final Brightness brightness;
@@ -140,7 +164,7 @@ class _NavRail extends StatelessWidget {
         children: <Widget>[
           const SizedBox(height: 8),
           Tooltip(
-            message: '个人资料',
+            message: moonText(languageCode, '个人资料'),
             child: InkWell(
               onTap: onOpenProfile,
               child: SizedBox(
@@ -159,33 +183,39 @@ class _NavRail extends StatelessWidget {
           const SizedBox(height: 8),
           _RailButton(
             icon: Icons.chat_bubble_outline,
-            label: '消息',
+            label: moonText(languageCode, '消息'),
             selected: view == 'messages',
             onTap: () => onSelect('messages'),
           ),
           _RailButton(
             icon: Icons.people_outline,
-            label: '联系人',
+            label: moonText(languageCode, '联系人'),
             selected: view == 'contacts',
             badge: pendingCount,
             onTap: () => onSelect('contacts'),
           ),
           _RailButton(
             icon: Icons.person_outline,
-            label: '账号',
+            label: moonText(languageCode, '账号'),
             selected: view == 'account',
             onTap: () => onSelect('account'),
           ),
           const Spacer(),
           _RailButton(
+            icon: Icons.settings_outlined,
+            label: moonText(languageCode, '设置'),
+            selected: false,
+            onTap: onOpenSettings,
+          ),
+          _RailButton(
             icon: brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-            label: brightness == Brightness.dark ? '切到亮色' : '切到暗色',
+            label: moonText(languageCode, brightness == Brightness.dark ? '切到亮色' : '切到暗色'),
             selected: false,
             onTap: () => onToggleTheme(brightness),
           ),
           _RailButton(
             icon: Icons.logout,
-            label: '退出登录',
+            label: moonText(languageCode, '退出登录'),
             selected: false,
             onTap: onLogout,
           ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'i18n/moon_strings.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 import 'ui/home_shell.dart';
@@ -35,6 +36,10 @@ class _MoonChatAppState extends State<MoonChatApp> {
   /// 不复用 `phase`：登录态与「动画播完没有」是两件事，塞进 AppState 会污染状态机。
   bool _arrived = false;
 
+  /// 设置页的字体与语言偏好只影响本机，跨重启不保留。
+  double _textScale = 1.0;
+  Locale _locale = const Locale('zh', 'CN');
+
   @override
   void dispose() {
     if (_ownsState) {
@@ -47,6 +52,17 @@ class _MoonChatAppState extends State<MoonChatApp> {
     setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
   }
 
+  void _setTextScale(double value) {
+    setState(() => _textScale = value);
+  }
+
+  void _setLanguage(String code) {
+    setState(() => _locale = _localeFor(code));
+  }
+
+  static Locale _localeFor(String code) =>
+      code == 'zh' ? const Locale('zh', 'CN') : Locale(code);
+
   void _onArrived() {
     if (mounted) {
       setState(() => _arrived = true);
@@ -58,6 +74,8 @@ class _MoonChatAppState extends State<MoonChatApp> {
   Widget? _gate;
   bool? _gateHome;
   Brightness? _gateBrightness;
+  double? _gateTextScale;
+  Locale? _gateLocale;
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +85,19 @@ class _MoonChatAppState extends State<MoonChatApp> {
       theme: buildMoonTheme(Brightness.light),
       darkTheme: buildMoonTheme(Brightness.dark),
       themeMode: _mode,
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const <Locale>[Locale('zh', 'CN')],
+      locale: _locale,
+      supportedLocales:
+          kMoonLanguages.map(((String, String) item) => _localeFor(item.$1)).toList(growable: false),
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      builder: (BuildContext context, Widget? child) {
+        final MediaQueryData data = MediaQuery.of(context);
+        // 保留系统字号档位，再叠应用内的小/中/大。
+        final double systemScale = data.textScaler.scale(1);
+        return MediaQuery(
+          data: data.copyWith(textScaler: TextScaler.linear(systemScale * _textScale)),
+          child: child!,
+        );
+      },
       home: ListenableBuilder(
         listenable: _state,
         builder: (BuildContext context, Widget? _) {
@@ -80,11 +108,25 @@ class _MoonChatAppState extends State<MoonChatApp> {
           }
           final bool showHome = ready && _arrived;
           final Brightness brightness = Theme.of(context).brightness;
-          if (_gate == null || showHome != _gateHome || brightness != _gateBrightness) {
+          if (_gate == null ||
+              showHome != _gateHome ||
+              brightness != _gateBrightness ||
+              _textScale != _gateTextScale ||
+              _locale != _gateLocale) {
             _gateHome = showHome;
             _gateBrightness = brightness;
+            _gateTextScale = _textScale;
+            _gateLocale = _locale;
             _gate = showHome
-                ? HomeShell(state: _state, onToggleTheme: _toggleTheme, brightness: brightness)
+                ? HomeShell(
+                    state: _state,
+                    onToggleTheme: _toggleTheme,
+                    brightness: brightness,
+                    languageCode: _locale.languageCode,
+                    textScale: _textScale,
+                    onLanguageChanged: _setLanguage,
+                    onTextScaleChanged: _setTextScale,
+                  )
                 : LoginScreen(state: _state, onArrived: _onArrived);
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;

@@ -238,7 +238,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                   runSpacing: 8,
                   children: <Widget>[
                     for (final (String key, String label) in _genders)
-                      _ChoicePill(
+                      MoonChoicePill(
                         label: label,
                         selected: _gender == key,
                         onTap: _busy
@@ -345,38 +345,4 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   );
 
   String _formatBirthday(DateTime d) => '${d.year}年${d.month}月${d.day}日';
-}
-
-class _ChoicePill extends StatelessWidget {
-  const _ChoicePill({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? p.surface2 : Colors.transparent,
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: selected ? p.ink2 : p.line),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(fontSize: 12.5, color: selected ? p.ink : p.ink3),
-        ),
-      ),
-    );
-  }
 }
