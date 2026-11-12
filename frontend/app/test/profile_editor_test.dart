@@ -91,6 +91,9 @@ Future<void> _pumpShell(WidgetTester tester, AppState state) async {
         state: state,
         onToggleTheme: (_) {},
         brightness: Brightness.light,
+        textScale: 1.0,
+        onLanguageChanged: (_) {},
+        onTextScaleChanged: (_) {},
       ),
     ),
   );
@@ -133,8 +136,7 @@ void main() {
     expect(state.account!.birthday, isNull);
     expect(patch['display_name'], '新名字');
     expect(patch['gender'], 'female');
-    expect(patch.containsKey('birthday'), isTrue);
-    expect(patch['birthday'], isNull);
+    expect(patch.containsKey('birthday'), isFalse);
   });
 
   testWidgets('昵称为空时不发请求', (WidgetTester tester) async {
@@ -192,6 +194,26 @@ void main() {
 
     expect(find.text('1998年6月15日'), findsOneWidget);
     expect(find.text('双子座'), findsOneWidget);
+  });
+
+  testWidgets('清空生日时明确发 null', (WidgetTester tester) async {
+    final Map<String, Object?> patch = <String, Object?>{};
+    final AppState state = _state(
+      _biz(echoProfileFields: true, lastPatch: patch),
+      withProfile: true,
+    );
+    addTearDown(state.dispose);
+    await _pumpShell(tester, state);
+
+    await tester.tap(find.byTooltip('个人资料'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('清除'));
+    await tester.pump();
+    await _tapSave(tester);
+
+    expect(patch.containsKey('birthday'), isTrue);
+    expect(patch['birthday'], isNull);
+    expect(state.account!.birthday, isNull);
   });
 
   testWidgets('后端没回显资料字段时保存失败并保留旧值', (WidgetTester tester) async {

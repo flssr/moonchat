@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:js_interop';
 
+import 'package:flutter/material.dart';
+
 import 'settings.dart';
 
 @JS('localStorage')
@@ -13,18 +15,34 @@ extension type _Storage(JSObject _) implements JSObject {
 
 class _LocalSettingsStore implements SettingsStore {
   static const String _key = 'moonchat.settings.v1';
+  static const String _legacyThemeKey = 'moonchat-theme';
+
+  ThemeMode _legacyTheme() => switch (_storage.getItem(_legacyThemeKey)) {
+        'light' => ThemeMode.light,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.system,
+      };
 
   @override
   MoonSettings load() {
     try {
       final String? raw = _storage.getItem(_key);
       if (raw == null || raw.isEmpty) {
-        return MoonSettings.defaults;
+        return MoonSettings(themeMode: _legacyTheme());
       }
       final Object? decoded = jsonDecode(raw);
-      return decoded is Map<String, dynamic>
-          ? MoonSettings.fromJson(decoded)
-          : MoonSettings.defaults;
+      if (decoded is! Map<String, dynamic>) {
+        return MoonSettings.defaults;
+      }
+      final MoonSettings settings = MoonSettings.fromJson(decoded);
+      if (decoded.containsKey('theme')) {
+        return settings;
+      }
+      return MoonSettings(
+        textScale: settings.textScale,
+        languageCode: settings.languageCode,
+        themeMode: _legacyTheme(),
+      );
     } catch (_) {
       return MoonSettings.defaults;
     }

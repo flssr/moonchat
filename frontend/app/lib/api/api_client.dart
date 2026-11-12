@@ -230,18 +230,24 @@ class ApiClient {
     return CreatedAgent.fromJson(json);
   }
 
-  /// #6 改本账号资料。`birthday` 传 null 表示清除；性别固定给一个枚举值。
+  /// #6 改本账号资料。`birthday` 只有非空或明确清除时才发，避免部分快照把服务端生日清掉。
   Future<UpdatedProfile> updateProfile({
     required String token,
     required String displayName,
     required String gender,
     DateTime? birthday,
+    bool clearBirthday = false,
   }) async {
-    final json = await _send('PATCH', '/api/accounts/me', token: token, body: {
+    final Map<String, Object?> body = <String, Object?>{
       'display_name': displayName,
       'gender': gender,
-      'birthday': birthday == null ? null : _formatDate(birthday),
-    });
+    };
+    if (birthday != null) {
+      body['birthday'] = _formatDate(birthday);
+    } else if (clearBirthday) {
+      body['birthday'] = null;
+    }
+    final json = await _send('PATCH', '/api/accounts/me', token: token, body: body);
     return UpdatedProfile.fromJson(json);
   }
 

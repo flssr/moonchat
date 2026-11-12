@@ -35,8 +35,8 @@ class _AccountViewState extends State<AccountView> {
 
   Future<void> _createAgent() async {
     final String name = _name.text.trim();
-    if (name.isEmpty || name.length > 20) {
-      setState(() => _error = context.tr('名字 1–20 字'));
+    if (name.isEmpty || name.characters.length > 20) {
+      setState(() => _error = '名字 1–20 字');
       return;
     }
     setState(() {

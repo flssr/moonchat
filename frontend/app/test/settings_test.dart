@@ -25,7 +25,7 @@ void main() {
   test('非法本地值回默认', () {
     final MoonSettings settings = MoonSettings.fromJson(<String, dynamic>{
       'text_scale': 0.5,
-      'language': 'fr',
+      'language': 123,
       'theme': 'blue',
     });
     expect(settings.textScale, 1.0);
@@ -53,6 +53,20 @@ void main() {
     expect(find.text('PASSWORD'), findsOneWidget);
     final BuildContext context = tester.element(find.text('Sign in'));
     expect(MediaQuery.textScalerOf(context).scale(10), closeTo(11.2, 0.001));
+    await tester.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('启动时恢复上次主题', (WidgetTester tester) async {
+    final AppState state = AppState();
+    await tester.pumpWidget(MoonChatApp(
+      state: state,
+      settings: const MoonSettings(themeMode: ThemeMode.dark),
+    ));
+    await tester.pump();
+
+    final BuildContext context = tester.element(find.text('登录'));
+    expect(Theme.of(context).brightness, Brightness.dark);
     await tester.pumpWidget(const SizedBox.shrink());
     state.dispose();
   });

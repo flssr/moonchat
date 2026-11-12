@@ -10,14 +10,19 @@ extension MoonContextText on BuildContext {
 
 /// 带占位符的文案：`{n}`、`{m}`、`{name}`、`{id}` 由调用方替换。
 String trArgs(BuildContext context, String zh, Map<String, String> args) {
-  String text = context.tr(zh);
+  final String template = context.tr(zh);
+  final RegExp token = RegExp(r'\{[a-zA-Z]+\}');
+  assert(
+    token.allMatches(template).every((RegExpMatch match) {
+      final String name = match.group(0)!;
+      return args.containsKey(name.substring(1, name.length - 1));
+    }),
+    'missing argument for "$zh"',
+  );
+  String text = template;
   args.forEach((String key, String value) {
     text = text.replaceAll('{$key}', value);
   });
-  assert(
-    !RegExp(r'\{[a-zA-Z]+\}').hasMatch(text),
-    'unfilled placeholder in "$text"',
-  );
   return text;
 }
 

@@ -64,11 +64,8 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     final Account current = state.account!;
     for (final Account account in state.accounts) {
       if (account.accountId == current.accountId) {
-        // `account` 由 updateProfile / 会话响应写入，一定是最新的；
-        // 只有它缺资料字段时才用 mine 里的那份补全。
-        final bool currentHasProfile =
-            current.gender != null || current.birthday != null;
-        return currentHasProfile ? current : account;
+        // `accounts` 来自 mine，updateProfile 成功后也会同步成当前账号；优先用它补全。
+        return account;
       }
     }
     return current;
@@ -112,7 +109,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     }
     final String name = _name.text.trim();
     if (name.isEmpty || name.characters.length > 20) {
-      setState(() => _nameError = context.tr('昵称 1–20 字'));
+      setState(() => _nameError = '昵称 1–20 字');
       return;
     }
     setState(() {
@@ -125,14 +122,21 @@ class _ProfileEditorState extends State<_ProfileEditor> {
         displayName: name,
         gender: _gender,
         birthday: _birthday,
+        clearBirthday: _birthday == null && _account.birthday != null,
       );
       if (mounted) {
         Navigator.of(context).pop();
       }
     } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _error = e.displayText);
+      if (!mounted) {
+        return;
       }
+      if (e.isUnauthenticated) {
+        // AppState 已经把界面切回登录页，收掉这个资料弹窗。
+        Navigator.of(context).pop();
+        return;
+      }
+      setState(() => _error = e.displayText);
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -223,7 +227,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                   label: context.tr('昵称'),
                   controller: _name,
                   enabled: !_busy,
-                  errorText: _nameError,
+                  errorText: _nameError == null ? null : context.tr(_nameError!),
                   hint: context.tr('1–20 字'),
                   onSubmitted: (_) {
                     if (!_busy) {

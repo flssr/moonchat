@@ -591,20 +591,28 @@ class AppState extends ChangeNotifier {
     required String displayName,
     required String gender,
     DateTime? birthday,
+    bool clearBirthday = false,
   }) async {
     final Account? current = account;
-    if (current == null) {
+    final String? token = loginToken;
+    if (current == null || token == null) {
       // 已经登出：让编辑器停在弹窗里报错，别把关闭弹窗当成保存成功。
-      throw ApiException(code: 'conflict', message: 'signed out');
+      throw ApiException(code: 'unauthenticated', message: 'signed out');
     }
     final UpdatedProfile updated = await api.updateProfile(
-      token: loginToken!,
+      token: token,
       displayName: displayName,
       gender: gender,
       birthday: birthday,
+      clearBirthday: clearBirthday,
     );
-    if (!updated.hasProfileFields) {
+    if (!updated.hasProfileFields || updated.displayName.isEmpty) {
       throw ApiException(code: 'upstream_unavailable', message: 'profile fields missing');
+    }
+    // 等待期间可能已被 401 / 续期失败登出，或用户切了账号。
+    final Account? still = account;
+    if (still == null || still.accountId != current.accountId) {
+      return;
     }
     account = Account(
       accountId: current.accountId,

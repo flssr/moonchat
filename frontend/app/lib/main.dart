@@ -30,11 +30,14 @@ class _MoonChatAppState extends State<MoonChatApp> {
   late final AppState _state = widget.state ?? AppState();
   late final bool _ownsState = widget.state == null;
   late final SettingsStore _store = widget.store ?? createSettingsStore();
-  late final MoonSettings _initial = widget.settings ?? const MoonSettings();
+  late final MoonSettings _initial = widget.settings ?? _store.load();
 
   late ThemeMode _mode;
   late double _textScale;
   late Locale _locale;
+
+  /// `?theme=` 是预览参数，不能把被强制的值写回用户偏好。
+  bool _themeForced = false;
 
   /// 登录成功后，登录页要把登舱过渡播完再交棒；这里等它的回调。
   /// 不复用 `phase`：登录态与「动画播完没有」是两件事，塞进 AppState 会污染状态机。
@@ -44,7 +47,9 @@ class _MoonChatAppState extends State<MoonChatApp> {
   void initState() {
     super.initState();
     // 预览参数优先于上次保存；其余设置从本地偏好恢复。
-    _mode = switch (Uri.base.queryParameters['theme']) {
+    final String? forced = Uri.base.queryParameters['theme'];
+    _themeForced = forced == 'light' || forced == 'dark';
+    _mode = switch (forced) {
       'light' => ThemeMode.light,
       'dark' => ThemeMode.dark,
       _ => _initial.themeMode,
@@ -65,7 +70,7 @@ class _MoonChatAppState extends State<MoonChatApp> {
     _store.save(MoonSettings(
       textScale: _textScale,
       languageCode: _locale.languageCode,
-      themeMode: _mode,
+      themeMode: _themeForced ? _initial.themeMode : _mode,
     ));
   }
 
@@ -146,7 +151,6 @@ class _MoonChatAppState extends State<MoonChatApp> {
                     state: _state,
                     onToggleTheme: _toggleTheme,
                     brightness: brightness,
-                    languageCode: _locale.languageCode,
                     textScale: _textScale,
                     onLanguageChanged: _setLanguage,
                     onTextScaleChanged: _setTextScale,

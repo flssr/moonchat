@@ -269,26 +269,31 @@ class MoonChoicePill extends StatelessWidget {
     final MoonPalette p = context.moon;
     return Semantics(
       button: true,
+      enabled: onTap != null,
       selected: selected,
       label: label,
-      child: IntrinsicWidth(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 40),
-          child: InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(999),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: selected ? p.surface2 : Colors.transparent,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: selected ? p.ink2 : p.line),
-              ),
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 12.5, color: selected ? p.ink : p.ink3),
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: onTap == null ? 0.4 : 1,
+        child: IntrinsicWidth(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(999),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? p.surface2 : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: selected ? p.ink2 : p.line),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 12.5, color: selected ? p.ink : p.ink3),
+                ),
               ),
             ),
           ),

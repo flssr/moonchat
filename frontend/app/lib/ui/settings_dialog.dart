@@ -9,7 +9,6 @@ import 'widgets.dart';
 Future<void> showSettingsDialog(
   BuildContext context, {
   required double textScale,
-  required String languageCode,
   required ValueChanged<double> onTextScaleChanged,
   required ValueChanged<String> onLanguageChanged,
 }) async {
@@ -17,7 +16,6 @@ Future<void> showSettingsDialog(
     context: context,
     builder: (BuildContext context) => _SettingsDialog(
       textScale: textScale,
-      languageCode: languageCode,
       onTextScaleChanged: onTextScaleChanged,
       onLanguageChanged: onLanguageChanged,
     ),
@@ -27,13 +25,11 @@ Future<void> showSettingsDialog(
 class _SettingsDialog extends StatefulWidget {
   const _SettingsDialog({
     required this.textScale,
-    required this.languageCode,
     required this.onTextScaleChanged,
     required this.onLanguageChanged,
   });
 
   final double textScale;
-  final String languageCode;
   final ValueChanged<double> onTextScaleChanged;
   final ValueChanged<String> onLanguageChanged;
 
@@ -43,7 +39,13 @@ class _SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
-  late String _language = widget.languageCode;
+  late String _language;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _language = Localizations.localeOf(context).languageCode;
+  }
 
   static const List<(double, String)> _sizes = kTextScaleOptions;
 
@@ -109,7 +111,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   for (final (double value, String label) in _sizes)
                     MoonChoicePill(
                       label: _t(label),
-                      selected: (_textScale - value).abs() < 0.001,
+                      selected: (_textScale - value).abs() < kTextScaleEpsilon,
                       onTap: () => _setTextScale(value),
                     ),
                 ],
@@ -165,8 +167,9 @@ class _PrivacyRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
-    return SizedBox(
-      height: 48,
+    return Container(
+      constraints: const BoxConstraints(minHeight: 48),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         children: <Widget>[
           Expanded(

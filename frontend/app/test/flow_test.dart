@@ -709,6 +709,9 @@ Widget _shell(AppState state) => MaterialApp(
         state: state,
         onToggleTheme: (Brightness _) {},
         brightness: Brightness.light,
+        textScale: 1.0,
+        onLanguageChanged: (String _) {},
+        onTextScaleChanged: (double _) {},
       ),
     );
 

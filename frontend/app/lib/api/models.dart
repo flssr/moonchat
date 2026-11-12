@@ -14,12 +14,12 @@ DateTime? _date(Object? v) => v == null ? null : DateTime.parse(v as String).toU
 /// 生日是日历日，不是时刻：只取年月日。
 /// 契约是 `YYYY-MM-DD`；带偏移的完整时间戳先截日期段，避免按 UTC 取「日」差一天。
 DateTime? _dateOnly(Object? v) {
-  if (v == null) {
+  if (v is! String) {
     return null;
   }
-  final String raw = v as String;
-  final DateTime parsed = DateTime.parse(raw.length > 10 ? raw.substring(0, 10) : raw);
-  return DateTime(parsed.year, parsed.month, parsed.day);
+  final String raw = v.length > 10 ? v.substring(0, 10) : v;
+  final DateTime? parsed = DateTime.tryParse(raw);
+  return parsed == null ? null : DateTime(parsed.year, parsed.month, parsed.day);
 }
 
 /// #1 注册的响应：没有 token。
@@ -89,7 +89,9 @@ class UpdatedProfile {
         birthday: _dateOnly(j['birthday']),
         // gender 总是非空发送，回显它就能证明后端认识新字段；
         // birthday 可能在 `NON_NULL` 序列化下被省略（null 表示清除），不能要求 key 存在。
-        hasProfileFields: j.containsKey('account_id') && j.containsKey('gender'),
+        hasProfileFields: j.containsKey('account_id') &&
+            j['gender'] is String &&
+            j['display_name'] is String,
       );
 
   final int accountId;

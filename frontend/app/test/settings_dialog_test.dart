@@ -34,12 +34,12 @@ Future<void> _pumpShell(
   AppState state, {
   required ValueChanged<double> onTextScale,
   required ValueChanged<String> onLanguage,
-  String languageCode = 'zh',
+  Locale locale = const Locale('zh', 'CN'),
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: buildMoonTheme(Brightness.light),
-      locale: const Locale('zh', 'CN'),
+      locale: locale,
       supportedLocales: const <Locale>[
         Locale('zh', 'CN'),
         Locale('en'),
@@ -51,7 +51,7 @@ Future<void> _pumpShell(
         state: state,
         onToggleTheme: (_) {},
         brightness: Brightness.light,
-        languageCode: languageCode,
+        textScale: 1.0,
         onTextScaleChanged: onTextScale,
         onLanguageChanged: onLanguage,
       ),
@@ -105,7 +105,7 @@ void main() {
       state,
       onTextScale: (_) {},
       onLanguage: (_) {},
-      languageCode: 'en',
+      locale: const Locale('en'),
     );
 
     expect(find.byTooltip('Settings'), findsOneWidget);

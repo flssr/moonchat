@@ -168,6 +168,7 @@ void main() {
     final AppState state = AppState(
       api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
     );
+    addTearDown(state.dispose);
     await tester.pumpWidget(MoonChatApp(state: state));
     await tester.pump();
 
@@ -196,6 +197,7 @@ void main() {
       api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
     );
     final _RecordingSettingsStore store = _RecordingSettingsStore();
+    addTearDown(state.dispose);
     await tester.pumpWidget(MoonChatApp(state: state, store: store));
     await tester.pump();
 
