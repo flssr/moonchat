@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'state/app_state.dart';
 import 'theme.dart';
@@ -66,6 +67,9 @@ class _MoonChatAppState extends State<MoonChatApp> {
       theme: buildMoonTheme(Brightness.light),
       darkTheme: buildMoonTheme(Brightness.dark),
       themeMode: _mode,
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const <Locale>[Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       home: ListenableBuilder(
         listenable: _state,
         builder: (BuildContext context, Widget? _) {

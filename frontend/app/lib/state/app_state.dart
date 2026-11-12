@@ -585,6 +585,51 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 改当前账号资料。响应必须回显 gender/birthday（后端 issue #5）；缺字段就当失败，
+  /// 不让当前后端把性别/生日静默丢掉。
+  Future<void> updateProfile({
+    required String displayName,
+    required String gender,
+    DateTime? birthday,
+  }) async {
+    final Account? current = account;
+    if (current == null) {
+      // 已经登出：让编辑器停在弹窗里报错，别把关闭弹窗当成保存成功。
+      throw ApiException(code: 'conflict', message: 'signed out');
+    }
+    final UpdatedProfile updated = await api.updateProfile(
+      token: loginToken!,
+      displayName: displayName,
+      gender: gender,
+      birthday: birthday,
+    );
+    if (!updated.hasProfileFields) {
+      throw ApiException(code: 'upstream_unavailable', message: 'profile fields missing');
+    }
+    account = Account(
+      accountId: current.accountId,
+      type: current.type,
+      displayName: updated.displayName,
+      gender: updated.gender,
+      birthday: updated.birthday,
+    );
+    try {
+      // 名字变了，好友 / 群 / 会话列表里的旧名字也要跟着换。
+      await refreshAll();
+    } catch (_) {
+      // 资料已经保存；列表刷新失败下次 refreshAll 会补。
+    }
+    // refreshAll 可能因 401 触发 logout，或者用户切了账号：别把旧账号写回去。
+    final Account? me = account;
+    if (me == null || me.accountId != current.accountId) {
+      return;
+    }
+    accounts = accounts
+        .map((Account a) => a.accountId == current.accountId ? me : a)
+        .toList();
+    notifyListeners();
+  }
+
   Future<CreatedAgent> createAgent(String displayName) async {
     final CreatedAgent created = await api.createAgent(token: loginToken!, displayName: displayName);
     // 密钥只在创建响应里出现一次；列表刷新失败不能把这次响应一起吞掉，否则密钥永久丢失。

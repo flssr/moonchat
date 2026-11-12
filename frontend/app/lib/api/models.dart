@@ -11,6 +11,17 @@ String? _strOrNull(Object? v) => v as String?;
 bool _bool(Object? v) => v == true;
 DateTime? _date(Object? v) => v == null ? null : DateTime.parse(v as String).toUtc();
 
+/// 生日是日历日，不是时刻：只取年月日。
+/// 契约是 `YYYY-MM-DD`；带偏移的完整时间戳先截日期段，避免按 UTC 取「日」差一天。
+DateTime? _dateOnly(Object? v) {
+  if (v == null) {
+    return null;
+  }
+  final String raw = v as String;
+  final DateTime parsed = DateTime.parse(raw.length > 10 ? raw.substring(0, 10) : raw);
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
+
 /// #1 注册的响应：没有 token。
 class RegisteredAccount {
   const RegisteredAccount({
@@ -35,19 +46,57 @@ class Account {
     required this.accountId,
     required this.type,
     required this.displayName,
+    this.gender,
+    this.birthday,
   });
 
   factory Account.fromJson(Map<String, dynamic> j) => Account(
         accountId: _int(j['account_id']),
         type: _str(j['type']),
         displayName: _str(j['display_name']),
+        gender: _strOrNull(j['gender']),
+        birthday: _dateOnly(j['birthday']),
       );
 
   final int accountId;
   final String type;
   final String displayName;
 
+  /// `male` / `female` / `other` / `private`；后端未上线时为空。
+  final String? gender;
+
+  /// 只到日；星座由客户端按它推导，不落库。
+  final DateTime? birthday;
+
   bool get isAgent => type == 'agent';
+}
+
+/// #6 改资料的回显。`hasProfileFields` 用来确认后端真的回了新字段；
+/// 缺字段时不能把保存当成功，否则当前后端会静默丢掉性别/生日。
+class UpdatedProfile {
+  const UpdatedProfile({
+    required this.accountId,
+    required this.displayName,
+    required this.gender,
+    required this.birthday,
+    required this.hasProfileFields,
+  });
+
+  factory UpdatedProfile.fromJson(Map<String, dynamic> j) => UpdatedProfile(
+        accountId: j.containsKey('account_id') ? _int(j['account_id']) : 0,
+        displayName: _str(j['display_name']),
+        gender: _strOrNull(j['gender']),
+        birthday: _dateOnly(j['birthday']),
+        // gender 总是非空发送，回显它就能证明后端认识新字段；
+        // birthday 可能在 `NON_NULL` 序列化下被省略（null 表示清除），不能要求 key 存在。
+        hasProfileFields: j.containsKey('account_id') && j.containsKey('gender'),
+      );
+
+  final int accountId;
+  final String displayName;
+  final String? gender;
+  final DateTime? birthday;
+  final bool hasProfileFields;
 }
 
 /// #2 登录 / #20 续期：登录 JWT 与它归属的账号。
@@ -81,11 +130,7 @@ class AccountSession {
   factory AccountSession.fromJson(Map<String, dynamic> j) {
     final Map<String, dynamic> turms = (j['turms'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
     return AccountSession(
-      account: Account(
-        accountId: _int(j['account_id']),
-        type: _str(j['type']),
-        displayName: _str(j['display_name']),
-      ),
+      account: Account.fromJson(j),
       loginToken: _strOrNull(j['login_token']),
       loginExpiresAt: _date(j['login_expires_at']),
       turms: TurmsCredential(

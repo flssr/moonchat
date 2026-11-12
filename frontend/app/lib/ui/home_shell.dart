@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../api/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'account_view.dart';
 import 'contacts_view.dart';
 import 'messages_view.dart';
+import 'profile_editor.dart';
 import 'profile_panel.dart';
+import 'widgets.dart';
 
 /// 客户端外壳：56 导航 + 各视图自己的列表 / 内容 / 信息栏。
 /// 当前视图与当前会话都在 `AppState` 里，这里只负责布局与窄屏的列表开关。
@@ -80,6 +83,8 @@ class _HomeShellState extends State<HomeShell> {
                   children: <Widget>[
                     _NavRail(
                       view: state.view,
+                      account: state.account,
+                      onOpenProfile: () => showProfileEditor(context, state),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,
                       brightness: widget.brightness,
@@ -104,6 +109,8 @@ class _HomeShellState extends State<HomeShell> {
 class _NavRail extends StatelessWidget {
   const _NavRail({
     required this.view,
+    required this.account,
+    required this.onOpenProfile,
     required this.onSelect,
     required this.pendingCount,
     required this.brightness,
@@ -112,6 +119,8 @@ class _NavRail extends StatelessWidget {
   });
 
   final String view;
+  final Account? account;
+  final VoidCallback onOpenProfile;
   final ValueChanged<String> onSelect;
   final int pendingCount;
   final Brightness brightness;
@@ -129,17 +138,25 @@ class _NavRail extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          const SizedBox(height: 12),
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: p.surface2,
-              shape: BoxShape.circle,
-              border: Border.all(color: p.lineStrong),
+          const SizedBox(height: 8),
+          Tooltip(
+            message: '个人资料',
+            child: InkWell(
+              onTap: onOpenProfile,
+              child: SizedBox(
+                width: 56,
+                height: 44,
+                child: Center(
+                  child: MoonAvatar(
+                    name: account?.displayName ?? '',
+                    seed: account?.accountId ?? 0,
+                    size: 28,
+                  ),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
           _RailButton(
             icon: Icons.chat_bubble_outline,
             label: '消息',

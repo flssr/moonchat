@@ -214,14 +214,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            '“${_quote.text}”',
-            style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '— ${_quote.author}',
-            style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+          // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 88),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '“${_quote.text}”',
+                  style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '— ${_quote.author}',
+                  style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 28),
           if (_registerMode) ...<Widget>[

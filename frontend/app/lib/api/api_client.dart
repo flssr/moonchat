@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
+String _formatDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 /// 接口失败只有两类：契约里的 `code`，与根本没拿到响应（网络）。
 /// 界面一律按 `code` 分流，`message` 只给人看（`api-contracts.md` §1.3）。
 class ApiException implements Exception {
@@ -227,9 +230,19 @@ class ApiClient {
     return CreatedAgent.fromJson(json);
   }
 
-  /// #6 改本账号名字。
-  Future<void> rename({required String token, required String displayName}) async {
-    await _send('PATCH', '/api/accounts/me', token: token, body: {'display_name': displayName});
+  /// #6 改本账号资料。`birthday` 传 null 表示清除；性别固定给一个枚举值。
+  Future<UpdatedProfile> updateProfile({
+    required String token,
+    required String displayName,
+    required String gender,
+    DateTime? birthday,
+  }) async {
+    final json = await _send('PATCH', '/api/accounts/me', token: token, body: {
+      'display_name': displayName,
+      'gender': gender,
+      'birthday': birthday == null ? null : _formatDate(birthday),
+    });
+    return UpdatedProfile.fromJson(json);
   }
 
   /// #7 资料页。
