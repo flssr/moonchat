@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'widgets.dart';
@@ -34,7 +35,7 @@ class _AccountViewState extends State<AccountView> {
 
   Future<void> _createAgent() async {
     final String name = _name.text.trim();
-    if (name.isEmpty || name.length > 20) {
+    if (name.isEmpty || name.characters.length > 20) {
       setState(() => _error = '名字 1–20 字');
       return;
     }
@@ -94,7 +95,7 @@ class _AccountViewState extends State<AccountView> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 alignment: Alignment.centerLeft,
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
-                child: Text('账号', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
+                child: Text(context.tr('账号'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
               ),
               Expanded(
                 child: ListView.builder(
@@ -126,7 +127,7 @@ class _AccountViewState extends State<AccountView> {
                                       ),
                                     ),
                                     const SizedBox(width: 6),
-                                    MoonTag(text: a.isAgent ? 'agent' : '真人'),
+                                    MoonTag(text: a.isAgent ? 'agent' : context.tr('真人')),
                                   ],
                                 ),
                                 MonoText('#${a.accountId}'),
@@ -134,10 +135,10 @@ class _AccountViewState extends State<AccountView> {
                             ),
                           ),
                           if (current)
-                            MoonTag(text: '当前', strong: true)
+                            MoonTag(text: context.tr('当前'), strong: true)
                           else
                             MoonButton(
-                              label: '切进',
+                              label: context.tr('切进'),
                               kind: MoonButtonKind.secondary,
                               small: true,
                               onPressed: _busy
@@ -180,7 +181,7 @@ class _AccountViewState extends State<AccountView> {
                   child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('当前账号', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
+                    Text(context.tr('当前账号'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
                     const SizedBox(height: 8),
                     Row(
                       children: <Widget>[
@@ -199,32 +200,36 @@ class _AccountViewState extends State<AccountView> {
                       ],
                     ),
                     const SizedBox(height: 28),
-                    Text('创建 agent 账号', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
+                    Text(context.tr('创建 agent 账号'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
                     const SizedBox(height: 8),
                     if (!isHuman)
                       Text(
-                        '当前是 agent 账号：agent 不能再建 agent。切回你的真人账号再创建。',
+                        context.tr('当前是 agent 账号：agent 不能再建 agent。切回你的真人账号再创建。'),
                         style: TextStyle(fontSize: 12, height: 1.6, color: p.ink3),
                       )
                     else ...<Widget>[
                       Row(
                         children: <Widget>[
                           Expanded(
-                            child: MoonField(label: '名字', controller: _name, hint: '1–20 字'),
+                            child: MoonField(
+                              label: context.tr('名字'),
+                              controller: _name,
+                              hint: context.tr('1–20 字'),
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          MoonButton(label: '创建', busy: _busy, onPressed: _createAgent),
+                          MoonButton(label: context.tr('创建'), busy: _busy, onPressed: _createAgent),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。',
+                        context.tr('新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。'),
                         style: TextStyle(fontSize: 11.5, height: 1.6, color: p.ink3),
                       ),
                     ],
                     if (_error != null) ...<Widget>[
                       const SizedBox(height: 8),
-                      Text(_error!, style: TextStyle(fontSize: 11.5, color: p.accent)),
+                      Text(context.tr(_error!), style: TextStyle(fontSize: 11.5, color: p.accent)),
                     ],
                     if (_created != null) ...<Widget>[
                       const SizedBox(height: 24),
@@ -239,7 +244,7 @@ class _AccountViewState extends State<AccountView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
                             Text(
-                              '账号密钥（只显示一次）',
+                              context.tr('账号密钥（只显示一次）'),
                               style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.accent),
                             ),
                             const SizedBox(height: 8),
@@ -251,14 +256,14 @@ class _AccountViewState extends State<AccountView> {
                             Row(
                               children: <Widget>[
                                 MoonButton(
-                                  label: '复制密钥',
+                                  label: context.tr('复制密钥'),
                                   kind: MoonButtonKind.secondary,
                                   small: true,
-                                  onPressed: () => copyText(context, _created!.accountKey, '密钥已复制'),
+                                  onPressed: () => copyText(context, _created!.accountKey, context.tr('密钥已复制')),
                                 ),
                                 const SizedBox(width: 8),
                                 MoonButton(
-                                  label: '我知道了',
+                                  label: context.tr('我知道了'),
                                   kind: MoonButtonKind.text,
                                   small: true,
                                   onPressed: () => setState(() => _created = null),
@@ -267,7 +272,7 @@ class _AccountViewState extends State<AccountView> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              '离开这一页就不再显示。agent 端点用它换 Turms 凭据（POST /api/sessions）。',
+                              context.tr('离开这一页就不再显示。agent 端点用它换 Turms 凭据（POST /api/sessions）。'),
                               style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
                             ),
                           ],
@@ -275,11 +280,10 @@ class _AccountViewState extends State<AccountView> {
                       ),
                     ],
                     const SizedBox(height: 28),
-                    Text('凭据', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
+                    Text(context.tr('凭据'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
                     const SizedBox(height: 8),
                     Text(
-                      '登录 JWT 7 天，滑动续期；Turms 凭据 12 小时，到期前重调 /api/sessions 换新的。'
-                      '两者都由客户端自己续，不靠碰运气刚好没过期。',
+                      context.tr('登录 JWT 7 天，滑动续期；Turms 凭据 12 小时，到期前重调 /api/sessions 换新的。两者都由客户端自己续，不靠碰运气刚好没过期。'),
                       style: TextStyle(fontSize: 12, height: 1.7, color: p.ink2),
                     ),
                   ],

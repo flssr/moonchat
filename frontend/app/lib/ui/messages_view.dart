@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'profile_panel.dart';
@@ -149,11 +150,11 @@ class _MessagesViewState extends State<MessagesView> {
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
                 child: Row(
                   children: <Widget>[
-                    Text('消息', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
+                    Text(context.tr('消息'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
                     const Spacer(),
                     if (widget.onToggleList != null && widget.state.activeConversationKey != null)
                       IconButton(
-                        tooltip: '收起会话列表',
+                        tooltip: context.tr('收起会话列表'),
                         visualDensity: VisualDensity.compact,
                         onPressed: widget.onToggleList,
                         icon: Icon(Icons.chevron_left, size: 18, color: p.ink3),
@@ -186,7 +187,7 @@ class _MessagesViewState extends State<MessagesView> {
                               ),
                             ),
                             child: Text(
-                              label,
+                              context.tr(label),
                               style: TextStyle(
                                 fontSize: 11.5,
                                 color: widget.state.filter == key ? p.ink : p.ink3,
@@ -201,8 +202,8 @@ class _MessagesViewState extends State<MessagesView> {
               Expanded(
                 child: _filtered.isEmpty
                     ? MoonEmpty(
-                        title: '这个账号还没有会话',
-                        hint: '先加好友，或被拉进群。',
+                        title: context.tr('这个账号还没有会话'),
+                        hint: context.tr('先加好友，或被拉进群。'),
                       )
                     : ListView.builder(
                         padding: EdgeInsets.zero,
@@ -233,15 +234,19 @@ class _MessagesViewState extends State<MessagesView> {
                                         ),
                                         Text(
                                           c.isRoom
-                                              ? (c.memberCount == null ? '群聊' : '群聊 · ${c.memberCount} 人')
-                                              : '私聊',
+                                              ? (c.memberCount == null
+                                                  ? context.tr('群聊')
+                                                  : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                      'm': '${c.memberCount}',
+                                                    }))
+                                              : context.tr('私聊'),
                                           style: TextStyle(fontSize: 11.5, color: p.ink3),
                                         ),
                                       ],
                                     ),
                                   ),
                                   if (c.isRoom && c.ownerAccountId == widget.state.account?.accountId)
-                                    const MoonTag(text: '群主'),
+                                    MoonTag(text: context.tr('群主')),
                                 ],
                               ),
                             ),
@@ -283,7 +288,10 @@ class _MessagesViewState extends State<MessagesView> {
         // 消息区。
         Expanded(
           child: active == null
-              ? const MoonEmpty(title: '选一个会话', hint: '私聊只能从好友进入，群聊只能从自己已加入的群进入。')
+              ? MoonEmpty(
+                  title: context.tr('选一个会话'),
+                  hint: context.tr('私聊只能从好友进入，群聊只能从自己已加入的群进入。'),
+                )
               : Column(
                   children: <Widget>[
                     Container(
@@ -297,7 +305,7 @@ class _MessagesViewState extends State<MessagesView> {
                         children: <Widget>[
                           if (!widget.showList)
                             IconButton(
-                              tooltip: '会话列表',
+                              tooltip: context.tr('会话列表'),
                               visualDensity: VisualDensity.compact,
                               onPressed: widget.onToggleList,
                               icon: Icon(Icons.menu, size: 18, color: p.ink3),
@@ -315,15 +323,17 @@ class _MessagesViewState extends State<MessagesView> {
                               Text(
                                 active.isRoom
                                     ? (active.memberCount == null
-                                        ? '群聊'
-                                        : '群聊 · ${active.memberCount} 人')
-                                    : '私聊',
+                                        ? context.tr('群聊')
+                                        : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                            'm': '${active.memberCount}',
+                                          }))
+                                    : context.tr('私聊'),
                                 style: TextStyle(fontSize: 11, color: p.ink3),
                               ),
                             ],
                           ),
                           const Spacer(),
-                          if (widget.state.realtimeUp) const MoonTag(text: '实时'),
+                          if (widget.state.realtimeUp) MoonTag(text: context.tr('实时')),
                         ],
                       ),
                     ),
@@ -350,7 +360,7 @@ class _MessagesViewState extends State<MessagesView> {
                         width: double.infinity,
                         color: p.surface,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        child: Text(_sendErrors[active.key]!, style: TextStyle(fontSize: 11.5, color: p.accent)),
+                        child: Text(context.tr(_sendErrors[active.key]!), style: TextStyle(fontSize: 11.5, color: p.accent)),
                       ),
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
@@ -379,7 +389,7 @@ class _MessagesViewState extends State<MessagesView> {
                                   isDense: true,
                                   border: InputBorder.none,
                                   counterText: '',
-                                  hintText: '写点什么…',
+                                  hintText: context.tr('写点什么…'),
                                   hintStyle: TextStyle(fontSize: 13.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _send(active),
@@ -391,7 +401,7 @@ class _MessagesViewState extends State<MessagesView> {
                           ValueListenableBuilder<TextEditingValue>(
                             valueListenable: _draftFor(active.key),
                             builder: (BuildContext context, TextEditingValue value, Widget? _) => MoonButton(
-                              label: '发送',
+                              label: context.tr('发送'),
                               busy: _sending,
                               onPressed: value.text.trim().isEmpty ? null : () => _send(active),
                             ),
@@ -474,9 +484,9 @@ class _MessageListState extends State<_MessageList> {
     final MoonPalette p = context.moon;
     final List<ChatMessage> messages = widget.state.messagesOf(widget.conversation.key);
     if (messages.isEmpty) {
-      return const MoonEmpty(
-        title: '关系已经成立，发第一句话吧',
-        hint: '历史消息由客户端持 Turms 凭据直接查，Biz 不在读路径上。',
+      return MoonEmpty(
+        title: context.tr('关系已经成立，发第一句话吧'),
+        hint: context.tr('历史消息由客户端持 Turms 凭据直接查，Biz 不在读路径上。'),
       );
     }
     final bool loadingOlder = widget.state.isHistoryLoading(widget.conversation.key);
@@ -523,15 +533,15 @@ class _MessageListState extends State<_MessageList> {
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     MonoText(switch (m.state) {
-                      MessageState.sending => '发送中…',
+                      MessageState.sending => context.tr('发送中…'),
                       MessageState.sent => formatClock(m.sentAt),
-                      MessageState.failed => '未发出',
+                      MessageState.failed => context.tr('未发出'),
                     }),
                     if (failed) ...<Widget>[
                       const SizedBox(width: 8),
                       GestureDetector(
                         onTap: () => widget.onRetry(m),
-                        child: Text('重试', style: TextStyle(fontSize: 10.5, color: p.accent)),
+                        child: Text(context.tr('重试'), style: TextStyle(fontSize: 10.5, color: p.accent)),
                       ),
                     ],
                   ],
@@ -642,13 +652,16 @@ class _RoomInfoState extends State<_RoomInfo> {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
       children: <Widget>[
         Text(
-          widget.state.conversationOf('room:${widget.roomId}')?.title ?? '群',
+          widget.state.conversationOf('room:${widget.roomId}')?.title ?? context.tr('群'),
           style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink),
         ),
         const SizedBox(height: 4),
-        MonoText('群 ${widget.roomId} · ${detail?.memberCount ?? 0} 人'),
+        MonoText(trArgs(context, '群 {id} · {m} 人', <String, String>{
+          'id': '${widget.roomId}',
+          'm': '${detail?.memberCount ?? 0}',
+        })),
         const SizedBox(height: 16),
-        Text('成员', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
+        Text(context.tr('成员'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
         const SizedBox(height: 6),
         for (final RoomMember m in members?.items ?? const <RoomMember>[])
           InkWell(
@@ -667,10 +680,10 @@ class _RoomInfoState extends State<_RoomInfo> {
                       style: TextStyle(fontSize: 12.5, color: p.ink),
                     ),
                   ),
-                  if (m.accountId == detail?.ownerAccountId) const MoonTag(text: '群主', strong: true),
+                  if (m.accountId == detail?.ownerAccountId) MoonTag(text: context.tr('群主'), strong: true),
                   if (isOwner && m.accountId != me)
                     IconButton(
-                      tooltip: '移除',
+                      tooltip: context.tr('移除'),
                       visualDensity: VisualDensity.compact,
                       onPressed: _busy
                           ? null
@@ -701,14 +714,17 @@ class _RoomInfoState extends State<_RoomInfo> {
         if ((members?.total ?? 0) > (members?.items.length ?? 0))
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: MonoText('仅显示前 ${members!.items.length} 位，共 ${members.total} 位'),
+            child: MonoText(trArgs(context, '仅显示前 {n} 位，共 {m} 位', <String, String>{
+              'n': '${members!.items.length}',
+              'm': '${members.total}',
+            })),
           ),
         const SizedBox(height: 16),
         if (_memberError != null) ...<Widget>[
-          Text(_memberError!, style: TextStyle(fontSize: 11, color: p.accent)),
+          Text(context.tr(_memberError!), style: TextStyle(fontSize: 11, color: p.accent)),
           const SizedBox(height: 8),
         ],
-        Text('邀请', style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
+        Text(context.tr('邀请'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
         const SizedBox(height: 6),
         Row(
           children: <Widget>[
@@ -727,30 +743,30 @@ class _RoomInfoState extends State<_RoomInfo> {
                   decoration: InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: '账号 ID',
+                    hintText: context.tr('账号 ID'),
                     hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                   ),
                 ),
               ),
             ),
             const SizedBox(width: 6),
-            MoonButton(label: '邀请', small: true, onPressed: _busy ? null : _inviteById),
+            MoonButton(label: context.tr('邀请'), small: true, onPressed: _busy ? null : _inviteById),
           ],
         ),
         if (_inviteError != null) ...<Widget>[
           const SizedBox(height: 6),
-          Text(_inviteError!, style: TextStyle(fontSize: 11, color: p.accent)),
+          Text(context.tr(_inviteError!), style: TextStyle(fontSize: 11, color: p.accent)),
         ],
         const SizedBox(height: 16),
         if (isOwner)
           Align(
             alignment: Alignment.centerLeft,
             child: Tooltip(
-              message: '群主不能退群：V1 没有群主转让，也没有解散群',
+              message: context.tr('群主不能退群：V1 没有群主转让，也没有解散群'),
               child: Opacity(
                 opacity: 0.4,
                 child: MoonButton(
-                  label: '退群',
+                  label: context.tr('退群'),
                   kind: MoonButtonKind.secondary,
                   small: true,
                   onPressed: null,
@@ -760,14 +776,14 @@ class _RoomInfoState extends State<_RoomInfo> {
           )
         else
           MoonButton(
-            label: '退群',
+            label: context.tr('退群'),
             kind: MoonButtonKind.secondary,
             small: true,
             onPressed: _busy ? null : _leave,
           ),
         const SizedBox(height: 8),
         Text(
-          isOwner ? '群主不能退群（V1 没有转让）。' : '邀请即入群，不需要对方同意。',
+          isOwner ? context.tr('群主不能退群（V1 没有转让）。') : context.tr('邀请即入群，不需要对方同意。'),
           style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
         ),
       ],

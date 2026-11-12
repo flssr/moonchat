@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../i18n/context_tr.dart';
 import '../theme.dart';
 
 /// 主按钮只有一种形状：40 高、8 圆角、0 18 内边距（DESIGN-SPEC §6）。
@@ -203,7 +204,7 @@ class _MoonFieldState extends State<MoonField> {
                     size: 16,
                     color: p.ink3,
                   ),
-                  tooltip: _hidden ? '显示密码' : '隐藏密码',
+                  tooltip: _hidden ? context.tr('显示密码') : context.tr('隐藏密码'),
                   visualDensity: VisualDensity.compact,
                 ),
             ],
@@ -245,6 +246,59 @@ class MoonAvatar extends StatelessWidget {
       child: Text(
         initial,
         style: TextStyle(fontSize: size * 0.4, color: p.ink, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
+/// 可选胶囊：资料编辑的性别、设置页的字体/语言共用。
+class MoonChoicePill extends StatelessWidget {
+  const MoonChoicePill({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      selected: selected,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: onTap == null ? 0.4 : 1,
+        child: IntrinsicWidth(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 40),
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(999),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? p.surface2 : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: selected ? p.ink2 : p.line),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 12.5, color: selected ? p.ink : p.ink3),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

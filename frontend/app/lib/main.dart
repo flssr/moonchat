@@ -1,19 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'i18n/moon_strings.dart';
+import 'settings/settings.dart';
+import 'settings/settings_store.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 
 void main() {
-  runApp(const MoonChatApp());
+  final SettingsStore store = createSettingsStore();
+  runApp(MoonChatApp(settings: store.load(), store: store));
 }
 
 class MoonChatApp extends StatefulWidget {
   /// [state] 只给测试注入；生产入口不传，由外壳自己持有并负责释放。
-  const MoonChatApp({super.key, this.state});
+  const MoonChatApp({super.key, this.state, this.settings, this.store});
 
   final AppState? state;
+  final MoonSettings? settings;
+  final SettingsStore? store;
 
   @override
   State<MoonChatApp> createState() => _MoonChatAppState();
@@ -22,17 +29,34 @@ class MoonChatApp extends StatefulWidget {
 class _MoonChatAppState extends State<MoonChatApp> {
   late final AppState _state = widget.state ?? AppState();
   late final bool _ownsState = widget.state == null;
+  late final SettingsStore _store = widget.store ?? createSettingsStore();
+  late final MoonSettings _initial = widget.settings ?? _store.load();
 
-  /// 初始主题：`?theme=light|dark` 强制（预览参数），否则跟随系统（DESIGN-SPEC §8）。
-  ThemeMode _mode = switch (Uri.base.queryParameters['theme']) {
-    'light' => ThemeMode.light,
-    'dark' => ThemeMode.dark,
-    _ => ThemeMode.system,
-  };
+  late ThemeMode _mode;
+  late double _textScale;
+  late Locale _locale;
+
+  /// `?theme=` 是预览参数，不能把被强制的值写回用户偏好。
+  bool _themeForced = false;
 
   /// 登录成功后，登录页要把登舱过渡播完再交棒；这里等它的回调。
   /// 不复用 `phase`：登录态与「动画播完没有」是两件事，塞进 AppState 会污染状态机。
   bool _arrived = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 预览参数优先于上次保存；其余设置从本地偏好恢复。
+    final String? forced = Uri.base.queryParameters['theme'];
+    _themeForced = forced == 'light' || forced == 'dark';
+    _mode = switch (forced) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => _initial.themeMode,
+    };
+    _textScale = _initial.textScale;
+    _locale = _localeFor(_initial.languageCode);
+  }
 
   @override
   void dispose() {
@@ -42,9 +66,32 @@ class _MoonChatAppState extends State<MoonChatApp> {
     super.dispose();
   }
 
-  void _toggleTheme(Brightness current) {
-    setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
+  void _persist() {
+    _store.save(MoonSettings(
+      textScale: _textScale,
+      languageCode: _locale.languageCode,
+      themeMode: _themeForced ? _initial.themeMode : _mode,
+    ));
   }
+
+  void _toggleTheme(Brightness current) {
+    _themeForced = false;
+    setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
+    _persist();
+  }
+
+  void _setTextScale(double value) {
+    setState(() => _textScale = value);
+    _persist();
+  }
+
+  void _setLanguage(String code) {
+    setState(() => _locale = _localeFor(code));
+    _persist();
+  }
+
+  static Locale _localeFor(String code) =>
+      code == 'zh' ? const Locale('zh', 'CN') : Locale(code);
 
   void _onArrived() {
     if (mounted) {
@@ -57,6 +104,8 @@ class _MoonChatAppState extends State<MoonChatApp> {
   Widget? _gate;
   bool? _gateHome;
   Brightness? _gateBrightness;
+  double? _gateTextScale;
+  Locale? _gateLocale;
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +115,19 @@ class _MoonChatAppState extends State<MoonChatApp> {
       theme: buildMoonTheme(Brightness.light),
       darkTheme: buildMoonTheme(Brightness.dark),
       themeMode: _mode,
+      locale: _locale,
+      supportedLocales:
+          kMoonLanguages.map(((String, String) item) => _localeFor(item.$1)).toList(growable: false),
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      builder: (BuildContext context, Widget? child) {
+        final MediaQueryData data = MediaQuery.of(context);
+        // 保留系统字号档位，再叠应用内的小/中/大。
+        final double systemScale = data.textScaler.scale(1);
+        return MediaQuery(
+          data: data.copyWith(textScaler: TextScaler.linear(systemScale * _textScale)),
+          child: child!,
+        );
+      },
       home: ListenableBuilder(
         listenable: _state,
         builder: (BuildContext context, Widget? _) {
@@ -76,11 +138,24 @@ class _MoonChatAppState extends State<MoonChatApp> {
           }
           final bool showHome = ready && _arrived;
           final Brightness brightness = Theme.of(context).brightness;
-          if (_gate == null || showHome != _gateHome || brightness != _gateBrightness) {
+          if (_gate == null ||
+              showHome != _gateHome ||
+              brightness != _gateBrightness ||
+              _textScale != _gateTextScale ||
+              _locale != _gateLocale) {
             _gateHome = showHome;
             _gateBrightness = brightness;
+            _gateTextScale = _textScale;
+            _gateLocale = _locale;
             _gate = showHome
-                ? HomeShell(state: _state, onToggleTheme: _toggleTheme, brightness: brightness)
+                ? HomeShell(
+                    state: _state,
+                    onToggleTheme: _toggleTheme,
+                    brightness: brightness,
+                    textScale: _textScale,
+                    onLanguageChanged: _setLanguage,
+                    onTextScaleChanged: _setTextScale,
+                  )
                 : LoginScreen(state: _state, onArrived: _onArrived);
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;

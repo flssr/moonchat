@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 
+import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'account_view.dart';
 import 'contacts_view.dart';
 import 'messages_view.dart';
+import 'profile_editor.dart';
 import 'profile_panel.dart';
+import 'settings_dialog.dart';
+import 'widgets.dart';
 
 /// 客户端外壳：56 导航 + 各视图自己的列表 / 内容 / 信息栏。
 /// 当前视图与当前会话都在 `AppState` 里，这里只负责布局与窄屏的列表开关。
@@ -15,11 +20,17 @@ class HomeShell extends StatefulWidget {
     required this.state,
     required this.onToggleTheme,
     required this.brightness,
+    required this.textScale,
+    required this.onLanguageChanged,
+    required this.onTextScaleChanged,
   });
 
   final AppState state;
   final ValueChanged<Brightness> onToggleTheme;
   final Brightness brightness;
+  final double textScale;
+  final ValueChanged<String> onLanguageChanged;
+  final ValueChanged<double> onTextScaleChanged;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -80,6 +91,14 @@ class _HomeShellState extends State<HomeShell> {
                   children: <Widget>[
                     _NavRail(
                       view: state.view,
+                      account: state.account,
+                      onOpenProfile: () => showProfileEditor(context, state),
+                      onOpenSettings: () => showSettingsDialog(
+                        context,
+                        textScale: widget.textScale,
+                        onTextScaleChanged: widget.onTextScaleChanged,
+                        onLanguageChanged: widget.onLanguageChanged,
+                      ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,
                       brightness: widget.brightness,
@@ -104,6 +123,9 @@ class _HomeShellState extends State<HomeShell> {
 class _NavRail extends StatelessWidget {
   const _NavRail({
     required this.view,
+    required this.account,
+    required this.onOpenProfile,
+    required this.onOpenSettings,
     required this.onSelect,
     required this.pendingCount,
     required this.brightness,
@@ -112,6 +134,9 @@ class _NavRail extends StatelessWidget {
   });
 
   final String view;
+  final Account? account;
+  final VoidCallback onOpenProfile;
+  final VoidCallback onOpenSettings;
   final ValueChanged<String> onSelect;
   final int pendingCount;
   final Brightness brightness;
@@ -129,46 +154,60 @@ class _NavRail extends StatelessWidget {
       ),
       child: Column(
         children: <Widget>[
-          const SizedBox(height: 12),
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: p.surface2,
-              shape: BoxShape.circle,
-              border: Border.all(color: p.lineStrong),
+          const SizedBox(height: 8),
+          Tooltip(
+            message: context.tr('个人资料'),
+            child: InkWell(
+              onTap: onOpenProfile,
+              child: SizedBox(
+                width: 56,
+                height: 44,
+                child: Center(
+                  child: MoonAvatar(
+                    name: account?.displayName ?? '',
+                    seed: account?.accountId ?? 0,
+                    size: 28,
+                  ),
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
           _RailButton(
             icon: Icons.chat_bubble_outline,
-            label: '消息',
+            label: context.tr('消息'),
             selected: view == 'messages',
             onTap: () => onSelect('messages'),
           ),
           _RailButton(
             icon: Icons.people_outline,
-            label: '联系人',
+            label: context.tr('联系人'),
             selected: view == 'contacts',
             badge: pendingCount,
             onTap: () => onSelect('contacts'),
           ),
           _RailButton(
             icon: Icons.person_outline,
-            label: '账号',
+            label: context.tr('账号'),
             selected: view == 'account',
             onTap: () => onSelect('account'),
           ),
           const Spacer(),
           _RailButton(
+            icon: Icons.settings_outlined,
+            label: context.tr('设置'),
+            selected: false,
+            onTap: onOpenSettings,
+          ),
+          _RailButton(
             icon: brightness == Brightness.dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-            label: brightness == Brightness.dark ? '切到亮色' : '切到暗色',
+            label: context.tr(brightness == Brightness.dark ? '切到亮色' : '切到暗色'),
             selected: false,
             onTap: () => onToggleTheme(brightness),
           ),
           _RailButton(
             icon: Icons.logout,
-            label: '退出登录',
+            label: context.tr('退出登录'),
             selected: false,
             onTap: onLogout,
           ),

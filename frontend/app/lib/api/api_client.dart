@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 
 import 'models.dart';
 
+String _formatDate(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
 /// 接口失败只有两类：契约里的 `code`，与根本没拿到响应（网络）。
 /// 界面一律按 `code` 分流，`message` 只给人看（`api-contracts.md` §1.3）。
 class ApiException implements Exception {
@@ -227,9 +230,26 @@ class ApiClient {
     return CreatedAgent.fromJson(json);
   }
 
-  /// #6 改本账号名字。
-  Future<void> rename({required String token, required String displayName}) async {
-    await _send('PATCH', '/api/accounts/me', token: token, body: {'display_name': displayName});
+  /// #6 改本账号资料。`birthday` 只有非空或明确清除时才发，避免部分快照把服务端生日清掉。
+  Future<UpdatedProfile> updateProfile({
+    required String token,
+    required String displayName,
+    required String gender,
+    DateTime? birthday,
+    bool clearBirthday = false,
+  }) async {
+    assert(birthday == null || !clearBirthday, 'birthday and clearBirthday are mutually exclusive');
+    final Map<String, Object?> body = <String, Object?>{
+      'display_name': displayName,
+      'gender': gender,
+    };
+    if (birthday != null) {
+      body['birthday'] = _formatDate(birthday);
+    } else if (clearBirthday) {
+      body['birthday'] = null;
+    }
+    final json = await _send('PATCH', '/api/accounts/me', token: token, body: body);
+    return UpdatedProfile.fromJson(json);
   }
 
   /// #7 资料页。

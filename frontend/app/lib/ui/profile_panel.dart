@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'widgets.dart';
@@ -66,7 +67,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(e.displayText, style: TextStyle(color: context.moon.ink)),
+            content: Text(e.displayTextIn(context), style: TextStyle(color: context.moon.ink)),
             backgroundColor: context.moon.surface,
           ),
         );
@@ -86,7 +87,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
     if (_error != null) {
-      return MoonEmpty(title: _error!);
+      return MoonEmpty(title: context.tr(_error!));
     }
     final Profile? profile = widget.state.profileOf(widget.accountId);
     if (profile == null) {
@@ -120,20 +121,20 @@ class _ProfilePanelState extends State<ProfilePanel> {
           ),
           const SizedBox(height: 16),
           if (_isSelf)
-            Text('这是你自己。', style: TextStyle(fontSize: 12, color: p.ink3))
+            Text(context.tr('这是你自己。'), style: TextStyle(fontSize: 12, color: p.ink3))
           else if (profile.isFriend) ...<Widget>[
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: <Widget>[
                 MoonButton(
-                  label: '发消息',
+                  label: context.tr('发消息'),
                   kind: MoonButtonKind.secondary,
                   small: true,
                   onPressed: widget.onMessage,
                 ),
                 MoonButton(
-                  label: '删除好友',
+                  label: context.tr('删除好友'),
                   kind: MoonButtonKind.danger,
                   small: true,
                   onPressed: _busy ? null : () => _confirmDelete(profile),
@@ -141,18 +142,18 @@ class _ProfilePanelState extends State<ProfilePanel> {
               ],
             ),
             const SizedBox(height: 12),
-            Text('删除后会话保留、历史只读，不能再发新消息。', style: TextStyle(fontSize: 11.5, color: p.ink3)),
+            Text(context.tr('删除后会话保留、历史只读，不能再发新消息。'), style: TextStyle(fontSize: 11.5, color: p.ink3)),
           ] else if (_hasIncoming) ...<Widget>[
             Wrap(
               spacing: 8,
               children: <Widget>[
                 MoonButton(
-                  label: '同意',
+                  label: context.tr('同意'),
                   small: true,
                   onPressed: _busy ? null : () => _run(() => widget.state.respondFriend(profile.accountId, 'accept')),
                 ),
                 MoonButton(
-                  label: '拒绝',
+                  label: context.tr('拒绝'),
                   kind: MoonButtonKind.secondary,
                   small: true,
                   onPressed: _busy ? null : () => _run(() => widget.state.respondFriend(profile.accountId, 'reject')),
@@ -164,12 +165,12 @@ class _ProfilePanelState extends State<ProfilePanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 MoonButton(
-                  label: '加好友',
+                  label: context.tr('加好友'),
                   small: true,
                   onPressed: _busy ? null : () => _run(() => widget.state.requestFriend(profile.accountId)),
                 ),
                 const SizedBox(height: 8),
-                Text('非好友看不到发消息入口：私聊只从好友列表进入。', style: TextStyle(fontSize: 11.5, color: p.ink3)),
+                Text(context.tr('非好友看不到发消息入口：私聊只从好友列表进入。'), style: TextStyle(fontSize: 11.5, color: p.ink3)),
               ],
             ),
         ],
@@ -182,20 +183,22 @@ class _ProfilePanelState extends State<ProfilePanel> {
       context: context,
       builder: (BuildContext context) => AlertDialog(
         backgroundColor: context.moon.surface,
-        title: Text('删除好友', style: TextStyle(fontSize: 16, color: context.moon.ink)),
+        title: Text(context.tr('删除好友'), style: TextStyle(fontSize: 16, color: context.moon.ink)),
         content: Text(
-          '确认删除 ${profile.displayName}？会话会保留，历史只读。',
+          trArgs(context, '确认删除 {name}？会话会保留，历史只读。', <String, String>{
+            'name': profile.displayName,
+          }),
           style: TextStyle(fontSize: 13, color: context.moon.ink2),
         ),
         actions: <Widget>[
           MoonButton(
-            label: '取消',
+            label: context.tr('取消'),
             kind: MoonButtonKind.text,
             small: true,
             onPressed: () => Navigator.of(context).pop(false),
           ),
           MoonButton(
-            label: '删除',
+            label: context.tr('删除'),
             kind: MoonButtonKind.danger,
             small: true,
             onPressed: () => Navigator.of(context).pop(true),
@@ -248,7 +251,7 @@ class ProfileOverlay extends StatelessWidget {
                           child: IconButton(
                             onPressed: state.closeProfile,
                             icon: Icon(Icons.close, size: 16, color: p.ink3),
-                            tooltip: '关闭',
+                            tooltip: context.tr('关闭'),
                           ),
                         ),
                       ),

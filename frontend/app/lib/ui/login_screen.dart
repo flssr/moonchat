@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'login_quotes.dart';
 import 'widgets.dart';
 
 /// S1 登录 / 注册 + S2 登舱过渡（`SCREEN-MAP.md` §4）。
@@ -33,6 +35,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   /// 过渡已经开始：表单淡出并停用，避免用户在这 800ms 里继续操作。
   bool _arriving = false;
+
+  /// 每次进入登录页取一句：State 只在进出登录页时重建，切主题或切注册模式都不会换。
+  late final LoginQuote _quote = nextLoginQuote();
 
   bool _registerMode = false;
   bool _submitting = false;
@@ -94,6 +99,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await widget.state.login(email: _email.text.trim(), password: _password.text);
       await _playArrival();
     } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         if (registered) {
           // 账号已经建好了，失败的是随后的登录：切回登录模式，别让重试撞 `conflict`。
@@ -108,7 +116,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         }
       });
     } catch (_) {
-      setState(() => _formError = '操作失败，请重试');
+      if (mounted) {
+        setState(() => _formError = '操作失败，请重试');
+      }
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -141,13 +151,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
           // 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
+          final Widget formBody = _buildForm(context);
           final Widget form = IgnorePointer(
             ignoring: _arriving,
             child: AnimatedOpacity(
               opacity: _arriving ? 0 : 1,
               duration: const Duration(milliseconds: 420),
               curve: Curves.easeOutCubic,
-              child: _buildForm(context),
+              // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
+              child: narrow ? formBody : SingleChildScrollView(child: formBody),
             ),
           );
           final Widget stage = _buildStage(context);
@@ -208,46 +220,60 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            '账号、好友、私聊、群聊。账号的能力可以被归属者之外的 agent 操控。',
-            style: TextStyle(fontSize: 13, height: 1.7, color: p.ink3),
+          // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 88),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '“${context.tr(_quote.text)}”',
+                  style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '— ${context.tr(_quote.author)}',
+                  style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 28),
           if (_registerMode) ...<Widget>[
-            MoonField(label: '名字', controller: _name, errorText: _nameError, hint: '1–20 字'),
+            MoonField(label: context.tr('名字'), controller: _name, errorText: _nameError == null ? null : context.tr(_nameError!), hint: context.tr('1–20 字')),
             const SizedBox(height: 16),
           ],
           MoonField(
-            label: '邮箱',
+            label: context.tr('邮箱'),
             controller: _email,
-            errorText: _emailError,
+            errorText: _emailError == null ? null : context.tr(_emailError!),
             hint: 'you@example.com',
             keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 16),
           MoonField(
-            label: '密码',
+            label: context.tr('密码'),
             controller: _password,
             obscure: true,
-            errorText: _passwordError,
-            hint: '8–72 位，不能是纯数字',
+            errorText: _passwordError == null ? null : context.tr(_passwordError!),
+            hint: context.tr('8–72 位，不能是纯数字'),
             onSubmitted: (_) => _submit(),
           ),
           if (_formError != null) ...<Widget>[
             const SizedBox(height: 12),
-            Text(_formError!, style: TextStyle(fontSize: 12, color: p.accent)),
+            Text(context.tr(_formError!), style: TextStyle(fontSize: 12, color: p.accent)),
           ],
           const SizedBox(height: 24),
           Row(
             children: <Widget>[
               MoonButton(
-                label: _registerMode ? '注册并登录' : '登录',
+                label: _registerMode ? context.tr('注册并登录') : context.tr('登录'),
                 onPressed: _submit,
                 busy: _submitting,
               ),
               const SizedBox(width: 12),
               MoonButton(
-                label: _registerMode ? '已有账号' : '注册',
+                label: _registerMode ? context.tr('已有账号') : context.tr('注册'),
                 kind: MoonButtonKind.text,
                 onPressed: _submitting
                     ? null
@@ -336,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 left: 24,
                 bottom: 20,
                 child: Text(
-                  '发射基地',
+                  context.tr('发射基地'),
                   style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
                 ),
               ),
