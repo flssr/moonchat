@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:moonchat/api/api_client.dart';
 import 'package:moonchat/main.dart';
+import 'package:moonchat/settings/settings.dart';
 import 'package:moonchat/state/app_state.dart';
 import 'package:moonchat/theme.dart';
 import 'package:moonchat/ui/home_shell.dart';
@@ -42,6 +43,16 @@ LoginQuote? _visibleQuote() {
 
 AppState _stateOn(_Recorder recorder) =>
     AppState(api: ApiClient(baseUrl: 'http://mock.local', client: recorder.client));
+
+class _RecordingSettingsStore implements SettingsStore {
+  MoonSettings? saved;
+
+  @override
+  MoonSettings load() => MoonSettings.defaults;
+
+  @override
+  void save(MoonSettings settings) => saved = settings;
+}
 
 void main() {
   setUp(resetLoginQuoteHistory);
@@ -157,7 +168,6 @@ void main() {
     final AppState state = AppState(
       api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
     );
-    addTearDown(state.dispose);
     await tester.pumpWidget(MoonChatApp(state: state));
     await tester.pump();
 
@@ -177,6 +187,38 @@ void main() {
     expect(find.byType(HomeShell), findsOneWidget);
 
     // 登录会排 7 天 / 12 小时的续期定时器；测试结束前拆掉，别让 fake_async 报残留。
+    await tester.pumpWidget(const SizedBox.shrink());
+    state.dispose();
+  });
+
+  testWidgets('设置变更写回本地存储', (WidgetTester tester) async {
+    final AppState state = AppState(
+      api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
+    );
+    final _RecordingSettingsStore store = _RecordingSettingsStore();
+    await tester.pumpWidget(MoonChatApp(state: state, store: store));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).at(0), 'a@b.c');
+    await tester.enterText(find.byType(TextField).at(1), 'password1');
+    await tester.tap(find.text('登录'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeShell), findsOneWidget);
+
+    await tester.tap(find.byTooltip('切到暗色'));
+    await tester.pump();
+    expect(store.saved?.themeMode, ThemeMode.dark);
+
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('小'));
+    await tester.pump();
+    expect(store.saved?.textScale, 0.9);
+
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+    expect(store.saved?.languageCode, 'en');
+
     await tester.pumpWidget(const SizedBox.shrink());
     state.dispose();
   });

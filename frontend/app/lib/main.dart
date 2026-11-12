@@ -2,20 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'i18n/moon_strings.dart';
+import 'settings/settings.dart';
+import 'settings/settings_store.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 import 'ui/home_shell.dart';
 import 'ui/login_screen.dart';
 
 void main() {
-  runApp(const MoonChatApp());
+  final SettingsStore store = createSettingsStore();
+  runApp(MoonChatApp(settings: store.load(), store: store));
 }
 
 class MoonChatApp extends StatefulWidget {
   /// [state] 只给测试注入；生产入口不传，由外壳自己持有并负责释放。
-  const MoonChatApp({super.key, this.state});
+  const MoonChatApp({super.key, this.state, this.settings, this.store});
 
   final AppState? state;
+  final MoonSettings? settings;
+  final SettingsStore? store;
 
   @override
   State<MoonChatApp> createState() => _MoonChatAppState();
@@ -24,21 +29,29 @@ class MoonChatApp extends StatefulWidget {
 class _MoonChatAppState extends State<MoonChatApp> {
   late final AppState _state = widget.state ?? AppState();
   late final bool _ownsState = widget.state == null;
+  late final SettingsStore _store = widget.store ?? createSettingsStore();
+  late final MoonSettings _initial = widget.settings ?? const MoonSettings();
 
-  /// 初始主题：`?theme=light|dark` 强制（预览参数），否则跟随系统（DESIGN-SPEC §8）。
-  ThemeMode _mode = switch (Uri.base.queryParameters['theme']) {
-    'light' => ThemeMode.light,
-    'dark' => ThemeMode.dark,
-    _ => ThemeMode.system,
-  };
+  late ThemeMode _mode;
+  late double _textScale;
+  late Locale _locale;
 
   /// 登录成功后，登录页要把登舱过渡播完再交棒；这里等它的回调。
   /// 不复用 `phase`：登录态与「动画播完没有」是两件事，塞进 AppState 会污染状态机。
   bool _arrived = false;
 
-  /// 设置页的字体与语言偏好只影响本机，跨重启不保留。
-  double _textScale = 1.0;
-  Locale _locale = const Locale('zh', 'CN');
+  @override
+  void initState() {
+    super.initState();
+    // 预览参数优先于上次保存；其余设置从本地偏好恢复。
+    _mode = switch (Uri.base.queryParameters['theme']) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => _initial.themeMode,
+    };
+    _textScale = _initial.textScale;
+    _locale = _localeFor(_initial.languageCode);
+  }
 
   @override
   void dispose() {
@@ -48,16 +61,27 @@ class _MoonChatAppState extends State<MoonChatApp> {
     super.dispose();
   }
 
+  void _persist() {
+    _store.save(MoonSettings(
+      textScale: _textScale,
+      languageCode: _locale.languageCode,
+      themeMode: _mode,
+    ));
+  }
+
   void _toggleTheme(Brightness current) {
     setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
+    _persist();
   }
 
   void _setTextScale(double value) {
     setState(() => _textScale = value);
+    _persist();
   }
 
   void _setLanguage(String code) {
     setState(() => _locale = _localeFor(code));
+    _persist();
   }
 
   static Locale _localeFor(String code) =>

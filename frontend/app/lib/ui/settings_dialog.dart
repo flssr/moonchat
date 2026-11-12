@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../i18n/moon_strings.dart';
+import '../settings/settings.dart';
 import '../theme.dart';
 import 'widgets.dart';
 
@@ -44,11 +45,7 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
   late String _language = widget.languageCode;
 
-  static const List<(double, String)> _sizes = <(double, String)>[
-    (0.9, '小'),
-    (1.0, '中'),
-    (1.12, '大'),
-  ];
+  static const List<(double, String)> _sizes = kTextScaleOptions;
 
   static const List<(String, String)> _languages = kMoonLanguages;
 
