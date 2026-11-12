@@ -272,6 +272,7 @@ class MoonChoicePill extends StatelessWidget {
       enabled: onTap != null,
       selected: selected,
       label: label,
+      onTap: onTap,
       excludeSemantics: true,
       child: Opacity(
         opacity: onTap == null ? 0.4 : 1,

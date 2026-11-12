@@ -39,19 +39,20 @@ class _SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
-  late String _language;
+  String? _language;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _language = Localizations.localeOf(context).languageCode;
+    // 只在第一次拿当前语言；之后的重建不覆盖用户刚点的选项。
+    _language ??= Localizations.localeOf(context).languageCode;
   }
 
   static const List<(double, String)> _sizes = kTextScaleOptions;
 
   static const List<(String, String)> _languages = kMoonLanguages;
 
-  String _t(String zh) => moonText(_language, zh);
+  String _t(String zh) => moonText(_language!, zh);
 
   void _setTextScale(double value) {
     setState(() => _textScale = value);

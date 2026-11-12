@@ -8,12 +8,14 @@ extension MoonContextText on BuildContext {
   String tr(String zh) => moonText(Localizations.localeOf(this).languageCode, zh);
 }
 
+/// 与替换循环同源的占位符：`{name}`、`{n2}`、`{user_id}` 都算。
+final RegExp _placeholderToken = RegExp(r'\{[^{}\s]+\}');
+
 /// 带占位符的文案：`{n}`、`{m}`、`{name}`、`{id}` 由调用方替换。
 String trArgs(BuildContext context, String zh, Map<String, String> args) {
   final String template = context.tr(zh);
-  final RegExp token = RegExp(r'\{[a-zA-Z]+\}');
   assert(
-    token.allMatches(template).every((RegExpMatch match) {
+    _placeholderToken.allMatches(template).every((RegExpMatch match) {
       final String name = match.group(0)!;
       return args.containsKey(name.substring(1, name.length - 1));
     }),

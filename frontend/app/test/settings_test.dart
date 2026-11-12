@@ -31,6 +31,10 @@ void main() {
     expect(settings.textScale, 1.0);
     expect(settings.languageCode, 'zh');
     expect(settings.themeMode, ThemeMode.system);
+    expect(
+      MoonSettings.fromJson(<String, dynamic>{'language': 'fr'}).languageCode,
+      'zh',
+    );
   });
 
   test('内存 store 存取', () {

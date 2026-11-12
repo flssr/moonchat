@@ -64,8 +64,15 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     final Account current = state.account!;
     for (final Account account in state.accounts) {
       if (account.accountId == current.accountId) {
-        // `accounts` 来自 mine，updateProfile 成功后也会同步成当前账号；优先用它补全。
-        return account;
+        // mine 只保证 id/type/name；资料字段以会话里的当前账号优先，缺的再用 mine 补。
+        return Account(
+          accountId: current.accountId,
+          type: current.type,
+          displayName:
+              current.displayName.isEmpty ? account.displayName : current.displayName,
+          gender: current.gender ?? account.gender,
+          birthday: current.birthday ?? account.birthday,
+        );
       }
     }
     return current;

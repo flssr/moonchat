@@ -82,17 +82,22 @@ class UpdatedProfile {
     required this.hasProfileFields,
   });
 
-  factory UpdatedProfile.fromJson(Map<String, dynamic> j) => UpdatedProfile(
-        accountId: j.containsKey('account_id') ? _int(j['account_id']) : 0,
-        displayName: _str(j['display_name']),
-        gender: _strOrNull(j['gender']),
-        birthday: _dateOnly(j['birthday']),
-        // gender 总是非空发送，回显它就能证明后端认识新字段；
-        // birthday 可能在 `NON_NULL` 序列化下被省略（null 表示清除），不能要求 key 存在。
-        hasProfileFields: j.containsKey('account_id') &&
-            j['gender'] is String &&
-            j['display_name'] is String,
-      );
+  factory UpdatedProfile.fromJson(Map<String, dynamic> j) {
+    // 先按类型解析一次，坏类型只让 hasProfileFields 为 false，不在 _str 的 cast 里炸掉。
+    final Object? rawName = j['display_name'];
+    final Object? rawGender = j['gender'];
+    return UpdatedProfile(
+      accountId: j.containsKey('account_id') ? _int(j['account_id']) : 0,
+      displayName: rawName is String ? rawName : '',
+      gender: rawGender is String ? rawGender : null,
+      birthday: _dateOnly(j['birthday']),
+      // gender 总是非空发送，回显它就能证明后端认识新字段；
+      // birthday 可能在 `NON_NULL` 序列化下被省略（null 表示清除），不能要求 key 存在。
+      hasProfileFields: j.containsKey('account_id') &&
+          rawGender is String &&
+          rawName is String,
+    );
+  }
 
   final int accountId;
   final String displayName;

@@ -238,6 +238,7 @@ class ApiClient {
     DateTime? birthday,
     bool clearBirthday = false,
   }) async {
+    assert(birthday == null || !clearBirthday, 'birthday and clearBirthday are mutually exclusive');
     final Map<String, Object?> body = <String, Object?>{
       'display_name': displayName,
       'gender': gender,

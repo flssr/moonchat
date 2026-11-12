@@ -11,9 +11,14 @@ const List<(double, String)> kTextScaleOptions = <(double, String)>[
   (1.12, '大'),
 ];
 
-bool isKnownTextScale(double value) =>
-    kTextScaleOptions
-        .any(((double, String) item) => (item.$1 - value).abs() < kTextScaleEpsilon);
+double? canonicalTextScale(double value) {
+  for (final (double option, String _) in kTextScaleOptions) {
+    if ((option - value).abs() < kTextScaleEpsilon) {
+      return option;
+    }
+  }
+  return null;
+}
 
 @immutable
 class MoonSettings {
@@ -33,7 +38,7 @@ class MoonSettings {
   factory MoonSettings.fromJson(Map<String, dynamic> json) {
     final Object? rawScaleValue = json['text_scale'];
     final double rawScale = rawScaleValue is num ? rawScaleValue.toDouble() : 1.0;
-    final double scale = isKnownTextScale(rawScale) ? rawScale : 1.0;
+    final double scale = canonicalTextScale(rawScale) ?? 1.0;
 
     final Object? rawLanguageValue = json['language'];
     final String rawLanguage = rawLanguageValue is String ? rawLanguageValue : 'zh';

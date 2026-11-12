@@ -75,6 +75,7 @@ class _MoonChatAppState extends State<MoonChatApp> {
   }
 
   void _toggleTheme(Brightness current) {
+    _themeForced = false;
     setState(() => _mode = current == Brightness.dark ? ThemeMode.light : ThemeMode.dark);
     _persist();
   }
