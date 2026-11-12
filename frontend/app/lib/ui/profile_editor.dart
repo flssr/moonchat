@@ -329,11 +329,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  '星座按生日自动计算。',
-                  style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
-                ),
               ],
             ),
           ),
