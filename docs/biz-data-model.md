@@ -61,7 +61,7 @@ depends-on:
 
 ## 3. 迁移与命名约定
 
-- 迁移用 **Flyway**：路径 `moonchat-biz/src/main/resources/db/migration/`，按聚合切三个文件——`V1__biz_account.sql`（`account`、`account_info`）、`V2__biz_friendship.sql`（`friendship`、`friendship_reverse`）、`V3__biz_room.sql`（`room_info`、`room_member`、`account_room`）；七张表一次建齐，不产生无效的中间结构。`moonchat-biz/pom.xml` 已有 `flyway-core`、`flyway-database-postgresql` 与 `org.postgresql:postgresql`（版本来源见 `moonchat-dependencies`）。
+- 迁移用 **Flyway**：路径 `backend/moonchat-biz/src/main/resources/db/migration/`，按聚合切三个文件——`V1__biz_account.sql`（`account`、`account_info`）、`V2__biz_friendship.sql`（`friendship`、`friendship_reverse`）、`V3__biz_room.sql`（`room_info`、`room_member`、`account_room`）；七张表一次建齐，不产生无效的中间结构。`backend/moonchat-biz/pom.xml` 已有 `flyway-core`、`flyway-database-postgresql` 与 `org.postgresql:postgresql`（版本来源见 `moonchat-dependencies`）。
 - 持久层是 **MyBatis-Plus**：七张表的读写、聚合事务与唯一的群成员分页都走它，不引入 JPA，也不写裸 `JdbcClient`（`moonchat-dependencies`）。
 - 表名**单数 snake_case、不加前缀**（单库单域，七张表全部属于 biz）：`account`、`account_info`、`friendship`、`friendship_reverse`、`room_info`、`room_member`、`account_room`。
 - 枚举用 **`text` + `check`**，不用 PG 原生 enum 类型：加一个取值是一条 check 迁移，不必改类型、不锁表。

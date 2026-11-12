@@ -1,6 +1,6 @@
 # 文档台账（spec-graph index）
 
-本目录**放设计与导航**：12 份带 frontmatter 的 spec（11 份设计 + 1 份 task-spec 排施工顺序）+ 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
+本目录**放设计与导航**：12 份带 frontmatter 的 spec（11 份设计 + 1 份 task-spec 排施工顺序）+ 本台账。它们靠 `id` / `type` 被 spec-graph 索引，`moonchat-product` 是根。`docs/frontend/` 另放 4 份客户端设计文档（无 frontmatter，不参与 spec-graph）。仓库根目录只有 `README.md`（项目概览）与 `AGENTS.md`（协作规则），不放设计内容。
 
 **新增、删除或改名任何一份 spec，都必须同步更新这张表**——否则这张表会开始在无声处骗人。
 
@@ -119,7 +119,7 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 ## 四、维护约定
 
 1. **一份文件一个模块**，文件名用模块的英文短名（`friends.md`，不是 `05-好友设计.md`）。
-2. **spec 一律放在 `docs/` 下**。仓库根目录只允许 `README.md` 与 `AGENTS.md` 两个文件；新增、改名或删除 spec 时，同步改完 `README.md` 与本台账的全部链接，不留半迁移状态。
+2. **spec 一律放在 `docs/` 根下**；`docs/frontend/` 只放客户端设计文档（无 frontmatter，不参与 spec-graph）。仓库根目录只允许 `README.md` 与 `AGENTS.md` 两个文件；新增、改名或删除 spec 时，同步改完 `README.md` 与本台账的全部链接，不留半迁移状态。
 3. **新增 spec 时同时做三件事**：建文件 → 填齐 frontmatter 并挂好 `parent` / `depends-on` → 更新本文档「一、台账」与依赖图。
 4. **临时笔记不进仓库**：计划写进对话内 TODO，草稿留在对话里；`NOTES.md` / `TODO.md` / `plan.md` 出现在任何目录都算污染。
 5. **只登记已定稿的 spec**。还在讨论中的内容不进台账——台账的用途是「这里有什么」，不是「这里可能有什么」。
@@ -136,7 +136,7 @@ depends-on:                    # 语义依赖边，只能指向已存在的 id
 - **公开群的 Turms 只读能力未实测**，因此公开群与邀请链接被推迟。
 - **若干数字仍无依据**：P95 300ms、两级限流桶的具体速率、邮箱长度上限、JWT 有效期。名字 20 与正文 500 已取得依据（Turms 默认值）。
 - **几条 Turms 能力已在源码核对，尚未端到端跑通**（`messaging-and-tunnel.md` 的「要核对的 7 条」）：代发、客户端权限拦截、客户端分页游标（只能按 `deliveryDate`）这类结论来自源码，仍要在真实部署上跑一遍。
-- **客户端还没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、群成员资料页都没描述；「非好友只见资料页」这类界面级规则目前只写在 `friends.md`，实现客户端前先回读它。
+- **客户端还没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、群成员资料页都没描述；「非好友只见资料页」这类界面级规则目前只写在 `friends.md`，实现客户端前先回读它。现有 4 份客户端设计文档在 `docs/frontend/`，是设计稿不是 spec。
 - 具体处置规矩见 [`AGENTS.md`](../AGENTS.md) §5。
 
 > 给 AI agent 的协作规则（硬边界、已定简化、范围纪律、提交规范、交付前自检）在仓库根目录的 [`AGENTS.md`](../AGENTS.md)。

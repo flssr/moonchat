@@ -21,8 +21,8 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）、S4（写入网关）已完成并合入 `main`；S5（客户端与验收）在 `feat/s5-client-flutter` 完成，六条判据已在真 Turms + 真 Biz 上跑通，待合并**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶、Flutter Web 客户端与 agent 示例端点都已落地。
-- 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
+- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，`backend/` 下的 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）、S4（写入网关）已完成并合入 `main`；S5（客户端与验收）在 `feat/s5-client-flutter` 完成，六条判据已在真 Turms + 真 Biz 上跑通，待合并**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶、Flutter Web 客户端与 agent 示例端点都已落地。
+- 验证构建在 `backend/` 下用 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
 - 用户明确要求「开始实现」时，先确认落在哪个切片（见 [§6](#6-范围纪律按切片推进)），再动手。
@@ -64,7 +64,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 - **改行为 = 改 spec**。任何影响边界、契约、不变量的改动，必须先落到对应 spec，再谈实现。反过来，实现暴露了 spec 没定的东西，先补 spec。
 - **新增或删除 spec 文件，必须同步 `docs/README.md` 的台账表**，否则索引立刻开始骗人。
 - **根目录的持久 markdown 只放 `README.md` 与 `AGENTS.md`**，设计内容一律在 `docs/`；构建与部署文件只在实现需要时新增。
-- **不要在仓库里新建临时 markdown**（`NOTES.md`、`TODO.md`、`plan.md`、`草稿.md`、`new_docs/` 之类）。计划用对话内的 TODO，草稿写在对话里。`docs/` 里每一份文件都必须是正式 spec，且已登记在 `docs/README.md` 台账。
+- **不要在仓库里新建临时 markdown**（`NOTES.md`、`TODO.md`、`plan.md`、`草稿.md`、`new_docs/` 之类）。计划用对话内的 TODO，草稿写在对话里。`docs/` 根下每一份文件都必须是正式 spec，且已登记在 `docs/README.md` 台账；`docs/frontend/` 放客户端设计文档，不是 spec，不进台账。
 - 已经写在 spec 里的「已定的简化」不是待办事项，是决定（见 §4）。
 
 ---

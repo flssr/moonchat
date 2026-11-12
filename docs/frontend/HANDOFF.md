@@ -2,15 +2,16 @@
 
 - 日期：2026-11-11
 - 页面：`frontend/preview/index.html`
-- 规范：`frontend/docs/DESIGN-SPEC.md`
-- 屏幕：`frontend/docs/SCREEN-MAP.md`
-- 接口：`frontend/docs/API-MAPPING.md`
+- 规范：`docs/frontend/DESIGN-SPEC.md`
+- 屏幕：`docs/frontend/SCREEN-MAP.md`
+- 接口：`docs/frontend/API-MAPPING.md`
 - 技术栈：Flutter Web（V1 只发 Web 构建）
 
 ## 1. 交付物
 
 ```
 frontend/
+├─ app/                    Flutter 工程（V1 只发 Web 构建）
 ├─ preview/
 │  ├─ index.html          评审页（唯一视觉源）
 │  ├─ styles.css          全部样式与 token
@@ -22,11 +23,13 @@ frontend/
 │     ├─ rocket-launch.png 点火（420×649）
 │     ├─ baseline-login.jpg 基线截图（评审用，不进产品）
 │     └─ baseline-chat.jpg  基线截图（评审用，不进产品）
-└─ docs/
-   ├─ DESIGN-SPEC.md
-   ├─ SCREEN-MAP.md
-   ├─ API-MAPPING.md
-   └─ HANDOFF.md
+└─ baseline-source/        旧版 UI 基线（评审用，不进产品）
+
+docs/frontend/             客户端设计文档（仓库根 docs/ 下）
+├─ DESIGN-SPEC.md          视觉与 token
+├─ SCREEN-MAP.md           屏幕与状态
+├─ API-MAPPING.md          接口映射
+└─ HANDOFF.md              本文件
 ```
 
 打开方式：双击 `preview/index.html`。无构建、无外部字体、无网络请求。建议 1440 宽；移动端按 390 宽检查。

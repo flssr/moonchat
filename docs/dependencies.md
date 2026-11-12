@@ -83,7 +83,7 @@ Boot 不管的两个，钉在父 pom 的 `<properties>` 里：
 | `testcontainers-postgresql`、`testcontainers-junit-jupiter` | 真 PG：迁移、事务、唯一约束都按真库验 |
 | `com.redis:testcontainers-redis` | 真 Redis：限流桶的计数与过期按真库验 |
 
-- **容器替代本机环境**：`BizApplicationTests` 用 `@DynamicPropertySource` 把容器的 jdbc url 与 redis host/port 注入，本机装没装 PG / Redis 不影响 `./mvnw test`。
+- **容器替代本机环境**：`BizApplicationTests` 用 `@DynamicPropertySource` 把容器的 jdbc url 与 redis host/port 注入，本机装没装 PG / Redis 不影响在 `backend/` 下跑 `./mvnw test`。
 - **镜像固定**：`postgres:17-alpine` 与 `redis:8.0.3-alpine`。Redis 版本与 Turms 自带 compose 一致；PostgreSQL 的大版本没有 spec 依据（迁移里的语法迟早会依赖它），升级时改测试这一行即可，因为没有生产侧的镜像定义。
 
 ## 5. 加依赖的判断顺序

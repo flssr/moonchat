@@ -518,7 +518,7 @@ Authorization: Bearer <token>
 | 删账号 / 删 agent 账号 | V1 没有这个能力，账号行不删（`moonchat-biz-data` §2 的行生命周期） | `moonchat-product` §5.1 |
 | 登出 / 注销 | 客户端丢掉手上的 JWT 即可；服务端无状态，没有登出接口 | §3.4 的续期也是同样无状态的 |
 | 冻结账号、purge、对账 | 平台运维动作，不是产品能力 | `moonchat-biz-data` §4.1 |
-| 健康检查 | 已有 `spring-boot-starter-actuator`，不进业务契约 | `moonchat-biz/pom.xml` |
+| 健康检查 | 已有 `spring-boot-starter-actuator`，不进业务契约 | `backend/moonchat-biz/pom.xml` |
 
 ---
 

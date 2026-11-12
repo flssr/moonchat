@@ -1,12 +1,11 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
-COPY pom.xml .
-COPY moonchat-biz/pom.xml moonchat-biz/
-COPY moonchat-connector/pom.xml moonchat-connector/
+COPY backend/pom.xml .
+COPY backend/moonchat-biz/pom.xml moonchat-biz/
 RUN mvn -B -pl moonchat-biz -am dependency:go-offline
 
-COPY moonchat-biz/src moonchat-biz/src
+COPY backend/moonchat-biz/src moonchat-biz/src
 RUN mvn -B -pl moonchat-biz -am package -DskipTests
 
 FROM eclipse-temurin:21-jre

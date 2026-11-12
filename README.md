@@ -22,12 +22,12 @@ agent 不是插件、不是命令，而是通讯录里一个真的账号：它�
 .
 ├── README.md            # 本文件：上手与协作
 ├── AGENTS.md            # 给 AI agent 的硬边界与纪律（动代码前必读）
-├── moonchat-biz/        # 唯一的业务进程
+├── backend/             # Maven 根工程 + 唯一业务进程 moonchat-biz
 ├── frontend/            # 客户端（Flutter 工程 + 网页预览）
 ├── infra/               # 本地与部署的基础设施配置（Turms 覆盖、冒烟脚本）
 ├── vendor/turms/        # Turms 上游子模块，固定在具体提交
 ├── deliverables/        # 对外交付稿（不是 spec，不作为设计依据）
-└── docs/                # 12 份 spec，从 docs/README.md 的台账进
+└── docs/                # 12 份 spec + frontend/ 客户端设计文档
 ```
 
 ## 快速开始
@@ -38,8 +38,8 @@ agent 不是插件、不是命令，而是通讯录里一个真的账号：它�
 # 1. 取到 Turms 子模块（不初始化则 vendor/turms 为空）
 git submodule update --init --recursive
 
-# 2. 构建与测试（接口测试用 Testcontainers 起真 PG / Redis，需要 Docker 在跑）
-.\mvnw.cmd test
+# 2. 构建与测试（在 backend/ 的 Maven 根跑；接口测试用 Testcontainers 起真 PG / Redis，需要 Docker 在跑）
+.\backend\mvnw.cmd -f backend\pom.xml test
 
 # 3. 起 Turms 开发环境
 $env:ENV = 'dev'
@@ -56,7 +56,7 @@ $env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
 $env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"  # 与 turms-gateway 共用同一份
 $env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'                   # 登录 JWT 自签自验
 $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
-.\mvnw.cmd -pl moonchat-biz spring-boot:run
+.\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz spring-boot:run
 ```
 
 密钥文件在本地生成、不进仓库（`infra/turms/secrets/` 只跟踪它自己的 `.gitignore`）。密钥生成、Turms 冒烟与身份链路两条端到端脚本的跑法见 `docs/deployment.md` 与 `infra/turms/smoke/`。
@@ -73,7 +73,7 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 
 **PR 要求**：
 
-1. CI（`.github/workflows/ci.yml`）跑 `mvnw test` 必须绿。
+1. CI（`.github/workflows/ci.yml`）跑 `backend` 的 `mvnw test` 必须绿。
 2. 改了行为必须同时改对应 spec；改了 spec 必须同时更新 `docs/README.md` 台账。
 3. 不夹带无关改动：一次 PR 一件事。
 

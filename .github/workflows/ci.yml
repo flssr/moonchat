@@ -25,7 +25,9 @@ jobs:
           java-version: '21'
           cache: maven
       - run: chmod +x mvnw
+        working-directory: backend
       - run: ./mvnw -B test
+        working-directory: backend
 
   frontend:
     runs-on: ubuntu-latest

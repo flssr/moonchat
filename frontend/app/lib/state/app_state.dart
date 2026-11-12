@@ -68,7 +68,7 @@ class AppState extends ChangeNotifier {
   AppState({ApiClient? api, RealtimeClient? realtime})
       : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime() {
-    // 401 一律回登录页（`frontend/docs/API-MAPPING.md` §4）：凭据没了就别再让界面假装还在线。
+    // 401 一律回登录页（`docs/frontend/API-MAPPING.md` §4）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
   }
 

@@ -1,7 +1,7 @@
 # moonchat 客户端（Flutter Web）
 
 V1 只发 Web 构建。界面以 `frontend/preview/index.html` 为唯一视觉源，实现依据是
-`frontend/docs/DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`；接口契约以
+`docs/frontend/DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`；接口契约以
 `docs/api-contracts.md` 为准，本工程不新增路由与字段。
 
 ## 跑起来

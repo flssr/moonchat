@@ -12,7 +12,7 @@
 //        $env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
 //        $env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
 //        $env:MOONCHAT_AUTH_JWT_SECRET  = '<32 字节以上的任意字符串>'
-//        .\mvnw.cmd -pl moonchat-biz spring-boot:run
+//        .\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz spring-boot:run
 //   3) cd infra/turms/smoke; npm run identity
 //
 // 可用环境变量覆盖：MOONCHAT_BIZ_URL / TURMS_ADMIN_URL / TURMS_ADMIN_USER /
