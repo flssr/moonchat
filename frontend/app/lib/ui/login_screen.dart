@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_quotes.dart';
@@ -98,6 +99,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await widget.state.login(email: _email.text.trim(), password: _password.text);
       await _playArrival();
     } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() {
         if (registered) {
           // 账号已经建好了，失败的是随后的登录：切回登录模式，别让重试撞 `conflict`。
@@ -112,7 +116,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         }
       });
     } catch (_) {
-      setState(() => _formError = '操作失败，请重试');
+      if (mounted) {
+        setState(() => _formError = '操作失败，请重试');
+      }
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
@@ -221,12 +227,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  '“${_quote.text}”',
+                  '“${context.tr(_quote.text)}”',
                   style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '— ${_quote.author}',
+                  '— ${context.tr(_quote.author)}',
                   style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
                 ),
               ],
@@ -234,40 +240,40 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 28),
           if (_registerMode) ...<Widget>[
-            MoonField(label: '名字', controller: _name, errorText: _nameError, hint: '1–20 字'),
+            MoonField(label: context.tr('名字'), controller: _name, errorText: _nameError == null ? null : context.tr(_nameError!), hint: context.tr('1–20 字')),
             const SizedBox(height: 16),
           ],
           MoonField(
-            label: '邮箱',
+            label: context.tr('邮箱'),
             controller: _email,
-            errorText: _emailError,
+            errorText: _emailError == null ? null : context.tr(_emailError!),
             hint: 'you@example.com',
             keyboardType: TextInputType.emailAddress,
           ),
           const SizedBox(height: 16),
           MoonField(
-            label: '密码',
+            label: context.tr('密码'),
             controller: _password,
             obscure: true,
-            errorText: _passwordError,
-            hint: '8–72 位，不能是纯数字',
+            errorText: _passwordError == null ? null : context.tr(_passwordError!),
+            hint: context.tr('8–72 位，不能是纯数字'),
             onSubmitted: (_) => _submit(),
           ),
           if (_formError != null) ...<Widget>[
             const SizedBox(height: 12),
-            Text(_formError!, style: TextStyle(fontSize: 12, color: p.accent)),
+            Text(context.tr(_formError!), style: TextStyle(fontSize: 12, color: p.accent)),
           ],
           const SizedBox(height: 24),
           Row(
             children: <Widget>[
               MoonButton(
-                label: _registerMode ? '注册并登录' : '登录',
+                label: _registerMode ? context.tr('注册并登录') : context.tr('登录'),
                 onPressed: _submit,
                 busy: _submitting,
               ),
               const SizedBox(width: 12),
               MoonButton(
-                label: _registerMode ? '已有账号' : '注册',
+                label: _registerMode ? context.tr('已有账号') : context.tr('注册'),
                 kind: MoonButtonKind.text,
                 onPressed: _submitting
                     ? null
@@ -356,7 +362,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 left: 24,
                 bottom: 20,
                 child: Text(
-                  '发射基地',
+                  context.tr('发射基地'),
                   style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
                 ),
               ),

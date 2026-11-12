@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../i18n/context_tr.dart';
 import '../theme.dart';
 
 /// 主按钮只有一种形状：40 高、8 圆角、0 18 内边距（DESIGN-SPEC §6）。
@@ -203,7 +204,7 @@ class _MoonFieldState extends State<MoonField> {
                     size: 16,
                     color: p.ink3,
                   ),
-                  tooltip: _hidden ? '显示密码' : '隐藏密码',
+                  tooltip: _hidden ? context.tr('显示密码') : context.tr('隐藏密码'),
                   visualDensity: VisualDensity.compact,
                 ),
             ],

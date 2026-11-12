@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'profile_panel.dart';
@@ -141,7 +142,7 @@ class _ContactsViewState extends State<ContactsView> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 alignment: Alignment.centerLeft,
                 decoration: BoxDecoration(border: Border(bottom: BorderSide(color: p.line))),
-                child: Text('联系人', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
+                child: Text(context.tr('联系人'), style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -168,7 +169,7 @@ class _ContactsViewState extends State<ContactsView> {
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
-                                  hintText: '按账号 ID 查找',
+                                  hintText: context.tr('按账号 ID 查找'),
                                   hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _find(),
@@ -179,7 +180,7 @@ class _ContactsViewState extends State<ContactsView> {
                       ),
                     ),
                     const SizedBox(width: 6),
-                    MoonButton(label: '查找', small: true, busy: _busy, onPressed: _find),
+                    MoonButton(label: context.tr('查找'), small: true, busy: _busy, onPressed: _find),
                   ],
                 ),
               ),
@@ -188,7 +189,7 @@ class _ContactsViewState extends State<ContactsView> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(_lookupError!, style: TextStyle(fontSize: 11, color: p.accent)),
+                    child: Text(context.tr(_lookupError!), style: TextStyle(fontSize: 11, color: p.accent)),
                   ),
                 ),
               Padding(
@@ -196,7 +197,7 @@ class _ContactsViewState extends State<ContactsView> {
                 child: Row(
                   children: <Widget>[
                     MoonButton(
-                      label: _showRoomForm ? '取消建群' : '建群',
+                      label: _showRoomForm ? context.tr('取消建群') : context.tr('建群'),
                       kind: MoonButtonKind.secondary,
                       small: true,
                       onPressed: () => setState(() {
@@ -227,17 +228,17 @@ class _ContactsViewState extends State<ContactsView> {
                             isDense: true,
                             border: InputBorder.none,
                             counterText: '',
-                            hintText: '群名（1–20 字）',
+                            hintText: context.tr('群名（1–20 字）'),
                             hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                           ),
                           onSubmitted: (_) => _createRoom(),
                         ),
                       ),
                       const SizedBox(height: 8),
-                      MoonButton(label: '创建', small: true, busy: _busy, onPressed: _createRoom),
+                      MoonButton(label: context.tr('创建'), small: true, busy: _busy, onPressed: _createRoom),
                       if (_roomError != null) ...<Widget>[
                         const SizedBox(height: 6),
-                        Text(_roomError!, style: TextStyle(fontSize: 11, color: p.accent)),
+                        Text(context.tr(_roomError!), style: TextStyle(fontSize: 11, color: p.accent)),
                       ],
                     ],
                   ),
@@ -263,7 +264,7 @@ class _ContactsViewState extends State<ContactsView> {
                               ),
                             ),
                             child: Text(
-                              '$label $count',
+                              '${context.tr(label)} $count',
                               style: TextStyle(
                                 fontSize: 11.5,
                                 color: _tab == key ? p.ink : p.ink3,
@@ -279,9 +280,9 @@ class _ContactsViewState extends State<ContactsView> {
     // 窄屏整段可滚：固定头 + 表单 + 列表一起滚，键盘压缩高度时不会把 Column 撑爆。
     final Widget entries = _tab == 'friends'
                     ? (friends.isEmpty
-                        ? const MoonEmpty(
-                            title: '还没有好友',
-                            hint: '加好友需要对方的账号 ID 或主页链接。',
+                        ? MoonEmpty(
+                            title: context.tr('还没有好友'),
+                            hint: context.tr('加好友需要对方的账号 ID 或主页链接。'),
                           )
                         : ListView.builder(
                             shrinkWrap: narrow,
@@ -308,7 +309,7 @@ class _ContactsViewState extends State<ContactsView> {
                                         ),
                                       ),
                                       IconButton(
-                                        tooltip: '发消息',
+                                        tooltip: context.tr('发消息'),
                                         visualDensity: VisualDensity.compact,
                                         onPressed: () => widget.state.selectConversation('dm:${f.peerAccountId}'),
                                         icon: Icon(Icons.chat_bubble_outline, size: 15, color: p.ink3),
@@ -320,7 +321,7 @@ class _ContactsViewState extends State<ContactsView> {
                             },
                           ))
                     : (pending.isEmpty
-                        ? const MoonEmpty(title: '没有待处理的申请。')
+                        ? MoonEmpty(title: context.tr('没有待处理的申请。'))
                         : ListView.builder(
                             shrinkWrap: narrow,
                             physics: narrow ? const NeverScrollableScrollPhysics() : null,
@@ -342,13 +343,13 @@ class _ContactsViewState extends State<ContactsView> {
                                       ),
                                     ),
                                     IconButton(
-                                      tooltip: '同意',
+                                      tooltip: context.tr('同意'),
                                       visualDensity: VisualDensity.compact,
                                       onPressed: _busy ? null : () => _respond(f.peerAccountId, 'accept'),
                                       icon: Icon(Icons.check, size: 16, color: p.ink),
                                     ),
                                     IconButton(
-                                      tooltip: '拒绝',
+                                      tooltip: context.tr('拒绝'),
                                       visualDensity: VisualDensity.compact,
                                       onPressed: _busy ? null : () => _respond(f.peerAccountId, 'reject'),
                                       icon: Icon(Icons.close, size: 16, color: p.accent),
@@ -380,9 +381,9 @@ class _ContactsViewState extends State<ContactsView> {
       color: p.bg,
       padding: narrow ? const EdgeInsets.all(18) : EdgeInsets.zero,
       child: _selectedId == null
-          ? const MoonEmpty(
-              title: '选一个人',
-              hint: '群成员、好友、按账号 ID 查找的结果都在这里打开资料页。',
+          ? MoonEmpty(
+              title: context.tr('选一个人'),
+              hint: context.tr('群成员、好友、按账号 ID 查找的结果都在这里打开资料页。'),
             )
           : SingleChildScrollView(
               child: Align(

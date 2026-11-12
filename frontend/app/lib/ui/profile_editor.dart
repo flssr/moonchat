@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'constellation.dart';
@@ -94,9 +95,9 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       initialDate: initial,
       firstDate: first,
       lastDate: last,
-      helpText: '选择生日',
-      cancelText: '取消',
-      confirmText: '确定',
+      helpText: context.tr('选择生日'),
+      cancelText: context.tr('取消'),
+      confirmText: context.tr('确定'),
     );
     if (picked != null) {
       setState(
@@ -111,7 +112,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     }
     final String name = _name.text.trim();
     if (name.isEmpty || name.characters.length > 20) {
-      setState(() => _nameError = '昵称 1–20 字');
+      setState(() => _nameError = context.tr('昵称 1–20 字'));
       return;
     }
     setState(() {
@@ -163,7 +164,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                 Row(
                   children: <Widget>[
                     Text(
-                      '个人资料',
+                      context.tr('个人资料'),
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -172,7 +173,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                     ),
                     const Spacer(),
                     IconButton(
-                      tooltip: '关闭',
+                      tooltip: context.tr('关闭'),
                       visualDensity: VisualDensity.compact,
                       onPressed: _busy
                           ? null
@@ -205,7 +206,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                           MonoText('#${_account.accountId}', selectable: true),
                           const SizedBox(height: 4),
                           Text(
-                            '头像由账号 ID 生成，暂不支持修改',
+                            context.tr('头像由账号 ID 生成，暂不支持修改'),
                             style: TextStyle(
                               fontSize: 11,
                               height: 1.5,
@@ -219,11 +220,11 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                 ),
                 const SizedBox(height: 24),
                 MoonField(
-                  label: '昵称',
+                  label: context.tr('昵称'),
                   controller: _name,
                   enabled: !_busy,
                   errorText: _nameError,
-                  hint: '1–20 字',
+                  hint: context.tr('1–20 字'),
                   onSubmitted: (_) {
                     if (!_busy) {
                       _save();
@@ -231,7 +232,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                   },
                 ),
                 const SizedBox(height: 18),
-                Text('性别', style: _labelStyle(p)),
+                Text(context.tr('性别'), style: _labelStyle(p)),
                 const SizedBox(height: 6),
                 Wrap(
                   spacing: 8,
@@ -239,7 +240,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                   children: <Widget>[
                     for (final (String key, String label) in _genders)
                       MoonChoicePill(
-                        label: label,
+                        label: context.tr(label),
                         selected: _gender == key,
                         onTap: _busy
                             ? null
@@ -248,7 +249,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                   ],
                 ),
                 const SizedBox(height: 18),
-                Text('生日', style: _labelStyle(p)),
+                Text(context.tr('生日'), style: _labelStyle(p)),
                 const SizedBox(height: 4),
                 InkWell(
                   onTap: _busy ? null : _pickBirthday,
@@ -264,8 +265,8 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                       children: <Widget>[
                         Text(
                           _birthday == null
-                              ? '选择生日'
-                              : _formatBirthday(_birthday!),
+                              ? context.tr('选择生日')
+                              : _formatBirthday(context, _birthday!),
                           style: TextStyle(
                             fontSize: 14,
                             color: _birthday == null ? p.ink3 : p.ink,
@@ -278,7 +279,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                                 ? null
                                 : () => setState(() => _birthday = null),
                             child: Text(
-                              '清除',
+                              context.tr('清除'),
                               style: TextStyle(fontSize: 11, color: p.ink3),
                             ),
                           ),
@@ -295,12 +296,12 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                 const SizedBox(height: 12),
                 Row(
                   children: <Widget>[
-                    Text('星座', style: _labelStyle(p)),
+                    Text(context.tr('星座'), style: _labelStyle(p)),
                     const SizedBox(width: 12),
                     Text(
                       _birthday == null
-                          ? '选择生日后自动计算'
-                          : constellationOf(_birthday!),
+                          ? context.tr('选择生日后自动计算')
+                          : context.tr(constellationOf(_birthday!)),
                       style: TextStyle(
                         fontSize: 13,
                         color: _birthday == null ? p.ink3 : p.ink,
@@ -311,17 +312,17 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                 if (_error != null) ...<Widget>[
                   const SizedBox(height: 16),
                   Text(
-                    _error!,
+                    context.tr(_error!),
                     style: TextStyle(fontSize: 11.5, color: p.accent),
                   ),
                 ],
                 const SizedBox(height: 24),
                 Row(
                   children: <Widget>[
-                    MoonButton(label: '保存', busy: _busy, onPressed: _save),
+                    MoonButton(label: context.tr('保存'), busy: _busy, onPressed: _save),
                     const SizedBox(width: 8),
                     MoonButton(
-                      label: '取消',
+                      label: context.tr('取消'),
                       kind: MoonButtonKind.text,
                       onPressed: _busy
                           ? null
@@ -344,5 +345,20 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     fontFamilyFallback: kMonoFallback,
   );
 
-  String _formatBirthday(DateTime d) => '${d.year}年${d.month}月${d.day}日';
+  String _formatBirthday(BuildContext context, DateTime d) {
+    switch (Localizations.localeOf(context).languageCode) {
+      case 'en':
+        const List<String> months = <String>[
+          'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+          'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+        ];
+        return '${months[d.month - 1]} ${d.day}, ${d.year}';
+      case 'de':
+        return '${d.day}.${d.month}.${d.year}';
+      case 'ja':
+        return '${d.year}年${d.month}月${d.day}日';
+      default:
+        return '${d.year}年${d.month}月${d.day}日';
+    }
+  }
 }
