@@ -20,6 +20,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
     required this.bubbleThem,
     required this.bubbleMe,
     required this.flash,
+    required this.skyTop,
+    required this.skyBottom,
+    required this.moon,
   });
 
   final Color bg;
@@ -38,6 +41,12 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
   final Color bubbleMe;
   final Color flash;
 
+  /// 登录舞台（发射平台夜景）专用的三枚插画色：只给 `LoginStage` 用，
+  /// 不参与任何界面组件。见 `DESIGN-SPEC.md` §6.1。
+  final Color skyTop;
+  final Color skyBottom;
+  final Color moon;
+
   static const MoonPalette light = MoonPalette(
     bg: Color(0xFFF3F1EC),
     surface: Color(0xFFFAF9F6),
@@ -54,6 +63,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
     bubbleThem: Color(0xFFEFEBE3),
     bubbleMe: Color(0xFFEAE7DF),
     flash: Color(0xFFFFFEFB),
+    skyTop: Color(0xFF0C0B0A),
+    skyBottom: Color(0xFF1E1C18),
+    moon: Color(0xFFF1EDE3),
   );
 
   static const MoonPalette dark = MoonPalette(
@@ -72,6 +84,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
     bubbleThem: Color(0xFF211F1D),
     bubbleMe: Color(0xFF232120),
     flash: Color(0xFFECE7DC),
+    skyTop: Color(0xFF12100E),
+    skyBottom: Color(0xFF221F1A),
+    moon: Color(0xFFEFEBE3),
   );
 
   @override
@@ -91,6 +106,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
     Color? bubbleThem,
     Color? bubbleMe,
     Color? flash,
+    Color? skyTop,
+    Color? skyBottom,
+    Color? moon,
   }) {
     return MoonPalette(
       bg: bg ?? this.bg,
@@ -108,6 +126,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
       bubbleThem: bubbleThem ?? this.bubbleThem,
       bubbleMe: bubbleMe ?? this.bubbleMe,
       flash: flash ?? this.flash,
+      skyTop: skyTop ?? this.skyTop,
+      skyBottom: skyBottom ?? this.skyBottom,
+      moon: moon ?? this.moon,
     );
   }
 
@@ -132,6 +153,9 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
       bubbleThem: Color.lerp(bubbleThem, other.bubbleThem, t)!,
       bubbleMe: Color.lerp(bubbleMe, other.bubbleMe, t)!,
       flash: Color.lerp(flash, other.flash, t)!,
+      skyTop: Color.lerp(skyTop, other.skyTop, t)!,
+      skyBottom: Color.lerp(skyBottom, other.skyBottom, t)!,
+      moon: Color.lerp(moon, other.moon, t)!,
     );
   }
 }

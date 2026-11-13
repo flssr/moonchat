@@ -5,6 +5,7 @@ import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_quotes.dart';
+import 'login_stage.dart';
 import 'widgets.dart';
 
 /// S1 登录 / 注册 + S2 登舱过渡（`SCREEN-MAP.md` §4）。
@@ -205,43 +206,75 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final MoonPalette p = context.moon;
     return Container(
       color: p.surface,
-      padding: const EdgeInsets.fromLTRB(44, 44, 44, 32),
+      padding: const EdgeInsets.fromLTRB(44, 40, 44, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          // 站点标记 + 品牌：一行小字压住版面，把标题让给下面的大字号。
+          Row(
+            children: <Widget>[
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: p.ink3),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'MOONCHAT',
+                style: TextStyle(
+                  fontSize: 10,
+                  letterSpacing: 3.2,
+                  color: p.ink3,
+                  fontFamilyFallback: kMonoFallback,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           Text(
             'MoonChat',
             style: TextStyle(
-              fontSize: 26,
+              fontSize: 30,
               fontWeight: FontWeight.w400,
-              letterSpacing: -0.6,
+              letterSpacing: -0.8,
               color: p.ink,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
           ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 88),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  '“${context.tr(_quote.text)}”',
-                  style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+            constraints: const BoxConstraints(minHeight: 84),
+            child: Container(
+              padding: const EdgeInsets.only(left: 12),
+              decoration: BoxDecoration(
+                border: Border(
+                  left: BorderSide(color: p.accent.withValues(alpha: 0.55), width: 2),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '— ${context.tr(_quote.author)}',
-                  style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
-                ),
-              ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '“${context.tr(_quote.text)}”',
+                    style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '— ${context.tr(_quote.author)}',
+                    style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 24),
           if (_registerMode) ...<Widget>[
             MoonField(label: context.tr('名字'), controller: _name, errorText: _nameError == null ? null : context.tr(_nameError!), hint: context.tr('1–20 字')),
-            const SizedBox(height: 16),
+            const SizedBox(height: 18),
           ],
           MoonField(
             label: context.tr('邮箱'),
@@ -250,7 +283,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             hint: 'you@example.com',
             keyboardType: TextInputType.emailAddress,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           MoonField(
             label: context.tr('密码'),
             controller: _password,
@@ -266,10 +299,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           const SizedBox(height: 24),
           Row(
             children: <Widget>[
-              MoonButton(
-                label: _registerMode ? context.tr('注册并登录') : context.tr('登录'),
-                onPressed: _submit,
-                busy: _submitting,
+              Expanded(
+                child: MoonButton(
+                  label: _registerMode ? context.tr('注册并登录') : context.tr('登录'),
+                  onPressed: _submit,
+                  busy: _submitting,
+                ),
               ),
               const SizedBox(width: 12),
               MoonButton(
@@ -291,85 +326,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Widget _buildStage(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return Container(
-      color: p.stage,
-      child: AnimatedBuilder(
-        animation: _arrival,
-        builder: (BuildContext context, Widget? _) {
-          final double t = _arrival.value;
-          // 关门先于离地：0–22% 换关；22–34% 点火；之后一直抬升。
-          final double door = (t / 0.22).clamp(0.0, 1.0);
-          final double ignite = ((t - 0.22) / 0.12).clamp(0.0, 1.0);
-          final double lift = Curves.easeOutCubic.transform(((t - 0.22) / 0.78).clamp(0.0, 1.0));
-          return Stack(
-            children: <Widget>[
-              // 地平线与月盘：只用描边与明度，不加渐变。
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 96,
-                child: Container(height: 1, color: p.ink3.withValues(alpha: 0.85)),
-              ),
-              Positioned(
-                right: 56,
-                top: 64,
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  decoration: BoxDecoration(
-                    color: p.surface2,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: p.lineStrong),
-                  ),
-                ),
-              ),
-              Center(
-                child: Transform.translate(
-                  offset: Offset(0, -56 * lift),
-                  child: Transform.scale(
-                    scale: 1 - 0.06 * lift,
-                    child: Opacity(
-                      opacity: 1 - 0.85 * lift,
-                      child: SizedBox(
-                        width: 240,
-                        child: AspectRatio(
-                          aspectRatio: 420 / 649,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: <Widget>[
-                              Opacity(
-                                opacity: 1 - door,
-                                child: Image.asset('assets/rocket-open.png', fit: BoxFit.contain),
-                              ),
-                              Opacity(
-                                opacity: door * (1 - ignite),
-                                child: Image.asset('assets/rocket-closed.png', fit: BoxFit.contain),
-                              ),
-                              Opacity(
-                                opacity: ignite,
-                                child: Image.asset('assets/rocket-launch.png', fit: BoxFit.contain),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                left: 24,
-                bottom: 20,
-                child: Text(
-                  context.tr('发射基地'),
-                  style: TextStyle(fontSize: 11, letterSpacing: 2, color: p.ink3, fontFamilyFallback: kMonoFallback),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
+    return LoginStage(arrival: _arrival, label: context.tr('发射基地'));
   }
 }
