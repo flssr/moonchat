@@ -1,34 +1,22 @@
----
-id: moonchat-api
-type: module-design
-status: active
-title: Biz 业务接口契约（REST）
-parent: moonchat-architecture
-depends-on:
-  - moonchat-biz-data
-  - moonchat-accounts
-  - moonchat-friends
-  - moonchat-messaging
-  - moonchat-agent-connection
----
-
 # Biz 业务接口契约（REST）
 
 **一句话**：Biz 对外只有 20 条 `/api/*` 路由——身份、好友、群与成员、发言；消息的读与投递一条都不在这里。
+
+> 接口契约是施工参考：路径、方法、认证、字段、错误码，以及每条接口读写哪张表。领域行为在 [`DDD.md`](DDD.md)；DDL 在 [`data-model.md`](data-model.md)；跨模块边界只在 [`../architecture.md`](../architecture.md) 写一次。`openapi.json` 由代码生成，是本文的机器可读副本。
 
 ## 0. 这份文档管什么
 
 | 本文管 | 本文不管 |
 | --- | --- |
-| 路径、方法、认证、请求与响应字段、错误码、每条接口读写哪张表 | 业务规则从哪来（各 module spec）、表与列的 DDL（`moonchat-biz-data`） |
-| 「一个动作只有一条路由」这条纪律 | Turms 客户端 API（收消息、查历史，见 `moonchat-messaging`） |
+| 路径、方法、认证、请求与响应字段、错误码、每条接口读写哪张表 | 业务规则从哪来（各 module spec）、表与列的 DDL（[`data-model.md`](data-model.md)） |
+| 「一个动作只有一条路由」这条纪律 | Turms 客户端 API（收消息、查历史，见 [`DDD.md`](DDD.md)） |
 | 接口面明确不提供什么 | 每个数字的依据（正文里逐个标了来源或「暂定」，汇总在 §10） |
 
 三条纪律：
 
 - **本文不新增业务规则**，只把已定稿的 spec 落成可实施的路由与字段。与 module spec 冲突时以 module spec 为准，并当场改本文。
 - **接口里出现的每个字段都要能指回一列或一次投影**（§9 是这张对照表）；指不回去的字段，要么删掉，要么先在表结构或 module spec 里补上。
-- **读消息不在 Biz**：消息历史、会话列表、未读数、在线状态一律走客户端自己的 Turms 会话。Biz 不代理、不做可见性判断（`moonchat-messaging` 的「读历史」）。
+- **读消息不在 Biz**：消息历史、会话列表、未读数、在线状态一律走客户端自己的 Turms 会话。Biz 不代理、不做可见性判断（[`DDD.md`](DDD.md) 的「读历史」）。
 
 ---
 
@@ -37,7 +25,10 @@ depends-on:
 ### 1.1 路径与命名
 
 - 统一前缀 `/api`，资源用复数小写：`/api/accounts`、`/api/friendships`、`/api/rooms`、`/api/conversations`。
-- 动作靠 HTTP 方法表达。只有两处例外，且都有理由：`POST /api/friendships/{peer_account_id}`（同意还是拒绝需要 `action`，见 §5.3）与 `DELETE /api/rooms/{room_id}/members/me`（「我自己」不是账号 id，写成路径尾段比 `?me=true` 直白）。
+- **对外蛇形，内部驼峰**：JSON 字段名一律 snake_case（`account_id`、`display_name`、`peer_account_id`、`is_friend`、`turms_group_id`），由 Jackson 的 `SNAKE_CASE` 策略产出，DTO 上不写 `@JsonProperty` 逐个转换；Java 侧字段名仍是 camelCase，是后端内部的事。
+- **路径参数是驼峰**：`{accountId}`、`{roomId}`、`{peerAccountId}`——客户端 Flutter 侧按驼峰拼路径，别把它一起改蛇形。
+- **另外三样还是蛇形，改字段名时不要顺手动它们**：错误码与枚举**取值**（`validation_failed`、`not_room_member`、`pending`——客户端按值匹配，它们不是字段名）、**DB 表名列名**（本文写成 `account_info.display_name`、`room_member.joined_at` 这类的地方）、**外部协议字段**（Turms 的 `senderDeviceType`、OneBot 的 `message_id`）。
+- 动作靠 HTTP 方法表达。只有两处例外，且都有理由：`POST /api/friendships/{peerAccountId}`（同意还是拒绝需要 `action`，见 §5.3）与 `DELETE /api/rooms/{roomId}/members/me`（「我自己」不是账号 id，写成路径尾段比 `?me=true` 直白）。
 - **没有版本前缀**：V1 单客户端、单部署，客户端与 Biz 同仓推进。要引入 `/v2` 时先改本文。
 
 ### 1.2 认证：一个头，两种凭据
@@ -51,7 +42,7 @@ Authorization: Bearer <token>
 | 登录 JWT（三段 base64url，Biz 自签自验，**7 天**） | 真人客户端（含归属者切进 agent 账号） | 验签 + 未过期 | `owner` |
 | 账号密钥（agent 创建时拿到的那串明文） | agent 端点 | 算确定性 HMAC-SHA256 后按 `account_info.credential_hash` 反查账号 | `agent` |
 
-- **来源由凭据形态决定，不看请求体自报的任何字段**；它只进结构化日志与限流判定，不作权限判定（`moonchat-accounts`、`moonchat-agent-connection`）。
+- **来源由凭据形态决定，不看请求体自报的任何字段**；它只进结构化日志与限流判定，不作权限判定（[`DDD.md`](DDD.md)、[`DDD.md`](DDD.md)）。
 - **两个不需要认证的路由**：`POST /api/auth/register`、`POST /api/auth/login`。
 - **一个两者都接受的路由**：`POST /api/sessions`——不带 JWT 且带 `account_key` 是 agent 换凭据；带 JWT 且带 `account_id` 是归属者切账号（§3.3）。
 - **登录 JWT ≠ Turms 凭据**：登录 JWT 只对 Biz 有效（认作 `owner` 来源）；Turms 凭据由 `POST /api/sessions` 单独签发，是一份 Turms 能验的 JWT，`statements` 只授 `QUERY`（§3.3）。两者都走同一个 `Authorization` 头。
@@ -68,7 +59,7 @@ Authorization: Bearer <token>
 { "code": "not_friend", "message": "只有好友之间才能私聊" }
 ```
 
-`message` 是给人看的，**客户端与 agent 只准按 `code` 分流**。`validation_failed` 额外带 `field`。
+`message` 是给人看的，**客户端与 agent 只准按 `code` 分流**。`validation_failed` 额外带 `field`，它的值**就是请求体里那个 snake_case 字段名**（如 `display_name`、`peer_account_id`），不是 DB 列名——它跟响应字段走同一套名字（§1.1）。
 
 | code | HTTP | 含义 |
 | --- | --- | --- |
@@ -98,7 +89,7 @@ Authorization: Bearer <token>
 ### 1.5 幂等与重试
 
 - `GET` / `DELETE` 的**副作用**幂等，但响应用状态表达：删一个已经不存在的关系 → `404 not_found`，不是 `204`。
-- **所有 `POST` 都不幂等，也不带请求号**。发言失败后是否重试由调用方决定；重试可能产生重复消息，这是已定的行为（`moonchat-messaging` 的「已定的简化」最后一条），网关不去重。
+- **所有 `POST` 都不幂等，也不带请求号**。发言失败后是否重试由调用方决定；重试可能产生重复消息，这是已定的行为（[`DDD.md`](DDD.md) 的「已定的简化」最后一条），网关不去重。
 - **并发重复的 `POST` 由唯一键兜底**：拉人（#16）与好友申请（#8）都是「先查后写」，两个请求可能都读到「无行」。落败方撞 PG 唯一键、整笔回滚，回 `conflict` 409（与预查同一个码），不会变成 500。数据侧始终只有一行——唯一键本来就是原子守卫，预查只负责给出更准的文案。
 
 ---
@@ -115,18 +106,18 @@ Authorization: Bearer <token>
 | 4 | `GET /api/accounts/mine` | 我的账号 + 我名下的 agent | 任意 | 读 `account`、`account_info` |
 | 5 | `POST /api/agent-accounts` | 建 agent 账号（返回一次性密钥） | 仅 `owner` | 写 `account`、`account_info` |
 | 6 | `PATCH /api/accounts/me` | 改本账号名字 | 任意 | 写 `account_info` + `account.turms_sync_state` |
-| 7 | `GET /api/accounts/{account_id}` | 资料页 | 任意 | 读 `account`、`account_info`、`friendship` |
+| 7 | `GET /api/accounts/{accountId}` | 资料页 | 任意 | 读 `account`、`account_info`、`friendship` |
 | 8 | `GET /api/friendships` | 好友列表 / 待处理申请 | 任意 | 读 `friendship` / `friendship_reverse` |
 | 9 | `POST /api/friendships` | 发好友申请 | 任意 | 写 `friendship`、`friendship_reverse` |
-| 10 | `POST /api/friendships/{peer_account_id}` | 同意 / 拒绝申请 | 任意 | 写 `friendship`、`friendship_reverse` |
-| 11 | `DELETE /api/friendships/{peer_account_id}` | 删好友 | 任意 | 写 `friendship`、`friendship_reverse`（tombstone） |
+| 10 | `POST /api/friendships/{peerAccountId}` | 同意 / 拒绝申请 | 任意 | 写 `friendship`、`friendship_reverse` |
+| 11 | `DELETE /api/friendships/{peerAccountId}` | 删好友 | 任意 | 写 `friendship`、`friendship_reverse`（tombstone） |
 | 12 | `POST /api/rooms` | 建群 | 仅 `owner` | 写 `room_info`、`room_member`、`account_room` + Turms 投影 |
 | 13 | `GET /api/rooms` | 我加入的群 | 任意 | 读 `account_room`、`room_info` |
-| 14 | `GET /api/rooms/{room_id}` | 群信息 | 任意（须成员） | 读 `room_info`、`room_member` |
-| 15 | `GET /api/rooms/{room_id}/members` | 群成员列表（分页） | 任意（须成员） | 读 `room_member`、`account_info`、`friendship` |
-| 16 | `POST /api/rooms/{room_id}/members` | 拉人进群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
-| 17 | `DELETE /api/rooms/{room_id}/members/me` | 退群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
-| 18 | `DELETE /api/rooms/{room_id}/members/{account_id}` | 移除成员（仅群主） | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
+| 14 | `GET /api/rooms/{roomId}` | 群信息 | 任意（须成员） | 读 `room_info`、`room_member` |
+| 15 | `GET /api/rooms/{roomId}/members` | 群成员列表（分页） | 任意（须成员） | 读 `room_member`、`account_info`、`friendship` |
+| 16 | `POST /api/rooms/{roomId}/members` | 拉人进群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
+| 17 | `DELETE /api/rooms/{roomId}/members/me` | 退群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
+| 18 | `DELETE /api/rooms/{roomId}/members/{accountId}` | 移除成员（仅群主） | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一写入口） | 任意 | 不写 PG；读 `room_member` / `friendship`；经 `im-facade` 写 Turms |
 | 20 | `POST /api/auth/refresh` | 登录 JWT 滑动续期（无感续期的那一半） | 登录 JWT | 不写 PG |
 
@@ -161,7 +152,7 @@ Authorization: Bearer <token>
 **副作用与不变量**
 
 - 同一事务写 `account`（`type = 'human'`）与 `account_info`（`credential_hash` 为 bcrypt，cost 10 起），并在**同一事务内**经 `im-facade` 用**这个 id** 建 Turms 用户；拿到确认才把 `account.turms_sync_state` 置 `synced`。
-- 建 Turms 用户失败就整笔回滚（连同账号行），不留孤儿账号；不落 `pending`、也没有后台重试——重试是客户端重发一次注册（`moonchat-accounts` 的「创建顺序」）。
+- 建 Turms 用户失败就整笔回滚（连同账号行），不留孤儿账号；不落 `pending`、也没有后台重试——重试是客户端重发一次注册（[`DDD.md`](DDD.md) 的「创建顺序」）。
 - 注册不做邮箱验证（已定的简化），所以没有验证令牌相关字段。
 
 ### 3.2 `POST /api/auth/login`
@@ -206,9 +197,9 @@ Authorization: Bearer <token>
 
 **副作用与不变量**
 
-- **归属者形态顺带发一份登录 JWT**：`login_token` 的 `sub` 就是切进去的那个账号，所以它接下来调 `/api` 时来源是 `owner` 而不是 `agent`——这正是「归属者切进 agent 账号能建群、能发言，且不进 agent 限流桶」的实现方式（§6 与 `moonchat-agent-connection`）。密钥形态**不发**登录 JWT：agent 端点不该有能力以 `owner` 来源写入。
-- 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp`、`statements` 与 `authenticated: true`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（`moonchat-accounts`）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
-- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 `moonchat-messaging` 的「凭据与客户端权限」。
+- **归属者形态顺带发一份登录 JWT**：`login_token` 的 `sub` 就是切进去的那个账号，所以它接下来调 `/api` 时来源是 `owner` 而不是 `agent`——这正是「归属者切进 agent 账号能建群、能发言，且不进 agent 限流桶」的实现方式（§6 与 [`DDD.md`](DDD.md)）。密钥形态**不发**登录 JWT：agent 端点不该有能力以 `owner` 来源写入。
+- 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp`、`statements` 与 `authenticated: true`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（[`DDD.md`](DDD.md)）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
+- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 [`DDD.md`](DDD.md) 的「凭据与客户端权限」。
 - **有效期 12 小时**，客户端在过期前重调本接口（幂等读取，不创建任何会话状态）；过期后 Turms 会拒登录，重调即可。
 - `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权）。
 - Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时持同一账号的凭据。
@@ -277,7 +268,7 @@ Authorization: Bearer <token>
 
 **副作用**：同一事务写 `account_info.display_name` 并写 `account.turms_sync_state = 'synced'`，事务内经 `im-facade` 同步名字进 Turms；同步失败**整笔回滚**——名字与同步状态都不变，回 `503`，与 §3.1 注册建用户同口径，不留永远挂 `pending` 的账号。
 
-### 4.4 `GET /api/accounts/{account_id}`
+### 4.4 `GET /api/accounts/{accountId}`
 
 资料页。**这是加好友的唯一入口**——V1 不做搜人、不做 agent 目录。
 
@@ -292,7 +283,7 @@ Authorization: Bearer <token>
 **错误**：`not_found` 404。
 
 - **只返回这三项**：不含 `email`、`owner_account_id`、`created_at`，也不含 `type`——PRD 的资料页就是名字 + id + 加好友入口。
-- **非好友也返回名字与 id**：群里点开非好友时看到的就是这个页面，页面里没有「发消息」入口（`moonchat-friends` 的「私聊的入口只有两个」）。
+- **非好友也返回名字与 id**：群里点开非好友时看到的就是这个页面，页面里没有「发消息」入口（[`DDD.md`](DDD.md) 的「私聊的入口只有两个」）。
 
 ---
 
@@ -300,7 +291,7 @@ Authorization: Bearer <token>
 
 好友是**无向的强关系**：一对账号之间只有一条关系，由两侧账号 id 唯一确定（落库时小 id 在前）。所以接口面只出现 `peer_account_id`，**`friendship.id` 不作为任何接口的入参或响应字段**——客户端没有理由保存一个不透明 id。
 
-> 多对多关系的这种建模（规范序单表 + 反向表冗余、同事务双写）在后端是标准做法：单表 `friend(uid1, uid2)` 保证唯一，反向表让「按任一侧查询」都不必扫全表。我们落在 `friendship` / `friendship_reverse`（`moonchat-biz-data` §4.3、§4.4），但**不需要**那套「异步冗余 + 离线比对修复」的补偿机制：两张表在同一个 PG、同一个事务里提交，要么都成，要么都不成。
+> 多对多关系的这种建模（规范序单表 + 反向表冗余、同事务双写）在后端是标准做法：单表 `friend(uid1, uid2)` 保证唯一，反向表让「按任一侧查询」都不必扫全表。我们落在 `friendship` / `friendship_reverse`（[`data-model.md`](data-model.md) §4.3、§4.4），但**不需要**那套「异步冗余 + 离线比对修复」的补偿机制：两张表在同一个 PG、同一个事务里提交，要么都成，要么都不成。
 
 ### 5.1 `GET /api/friendships?status=`
 
@@ -333,10 +324,10 @@ Authorization: Bearer <token>
 **副作用与不变量**
 
 - 同一事务写 `friendship` 与 `friendship_reverse`，一次写入使用同一个应用时间值。
-- **被拒绝过之后重新申请复用原行**：清 `deleted_at`、`status = 'pending'`、`requested_by = 我`，不插入第二个同 pair 行（`moonchat-biz-data` §4.3）。
-- **没有冷却期**，也不写 Turms 的任何东西——好友永不投影（`moonchat-messaging`）。
+- **被拒绝过之后重新申请复用原行**：清 `deleted_at`、`status = 'pending'`、`requested_by = 我`，不插入第二个同 pair 行（[`data-model.md`](data-model.md) §4.3）。
+- **没有冷却期**，也不写 Turms 的任何东西——好友永不投影（[`DDD.md`](DDD.md)）。
 
-### 5.3 `POST /api/friendships/{peer_account_id}`
+### 5.3 `POST /api/friendships/{peerAccountId}`
 
 **请求**：`action`（string，必填，`accept` / `reject`）。
 
@@ -347,10 +338,10 @@ Authorization: Bearer <token>
 **副作用与不变量**
 
 - 两张表同事务更新；`accept` 后私聊授权**立即**生效，因为写入网关是现查 PG 的 `friendship`，没有缓存也没有第二份真相。
-- `reject` 写 `deleted_at`，`status` 枚举**不增加** rejected：拒绝就是 tombstone（`moonchat-biz-data` §4.3）。
+- `reject` 写 `deleted_at`，`status` 枚举**不增加** rejected：拒绝就是 tombstone（[`data-model.md`](data-model.md) §4.3）。
 - 应答时要校验操作方：只有 `requested_by` 的对端才能同意或拒绝。
 
-### 5.4 `DELETE /api/friendships/{peer_account_id}`
+### 5.4 `DELETE /api/friendships/{peerAccountId}`
 
 **响应** `204`。
 
@@ -359,14 +350,14 @@ Authorization: Bearer <token>
 **副作用与不变量**
 
 - 两张表同事务写 `deleted_at`；超过保留期（**未确认**）后由 Biz purge 物理删行。
-- **Turms 侧什么都不发生**：会话保留、历史只读、不能再发新消息。删除好友不动任何设置，因为平台没有投递设置（`moonchat-friends` 的「删除好友之后」）。
+- **Turms 侧什么都不发生**：会话保留、历史只读、不能再发新消息。删除好友不动任何设置，因为平台没有投递设置（[`DDD.md`](DDD.md) 的「删除好友之后」）。
 - 重复调用返回 `404`，不返回 `204`：接口用状态表达事实（§1.5）。
 
 ---
 
 ## 6. 群与成员
 
-群只有一个可见性：成员可见。`room_info` 没有 `visibility` 列，可见性是 Turms `GroupType` 的配置（`moonchat-messaging`）。**成员操作只有真人能做**：`agent` 来源在这四条写接口上一律 `403 forbidden`——归属者切进 agent 账号时来源是 `owner`，所以那条路是通的。
+群只有一个可见性：成员可见。`room_info` 没有 `visibility` 列，可见性是 Turms `GroupType` 的配置（[`DDD.md`](DDD.md)）。**成员操作只有真人能做**：`agent` 来源在这四条写接口上一律 `403 forbidden`——归属者切进 agent 账号时来源是 `owner`，所以那条路是通的。
 
 ### 6.1 `POST /api/rooms`
 
@@ -386,11 +377,14 @@ Authorization: Bearer <token>
 
 ### 6.2 `GET /api/rooms`
 
-**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`。
+**响应** `200`：`items[]`，每项 `room_id`、`name`、`owner_account_id`、`joined_at`、`turms_group_id`。
 
-**读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——客户端现在建不了新群，但 Turms 里仍可能有残留的游离群，它的群列表不等于业务列表（`moonchat-messaging` 的已知缺口）。
+- `turms_group_id` 是 Turms 生成的群句柄（雪花值，按**字符串**给，避免 JS 精度丢失）；投影还没回填时为 `null`。它**只在这个列表接口出现**，用途只有一个：客户端/agent 用它把 Turms 推送里的 `groupId` 与群历史查询对回 `room_id`。
+- 对外的群标识仍是 `room_id`：写接口（#16–#19）的 `id`、成员列表、资料页都只认 `room_id`。
 
-### 6.3 `GET /api/rooms/{room_id}`
+**读取**：`account_room`（`account_id = me` 且 `deleted_at is null`）联 `room_info`。**不读 Turms 的群列表**——客户端现在建不了新群，但 Turms 里仍可能有残留的游离群，它的群列表不等于业务列表（[`DDD.md`](DDD.md) 的已知缺口）。
+
+### 6.3 `GET /api/rooms/{roomId}`
 
 **响应** `200`：`room_id`、`name`、`owner_account_id`、`member_count`、`created_at`。
 
@@ -398,7 +392,7 @@ Authorization: Bearer <token>
 
 **读取**：`room_info` + `room_member` 有效行计数。
 
-### 6.4 `GET /api/rooms/{room_id}/members?page=&size=`
+### 6.4 `GET /api/rooms/{roomId}/members?page=&size=`
 
 **这是唯一分页的接口**：群规模没有上限，其余列表（好友、待处理、我的群）V1 一次返回全量。
 
@@ -419,9 +413,9 @@ Authorization: Bearer <token>
 
 **错误**：`validation_failed` 400（`page` / `size` 非法）、`not_found` 404、`not_room_member` 403。
 
-- 成员列表**没有 `role` 字段**：群主就是 `owner_account_id`，是不是群主用 `account_id == owner_account_id` 判断（`moonchat-biz-data` §4.6）。
+- 成员列表**没有 `role` 字段**：群主就是 `owner_account_id`，是不是群主用 `account_id == owner_account_id` 判断（[`data-model.md`](data-model.md) §4.6）。
 
-### 6.5 `POST /api/rooms/{room_id}/members`
+### 6.5 `POST /api/rooms/{roomId}/members`
 
 **请求**：`account_id`（number，必填）。一次一个，不做批量。
 
@@ -432,18 +426,18 @@ Authorization: Bearer <token>
 **副作用与不变量**
 
 - 同一事务写 `room_member` 与 `account_room`（在 purge 前重新进群时复用原行：清 `deleted_at`、`joined_at` 更新为本次时间）。
-- **邀请即入群，不设审批**，也不要求目标是我的好友（已定的简化，PRD §5.3）。
+- **邀请即入群，不设审批**，也不要求目标是我的好友（已定的简化，见 `../goal-and-requirements.md`）。
 - 写完把 `room_info.turms_sync_state` 置回 `pending` 并触发一次 full reconcile——成员集合是群聚合的一部分，投影读的是 `room_member` 全量。
 
-### 6.6 `DELETE /api/rooms/{room_id}/members/me`
+### 6.6 `DELETE /api/rooms/{roomId}/members/me`
 
 **响应** `204`。
 
 **错误**：`owner_cannot_leave` 409（我是群主）、`not_room_member` 403、`not_found` 404（群不存在）、`forbidden` 403（`agent` 来源）。
 
-**副作用**：两张成员表同事务写 `deleted_at` + 投影标记。V1 没有群主转让、也没有解散群，所以群主只能等 V2（`moonchat-messaging` 的不变量）。
+**副作用**：两张成员表同事务写 `deleted_at` + 投影标记。V1 没有群主转让、也没有解散群，所以群主只能等 V2（[`DDD.md`](DDD.md) 的不变量）。
 
-### 6.7 `DELETE /api/rooms/{room_id}/members/{account_id}`
+### 6.7 `DELETE /api/rooms/{roomId}/members/{accountId}`
 
 **响应** `204`。
 
@@ -455,7 +449,7 @@ Authorization: Bearer <token>
 
 ## 7. 发言：`POST /api/conversations/{type}/{id}/messages`
 
-**唯一的写入口**（`moonchat-messaging`、`architecture` 的「一条消息的旅程」）。客户端自己的 Turms 会话只授查询，**发不出消息**，所以用户从客户端发信就是直接调用这个接口。
+**唯一的写入口**（[`DDD.md`](DDD.md)、[`../architecture.md`](../architecture.md) 的「一条消息的旅程」）。客户端自己的 Turms 会话只授查询，**发不出消息**，所以用户从客户端发信就是直接调用这个接口。
 
 | 路径参数 | 取值 | 含义 |
 | --- | --- | --- |
@@ -472,7 +466,7 @@ Authorization: Bearer <token>
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `message_id` | number | **写入网关生成**的消息 id（随代发提交，Admin 不回传 id）；单调递增但不连续，也不保存任何历史 id。**不是分页游标**：Turms 客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，客户端往回翻用最早一条的 `sent_at` 做游标（`moonchat-messaging`） |
+| `message_id` | number | **写入网关生成**的消息 id（随代发提交，Admin 不回传 id）；单调递增但不连续，也不保存任何历史 id。**不是分页游标**：Turms 客户端查询只接受 `deliveryDateStart/End` + `maxCount` + `descending`，客户端往回翻用最早一条的 `sent_at` 做游标（[`DDD.md`](DDD.md)） |
 | `conversation.type` / `conversation.id` | string / number | 回显 |
 | `sent_at` | string | 网关交出这一刻的时间；Turms 的 `deliveryDate` 与之差毫秒级 |
 
@@ -486,15 +480,16 @@ Authorization: Bearer <token>
 | `not_room_member` 403 | `room` 且调用者不是有效成员 |
 | `account_frozen` 403 | 调用者账号冻结 |
 | `rate_limited` 429 | `agent` 来源超账号级（60/分钟）或会话级（20/分钟）桶，两个数字暂定、可配置 |
-| `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认 |
+| `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认；或群还没有可用的 `turms_group_id` |
 
 **校验顺序**（与架构旅程一致，不许调换）：认证凭据 → 归属（凭据能不能代表这个账号）→ 会话解析（`type` / `id` 合法且目标存在）→ 授权事实（群成员 / 好友，现查 PG）→ 限流（只有 `agent` 来源进桶）→ 来源标记写日志 → 交出去。
 
 **副作用与不变量**
 
 - 通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `id`（上一步生成的 message id）、`senderId`（上一步认证出的账号，**不接受请求体里自报的发送者**）、`senderDeviceType`（来自请求头）、`senderIp`（`X-Forwarded-For` 第一段，缺省 `remoteAddr`）、`isGroupMessage`、`targetId`。
+- `room` 的 `targetId` 是 `room_info.turms_group_id`（Turms 的投递句柄），不是对外的 `room_id`；群还在 `pending`、句柄尚未回填时回 `503`，不拿 `room_id` 去撞 Turms。
 - **PG 零写入**：消息只在 Turms，没有副本、没有发送记录表、没有审计表；来源与限流命中只进结构化日志。
-- 成功（`201`）只保证「Turms 已落库并接下了投递」；是否真的到达对方在线端还取决于对方的会话在线状态（冒烟里观察到刚登录的会话有一段同步窗口，见 `moonchat-messaging` 的冒烟结果）。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
+- 成功（`201`）只保证「Turms 已落库并接下了投递」；是否真的到达对方在线端还取决于对方的会话在线状态（冒烟里观察到刚登录的会话有一段同步窗口，见 [`DDD.md`](DDD.md) 的冒烟结果）。`503` 只表示 Biz 没拿到确认，**Turms 可能已经落库**——此时重试可能产生重复消息，这是已写的已知行为，不做幂等保证。
 - Turms 侧还会用它自己的投影再校验一次（群成员、黑名单）；两道闸都在，但好友校验只有 Biz 这一道（`allowSendMessagesToStranger = true`）。
 
 ---
@@ -503,19 +498,19 @@ Authorization: Bearer <token>
 
 | 不提供 | 真相在哪 / 由谁做 | 依据 |
 | --- | --- | --- |
-| 消息历史、会话列表、未读数、在线状态 | 客户端用自己的 Turms 会话查 | `moonchat-messaging` 的「读历史」 |
-| 客户端直接往 Turms 发消息 | 客户端 JWT 只授 `QUERY`，写入只能走 §7；Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST` | `moonchat-messaging` 的「凭据与客户端权限」 |
-| 消息搜索 | 不做 | `moonchat-messaging` 的「已定的简化」 |
-| 头像上传或头像接口 | 客户端按 `account.id` 确定性生成 | `moonchat-product` §5.3 |
-| 搜人 / agent 目录 | 加好友靠账号 id 与主页链接 | `moonchat-product` §5.3 |
-| 拉黑、举报、封禁、备注、分组 | V2 或不做 | `moonchat-product` §8、§13 |
-| 解散群、群主转让、批量拉人 | V1 没有这些动作 | `moonchat-messaging` 的不变量 |
-| 临时会话（非好友私聊） | 入口本身不存在 | `moonchat-friends` 的「为什么不做临时会话」 |
-| 建群 / 拉人 / 移除成员的 agent 版本 | agent 只有一个关系动作：发好友申请 | `moonchat-agent-connection` 的不变量 |
-| 删账号 / 删 agent 账号 | V1 没有这个能力，账号行不删（`moonchat-biz-data` §2 的行生命周期） | `moonchat-product` §5.1 |
+| 消息历史、会话列表、未读数、在线状态 | 客户端用自己的 Turms 会话查 | [`DDD.md`](DDD.md) 的「读历史」 |
+| 客户端直接往 Turms 发消息 | 客户端 JWT 只授 `QUERY`，写入只能走 §7；Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST` | [`DDD.md`](DDD.md) 的「凭据与客户端权限」 |
+| 消息搜索 | 不做 | [`DDD.md`](DDD.md) 的「已定的简化」 |
+| 头像上传或头像接口 | 客户端按 `account.id` 确定性生成 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（已定的简化） |
+| 搜人 / agent 目录 | 加好友靠账号 id 与主页链接 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（已定的简化） |
+| 拉黑、举报、封禁、备注、分组 | V2 或不做 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（Non-Goals 与 V2 计划） |
+| 解散群、群主转让、批量拉人 | V1 没有这些动作 | [`DDD.md`](DDD.md) 的不变量 |
+| 临时会话（非好友私聊） | 入口本身不存在 | [`DDD.md`](DDD.md) 的「为什么不做临时会话」 |
+| 建群 / 拉人 / 移除成员的 agent 版本 | agent 只有一个关系动作：发好友申请 | [`DDD.md`](DDD.md) 的不变量 |
+| 删账号 / 删 agent 账号 | V1 没有这个能力，账号行不删（[`data-model.md`](data-model.md) §2 的行生命周期） | [`PRD.md`](PRD.md) §5.1 |
 | 登出 / 注销 | 客户端丢掉手上的 JWT 即可；服务端无状态，没有登出接口 | §3.4 的续期也是同样无状态的 |
-| 冻结账号、purge、对账 | 平台运维动作，不是产品能力 | `moonchat-biz-data` §4.1 |
-| 健康检查 | 已有 `spring-boot-starter-actuator`，不进业务契约 | `moonchat-biz/pom.xml` |
+| 冻结账号、purge、对账 | 平台运维动作，不是产品能力 | [`data-model.md`](data-model.md) §4.1 |
+| 健康检查 | 已有 `spring-boot-starter-actuator`，不进业务契约 | `backend/moonchat-biz/pom.xml` |
 
 ---
 
@@ -529,7 +524,7 @@ Authorization: Bearer <token>
 | `account_info` | #1、#5、#6 | #2、#3、#4、#7、#15 | `credential_hash`、`email`、`status`、时间列 |
 | `friendship` | #9、#10、#11 | #7（`is_friend`）、#8、#15（`is_friend`）、#19（授权） | `id`、`requested_by`（对外是 `incoming`）、`deleted_at`、时间列（只暴露 `requested_at`） |
 | `friendship_reverse` | #9、#10、#11（同事务镜像） | #8（按较大 id 查） | 全部列；它只是查询镜像 |
-| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_group_id`、`turms_sync_state`、`updated_at` |
+| `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_sync_state`、`updated_at`；`turms_group_id` 只在 #13 以字符串出现（投递句柄，不是对外标识） |
 | `room_member` | #12、#16、#17、#18 | #14（计数）、#15、#19（授权） | `deleted_at`；不暴露角色（没有该列） |
 | `account_room` | #12、#16、#17、#18（同事务镜像） | #13 | 全部列；`joined_at` 通过 `room_member` 语义暴露 |
 
@@ -543,7 +538,7 @@ Red 线两条：**消息表不存在**（没有它可对照），**授权判断�
 
 | 事项 | 现状 | 卡在哪 |
 | --- | --- | --- |
-| Turms 凭据端到端 | 已跑通（`infra/turms/smoke`）：JWT 登录 ✔、QUERY-only 发消息被拒 1106 ✔、代发落库 ✔ | `gateway_url` 的取值随部署定；**代发的推送到达**在本地 standalone 下未稳定（见 `moonchat-messaging` 的冒烟结果），真实环境复测 |
+| Turms 凭据端到端 | 已跑通（`infra/turms/smoke`）：JWT 登录 ✔、QUERY-only 发消息被拒 1106 ✔、代发落库 ✔ | `gateway_url` 的取值随部署定；**代发的推送到达**在本地 standalone 下未稳定（见 [`DDD.md`](DDD.md) 的冒烟结果），真实环境复测 |
 | 两个入口能否真正合并成一条 `POST /api/sessions` | 已按合并写 | 依赖 `im-facade` 两条签发路径共用同一个出口 |
 | 群名称长度 20 | 自定（与账号名字对齐） | Turms 侧没有这个配置，没有外部依据 |
 | 群成员分页的 `size` 默认 50 / 上限 100 | 暂用 | 没有实测依据；等真实群规模 |

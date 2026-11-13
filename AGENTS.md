@@ -21,7 +21,7 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：spec 只有 5 份——根目录 `goal-and-requirements.md`（产品决策）与 `architecture.md`（架构总览），加上 `backend/moonchat-biz/SPEC.md`、`frontend/SPEC.md`、`infra/SPEC.md`。`docs/` 下是四份施工文档（`PRD.md`、`DDD.md`、`data-model.md`、`api-contracts.md`），写需求明细、领域行为、DDL 与路由契约；它们**没有 frontmatter，不是 spec**。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）与 S4（写入网关）已完成并合入 `main`**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶都已落地，下一步是 S5 客户端与验收（工作项在 `.thinkrail/context/TASK-v1-construction.md`，不进 git）。
+- **设计是唯一真相，代码按 V1 开始落地**：spec 只有 5 份——根目录 `goal-and-requirements.md`（产品决策）与 `architecture.md`（架构总览），加上 `backend/moonchat-biz/SPEC.md`、`frontend/SPEC.md`、`infra/SPEC.md`。`docs/` 下是四份施工文档（`PRD.md`、`DDD.md`、`data-model.md`、`api-contracts.md`），写需求明细、领域行为、DDL 与路由契约；它们**没有 frontmatter，不是 spec**。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）、S4（写入网关）与 S5（客户端与验收）都已完成并合入 `main`**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶、Flutter Web 客户端（`frontend/app`）与 agent 示例端点都已落地，六条验收判据已在真 Turms + 真 Biz 上跑通（工作项在 `.thinkrail/context/TASK-v1-construction.md`，不进 git）。
 - 验证构建在 `backend/` 里跑：`./mvnw test`（Windows 为 `.\\backend\\mvnw.cmd -f backend\\pom.xml test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。

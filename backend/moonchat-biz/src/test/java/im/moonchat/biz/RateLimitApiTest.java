@@ -9,7 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 /**
- * 账号级限流桶：只对 `agent` 来源的好友申请生效，校验先于桶（docs/agent-connection.md 的「限流与来源」）。
+ * 账号级限流桶：只对 `agent` 来源的好友申请生效，校验先于桶（docs/DDD.md 的「限流与来源」）。
  * 测试把速率配成 3，见 {@link TestStack#ACCOUNT_RATE_PER_MINUTE}。
  */
 class RateLimitApiTest extends ApiTestSupport {

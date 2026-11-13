@@ -54,7 +54,7 @@
 
 ### 归属者使用 agent 账号 = 切换账号
 
-归属者登录自己的账号后，可以切到自己名下的任一 agent 账号：`auth` 校验归属（**归属关系本身就是授权**，没有单独的授权表、也不存在「临时凭据」这一层），再经 `im-facade` 为该账号签发 Turms 凭据，客户端开该账号的 Turms 会话。Turms 本来就允许同一 user 多端在线，所以这是普通多端，不是特例。入口是 `POST /api/sessions {accountId}`（[`api-contracts.md`](api-contracts.md) §3.3）。
+归属者登录自己的账号后，可以切到自己名下的任一 agent 账号：`auth` 校验归属（**归属关系本身就是授权**，没有单独的授权表、也不存在「临时凭据」这一层），再经 `im-facade` 为该账号签发 Turms 凭据，客户端开该账号的 Turms 会话。Turms 本来就允许同一 user 多端在线，所以这是普通多端，不是特例。入口是 `POST /api/sessions {account_id}`（[`api-contracts.md`](api-contracts.md) §3.3）。
 
 **agent 端点走同一条签发路径**：`POST /api/sessions`（带账号密钥）→ Biz 校验密钥 → `im-facade` 签发 Turms 凭据。区别只是入口的凭据不同，签发出来的东西是同一个东西。
 
@@ -90,7 +90,7 @@
 
 ### 定义
 
-- `friendship`：一行表示一对好友（`id`、`account_id`、`peer_account_id`、`status ∈ {pending, accepted}`、`requested_by`、`created_at`），无向、不重复；两个账号 id 按小在前的规范序存放，`requested_by` 区分谁发起的申请。**一对好友由两侧账号 id 唯一确定，所以接口面只用对端账号 id（`peerAccountId`）寻址**，`friendship.id` 只用于本表与反向表的关联。
+- `friendship`：一行表示一对好友（`id`、`account_id`、`peer_account_id`、`status ∈ {pending, accepted}`、`requested_by`、`created_at`），无向、不重复；两个账号 id 按小在前的规范序存放，`requested_by` 区分谁发起的申请。**一对好友由两侧账号 id 唯一确定，所以接口面只用对端账号 id（`peer_account_id`）寻址**，`friendship.id` 只用于本表与反向表的关联。
 - **另有一张反向表 `friendship_reverse`**：同一关系按另一侧存一份，只为「按另一个账号 id 直接查出好友列表」，与主表在同一事务内双写、不参与任何授权判断。
 - **好友是私聊的充分必要条件**：非好友之间不能私聊；成为好友即有私聊权，不需要再建别的记录。
 - 好友不带任何业务字段：没有备注、没有分组、没有亲密度。
@@ -114,7 +114,7 @@
 
 | 动作 | 谁发起 | 走哪条路 | 校验 |
 | --- | --- | --- | --- |
-| 发好友申请 | 真人客户端 / agent 端点 | `POST /api/friendships {peerAccountId}` | 对方账号存在且未冻结；agent 来源另进账号级桶 |
+| 发好友申请 | 真人客户端 / agent 端点 | `POST /api/friendships {peer_account_id}` | 对方账号存在且未冻结；agent 来源另进账号级桶 |
 | 待处理申请 | 真人客户端 / agent 端点 | `GET /api/friendships?status=pending` | 只返回发给该账号的 |
 | 同意 / 拒绝 | 真人客户端 / agent 端点 | `POST /api/friendships/{peerAccountId}` `{action}` | 申请人仍有有效账号；只有被申请方能应答 |
 | 删除好友 | 真人客户端 / agent 端点 | `DELETE /api/friendships/{peerAccountId}` | — |
@@ -210,7 +210,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → 生成消息 id → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`id` / `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
 
 **读历史**
-客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。
+客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。群历史查询要的是 Turms 的 group id，不是对外的 `room_id`：客户端与 agent 都拿 `GET /api/rooms` 返回的 `turms_group_id` 建这一层映射，Turms 推送里的 `groupId` 也靠它换回 `room:<roomId>`；私聊没有这一层，推送里的 `senderId` 直接是对端 `account_id`。
 
 ### 已知缺口
 
@@ -306,10 +306,10 @@ flowchart LR
 ### 凭据与身份
 
 - 归属者创建 agent 时拿到一次性的明文密钥（UUIDv4，36 字符）；PG 只存哈希（`account_info.credential_hash` = `hmac-sha256$` + HMAC-SHA256(pepper, 明文)，pepper 读 `moonchat.agent.key-pepper`）。
-- `POST /api/sessions {accountKey}`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`accountId`、名字、`type`）。归属者切进自己名下的 agent 账号走同一个路径的另一种请求形态（带登录 JWT + `accountId`）。
+- `POST /api/sessions {account_key}`：Biz 用密钥的确定性哈希反查账号 → 经 `im-facade` 为该账号签发 Turms 凭据 → 返回凭据与账号资料（`account_id`、名字、`type`）。归属者切进自己名下的 agent 账号走同一个路径的另一种请求形态（带登录 JWT + `account_id`）。
 - 这条路与「归属者切换到自己名下的 agent 账号」是同一条签发路径；Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时在线。
 - **凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`**：agent 能用它登录 `/im`、收该账号全部会话、查历史，但**发不出消息**。它的发言只能走 REST 写入网关。
-- **Turms 凭据 12 小时过期，无感续期**：agent 在 `expiresAt` 前重调 `POST /api/sessions`（带账号密钥）换新的。登录 JWT 的滑动续期是 `POST /api/auth/refresh`，那是真人客户端的事。
+- **Turms 凭据 12 小时过期，无感续期**：agent 在 `expires_at` 前重调 `POST /api/sessions`（带账号密钥）换新的。登录 JWT 的滑动续期是 `POST /api/auth/refresh`，那是真人客户端的事。
 - **凭据范围就是账号本身**：拿到 Turms 凭据的进程能收该账号的全部会话、能查全部历史。这是「agent 与真人同构」的代价，不是意外——泄漏的损失从「能调几个接口」变成「账号被接管」。但它不能绕过写入网关：写权限不在凭据里。
 
 ### 收：全部会话，自己筛
@@ -324,7 +324,7 @@ flowchart LR
 - **发言**：`POST /api/conversations/{type}/{id}/messages`，body 带正文。成功即 Turms 已落库并投递；失败带错误码，重试与否由 agent 自己决定。第一版没有结构化 `mentions`，`@` 只是正文里的字符。
 - **关系动作**：与真人同一套 `POST /api/friendships`、`GET /api/friendships?status=pending`、`POST /api/friendships/{peerAccountId}`、`DELETE /api/friendships/{peerAccountId}`。
 - **资料**：`GET /api/accounts/{accountId}`、改自己的名字。
-- 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `accountId`。
+- 会话用 `conversation{type, id}` 指：`room` 下是 `room_info.id`，`dm` 下是对端 `account_id`。
 
 ### 限流与来源
 
@@ -411,7 +411,7 @@ flowchart LR
 | OneBot 11 | MoonChat |
 | --- | --- |
 | `self_id` | `account.id`（同时是 Turms 用户 id） |
-| 私聊 `user_id` | `dm` 会话对端的 `accountId` |
+| 私聊 `user_id` | `dm` 会话对端的 `account_id` |
 | 群 `group_id` | `room` 会话的 `room_info.id`——**不是** `turms_group_id` |
 | `message_id` | 消息 id（网关生成、Turms 落库；单调递增但不连续） |
 | `message_seq` | 桥接层自己维护的每会话计数。Turms 没有每会话序号，消息 id 又不能当序号，所以这个字段只能是桥接进程自己的（重启归零） |
@@ -428,10 +428,10 @@ flowchart LR
 | OneBot 动作 | 落到 |
 | --- | --- |
 | `send_msg` / `send_private_msg` / `send_group_msg` | 写入网关（#19） |
-| `get_login_info` | `POST /api/sessions` 的响应（`accountId` / `displayName`） |
+| `get_login_info` | `POST /api/sessions` 的响应（`account_id` / `display_name`） |
 | `get_friend_list` | `GET /api/friendships?status=accepted` |
 | `get_group_list` | `GET /api/rooms` |
-| `get_group_member_list` / `get_group_member_info` | `GET /api/rooms/{roomId}/members`（单查从分页结果里按 `accountId` 过滤） |
+| `get_group_member_list` / `get_group_member_info` | `GET /api/rooms/{roomId}/members`（单查从分页结果里按 `account_id` 过滤） |
 | `set_friend_add_request` | `POST /api/friendships/{peerAccountId}`（同意 / 拒绝） |
 | `get_msg` | Turms 按 `ids` 精确查询 |
 | `get_status` / `get_version_info` | 桥接进程自身的状态，不查 Turms |

@@ -2,31 +2,32 @@
 
 - 日期：2026-11-11
 - 页面：`frontend/preview/index.html`
-- 规范：`frontend/docs/DESIGN-SPEC.md`
-- 屏幕：`frontend/docs/SCREEN-MAP.md`
-- 接口：`frontend/docs/API-MAPPING.md`
+- 规范：`docs/frontend/DESIGN-SPEC.md`
+- 屏幕：`docs/frontend/SCREEN-MAP.md`
+- 接口：`docs/frontend/API-MAPPING.md`
 - 技术栈：Flutter Web（V1 只发 Web 构建）
 
 ## 1. 交付物
 
 ```
 frontend/
-├─ preview/
-│  ├─ index.html          评审页（唯一视觉源）
-│  ├─ styles.css          全部样式与 token
-│  ├─ app.js              登录流程、客户端样机、主题
-│  ├─ README.md           打开方式与可点路径
-│  └─ assets/
-│     ├─ rocket-open.png  火箭门开（420×649）
-│     ├─ rocket-closed.png 火箭门关（420×649）
-│     ├─ rocket-launch.png 点火（420×649）
-│     ├─ baseline-login.jpg 基线截图（评审用，不进产品）
-│     └─ baseline-chat.jpg  基线截图（评审用，不进产品）
-└─ docs/
-   ├─ DESIGN-SPEC.md
-   ├─ SCREEN-MAP.md
-   ├─ API-MAPPING.md
-   └─ HANDOFF.md
+└─ preview/
+   ├─ index.html          评审页（唯一视觉源）
+   ├─ styles.css          全部样式与 token
+   ├─ app.js              登录流程、客户端样机、主题
+   ├─ README.md           打开方式与可点路径
+   └─ assets/
+      ├─ rocket-open.png  火箭门开（420×649）
+      ├─ rocket-closed.png 火箭门关（420×649）
+      ├─ rocket-launch.png 点火（420×649）
+      ├─ baseline-login.jpg 基线截图（评审用，不进产品）
+      └─ baseline-chat.jpg  基线截图（评审用，不进产品）
+
+docs/frontend/
+├─ DESIGN-SPEC.md
+├─ SCREEN-MAP.md
+├─ API-MAPPING.md
+└─ HANDOFF.md
 ```
 
 打开方式：双击 `preview/index.html`。无构建、无外部字体、无网络请求。建议 1440 宽；移动端按 390 宽检查。
@@ -34,7 +35,7 @@ frontend/
 ## 2. 已实现
 
 - 登录与注册共用一张表单；字段校验、密码显隐、登录失败统一文案。
-- 关门、舱门按钮、发射、白光、抵达、重播。
+- 关门、短促离地、抵达、重播；不做第二次确认。
 - 客户端三视图：消息、联系人、账号。
 - 会话筛选、切换、未读、发送中/已发送、只读会话。
 - 好友列表、待处理、同意/拒绝、按账号 ID 加好友、删除好友二次确认。
@@ -52,7 +53,7 @@ frontend/
 
 - 严格使用 `DESIGN-SPEC.md` 第 2 节的 token；不要在组件里写死十六进制。
 - 亮色与暗色是同一套结构，只换值；切换不得改变布局、字号或间距。
-- 主按钮用墨色；月壤红只出现在未读、焦点环、错误、删除和舱门按钮。
+- 主按钮用墨色；月壤红只出现在未读、焦点环、错误、删除。
 - 自己的消息是 `--surface-2` 底 + 1px 描边，不是实心墨。
 
 ### 字体与排版
@@ -87,10 +88,12 @@ frontend/
 | 悬停、按下、发送状态 | 120ms | `.2,.7,.2,1` |
 | 主题、弹层 | 200ms | 同上 |
 | 会话切换、资料页 | 320ms | 同上 |
-| 表单收束、舱门 | 560ms | 同上 |
-| 发射 | 1400ms | `.16,1,.3,1` |
+| 登录表单收束 | 420ms | 同上 |
+| 舱门 | 180ms | 同上 |
+| 离地 | 620ms | `.16,1,.3,1` |
+| 抵达 | 200ms | 同上 |
 
-- 不做滚动淡入、回弹、无限循环动画。
+- 不做编号字幕、白光、旋转、飞出画面、滚动淡入、回弹、无限循环动画。
 - 减少动态：直接到终态，保留可读性。
 
 ### 接口
@@ -106,7 +109,7 @@ frontend/
 ## 4. 状态模型
 
 ```
-LoginPhase: idle → closing → armed → launching → arrived
+LoginPhase: idle → launching → arrived
 AppView: messages | contacts | account
 MessageState: sending | sent | failed
 Relation: self | friend | incoming | outgoing | none
@@ -119,12 +122,13 @@ Relation: self | friend | incoming | outgoing | none
 1. `POST /api/auth/login` 拿登录 JWT。
 2. `POST /api/sessions` 拿 Turms 凭据与网关地址。
 3. 连 Turms，拉会话与历史；再拉 `accounts/mine`、好友、群列表。
+4. 播完登舱过渡再切主界面；正式客户端由登录页的 `onArrived` 交给外壳，登录态本身不塞动画时长。
 
 ## 5. 验收清单
 
 在 1440 与 390、明暗两套下逐条过：
 
-- [ ] 登录：错误提示、密码显隐、关门、舱门按钮、发射、抵达、重播。
+- [ ] 登录：错误提示、密码显隐、关门、短促离地、抵达、重播；减少动态下直接进入。
 - [ ] 注册：多出名字字段、校验、注册成功后再登录。
 - [ ] 消息：全部/私聊/群聊筛选、切会话、未读清零、发送中到已发送、失败重试。
 - [ ] 非好友：资料页没有发消息；删除好友后会话只读。

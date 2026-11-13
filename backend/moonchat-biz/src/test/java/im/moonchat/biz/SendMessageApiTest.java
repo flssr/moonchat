@@ -72,7 +72,12 @@ class SendMessageApiTest extends ApiTestSupport {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.conversation.type").value("room"))
                 .andExpect(jsonPath("$.conversation.id").value(roomId));
-        assertThat(JsonPath.<Object>read(TestStack.TURMS_ADMIN.lastBody(), "$.isGroupMessage")).isEqualTo(true);
+        // 投递句柄是 Turms 的 group id，不是对外的 room_id
+        long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
+        Map<String, Object> roomSent = JsonPath.read(TestStack.TURMS_ADMIN.lastBody(), "$");
+        assertThat(((Number) roomSent.get("targetId")).longValue()).isEqualTo(turmsGroupId);
+        assertThat(roomSent.get("isGroupMessage")).isEqualTo(true);
 
         mockMvc.perform(delete("/api/rooms/" + roomId + "/members/" + member.accountId())
                         .header(HttpHeaders.AUTHORIZATION, bearer(owner.token())))
@@ -82,6 +87,19 @@ class SendMessageApiTest extends ApiTestSupport {
         sendRoom(member, roomId, "还能发吗")
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("not_room_member"));
+    }
+
+    @Test
+    void 群还没拿到Turms句柄时发送回503且根本不碰Turms() throws Exception {
+        Caller owner = newCaller();
+        long roomId = createRoom(owner);
+        // 投影失败会留在 pending 且 turms_group_id 为空：此时没有可用的投递句柄
+        jdbc.update("update room_info set turms_group_id = null, turms_sync_state = 'pending' where id = ?", roomId);
+
+        sendRoom(owner, roomId, "句柄还没回填")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.code").value("upstream_unavailable"));
+        assertThat(TestStack.TURMS_ADMIN.lastPath()).isNotEqualTo("/messages");
     }
 
     @Test

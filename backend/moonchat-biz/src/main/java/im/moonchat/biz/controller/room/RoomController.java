@@ -37,36 +37,36 @@ public class RoomController {
         return roomService.mine(me);
     }
 
-    @GetMapping("/{room_id}")
-    public RoomResponses.InfoResponse info(CurrentAccount me, @PathVariable("room_id") long roomId) {
+    @GetMapping("/{roomId}")
+    public RoomResponses.InfoResponse info(CurrentAccount me, @PathVariable("roomId") long roomId) {
         return roomService.info(me, roomId);
     }
 
-    @GetMapping("/{room_id}/members")
-    public RoomResponses.MembersResponse members(CurrentAccount me, @PathVariable("room_id") long roomId,
+    @GetMapping("/{roomId}/members")
+    public RoomResponses.MembersResponse members(CurrentAccount me, @PathVariable("roomId") long roomId,
             @RequestParam(name = "page", defaultValue = "1") int page,
             @RequestParam(name = "size", defaultValue = "50") int size) {
         return roomService.members(me, roomId, page, size);
     }
 
-    @PostMapping("/{room_id}/members")
+    @PostMapping("/{roomId}/members")
     @ResponseStatus(HttpStatus.CREATED)
-    public RoomResponses.MemberResponse addMember(CurrentAccount me, @PathVariable("room_id") long roomId,
+    public RoomResponses.MemberResponse addMember(CurrentAccount me, @PathVariable("roomId") long roomId,
             @Valid @RequestBody RoomRequests.AddMemberRequest request) {
         return roomService.addMember(me, roomId, request);
     }
 
     /** 「我自己」不是账号 id，写成路径尾段比 `?me=true` 直白（§1.1 的第二处例外）。 */
-    @DeleteMapping("/{room_id}/members/me")
+    @DeleteMapping("/{roomId}/members/me")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void leave(CurrentAccount me, @PathVariable("room_id") long roomId) {
+    public void leave(CurrentAccount me, @PathVariable("roomId") long roomId) {
         roomService.leave(me, roomId);
     }
 
-    @DeleteMapping("/{room_id}/members/{account_id}")
+    @DeleteMapping("/{roomId}/members/{accountId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void removeMember(CurrentAccount me, @PathVariable("room_id") long roomId,
-            @PathVariable("account_id") long accountId) {
+    public void removeMember(CurrentAccount me, @PathVariable("roomId") long roomId,
+            @PathVariable("accountId") long accountId) {
         roomService.removeMember(me, roomId, accountId);
     }
 }

@@ -42,7 +42,7 @@ depends-on:
 ## 好友（决定）
 
 - 好友是私聊的充分必要条件，落在 PG 的 `friendship` + `friendship_reverse`（同事务双写）。**不投影进 Turms**，Turms 配成不校验好友（`allowSendMessagesToStranger = true`）。
-- 无向关系用规范序（小 id 在前）+ 唯一键表达；接口只用 `peerAccountId` 寻址。
+- 无向关系用规范序（小 id 在前）+ 唯一键表达；接口只用 `peer_account_id` 寻址。
 - **删除好友写 tombstone**：会话保留、历史只读、不能再发新消息；保留期后 purge，重新加好友复用原行。拒绝申请同样写 `deleted_at`，状态枚举不增加 `rejected`。
 - **agent 只有好友申请一个关系动作**；建群、拉人、移除成员只有真人能触发（`owner` 来源）。
 - **不做临时会话**：群里的非好友只能看资料页再申请好友；理由是两级桶按 `(账号, 会话)` 计，临时会话会让桶形同虚设。
@@ -61,7 +61,7 @@ depends-on:
 
 1. **认证**：登录 JWT 或账号密钥；来源由凭据形态决定。
 2. **归属**：凭据能不能代表这个账号。
-3. **会话解析**：`room` 是 `room_info.id`，`dm` 是对端 `accountId`。
+3. **会话解析**：`room` 是 `room_info.id`，`dm` 是对端 `account_id`。
 4. **授权事实**：群看 `room_member`，私聊看 `friendship`（`accepted` 且未删除）。
 5. **限流**：只有 `agent` 来源进「账号 → 会话」两级桶；先校验再进桶，`429` 不盖住 `404` / `409`，被拒的请求不消耗配额。
 6. **来源标记**：写结构化日志，不写进消息。

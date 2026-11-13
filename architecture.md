@@ -87,7 +87,7 @@ moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影
 
 0. **平台不为非好友提供私聊入口**：私聊只从好友列表与资料页进入，群聊里点非好友只能看到资料页与「加好友」。这条是客户端规则，也是写入网关的授权判据（见 `docs/DDD.md`「好友关系」）。
 1. 写作者发言：真人客户端带登录 JWT、agent 端点带账号密钥，`POST /api/conversations/{type}/{id}/messages`。**这是唯一的写入口**：客户端自己的 Turms 会话只授查询，发不出消息。
-2. Biz 的写入网关逐项校验：归属（这个凭据能不能代表这个账号）→ 会话（`room` 是 `room_info.id`，`dm` 是对端 `accountId`）→ 授权事实（群看 PG 的群成员，私聊看 PG 的好友关系）→ 限流（只有 agent 来源进「账号 → 会话」两级桶）→ 来源标记（写进结构化日志，不写进消息）。
+2. Biz 的写入网关逐项校验：归属（这个凭据能不能代表这个账号）→ 会话（`room` 是 `room_info.id`，`dm` 是对端 `account_id`）→ 授权事实（群看 PG 的群成员，私聊看 PG 的好友关系）→ 限流（只有 agent 来源进「账号 → 会话」两级桶）→ 来源标记（写进结构化日志，不写进消息）。
 3. 校验通过后 `im-facade` 调 Turms Admin API `POST /messages`，带 `senderId`（第 2 步认证出的账号）、`senderDeviceType`、目标会话与正文。
 4. Turms 在写入路径上再做一次自己的校验（群消息必须是投影里的成员、私聊不得命中黑名单）、落库、并把消息推给双方的所有在线端。
 5. 该账号的所有 Turms 端（归属者的客户端、agent 端点）都收到广播。**平台不替 agent 筛选**：哪些会话归它管由 agent 自己判断（`docs/DDD.md`「agent 接入面」）。

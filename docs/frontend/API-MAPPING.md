@@ -35,7 +35,7 @@ Authorization: Bearer <token>
 | 无感续期 | `POST /api/auth/refresh` | 当前登录 JWT | `token`、`expires_at` | `unauthenticated` 回登录；`account_frozen` 转只读 |
 | 打开账号页 | `GET /api/accounts/mine` | — | `items[]`：`account_id`、`type`、`display_name` | 失败给空状态，不缓存旧列表 |
 | 创建 agent | `POST /api/agent-accounts` | `display_name` | `account_id`、`display_name`、`account_key` | `validation_failed` 贴字段；`forbidden` 说明 agent 不能再建 agent |
-| 资料页 | `GET /api/accounts/{account_id}` | 路径账号 ID | `account_id`、`display_name`、`is_friend` | `not_found` 显示“账号不存在” |
+| 资料页 | `GET /api/accounts/{accountId}` | 路径账号 ID | `account_id`、`display_name`、`is_friend` | `not_found` 显示“账号不存在” |
 | 改名字 | `PATCH /api/accounts/me` | `display_name` | `account_id`、`display_name`、`updated_at` | 页面暂无入口，列在这里防止漏实现 |
 
 注意：资料页不返回 `type`、邮箱、归属者。非好友也能看到名字与 ID；界面不要自行拼 agent 标签。
@@ -47,9 +47,9 @@ Authorization: Bearer <token>
 | 好友列表 | `GET /api/friendships?status=accepted` | — | `peer_account_id`、`display_name`、`requested_at` | 空列表给空状态 |
 | 待处理 | `GET /api/friendships?status=pending` | — | `peer_account_id`、`display_name`、`incoming`、`requested_at` | 只展示 `incoming = true` 的申请 |
 | 加好友 | `POST /api/friendships` | `peer_account_id` | 201：`peer_account_id`、`status`、`incoming` | `conflict` 刷新为已申请/已是好友；`not_found` 提示账号不存在；`rate_limited` 只对 agent 来源出现 |
-| 同意 | `POST /api/friendships/{peer_account_id}` | `action=accept` | 200：`peer_account_id`、`status` | `conflict` 刷新列表；`forbidden` 说明不能应答自己发出的申请 |
+| 同意 | `POST /api/friendships/{peerAccountId}` | `action=accept` | 200：`peer_account_id`、`status` | `conflict` 刷新列表；`forbidden` 说明不能应答自己发出的申请 |
 | 拒绝 | 同上 | `action=reject` | 204 | `not_found` 说明申请已处理 |
-| 删除好友 | `DELETE /api/friendships/{peer_account_id}` | — | 204 | `not_found` 刷新列表；保留私聊历史只读 |
+| 删除好友 | `DELETE /api/friendships/{peerAccountId}` | — | 204 | `not_found` 刷新列表；保留私聊历史只读 |
 
 没有好友搜索接口。定位账号只有两个入口：账号 ID、别人发来的主页链接。
 
@@ -58,12 +58,12 @@ Authorization: Bearer <token>
 | 界面动作 | 接口 | 请求 | 用到的响应 | 错误处理 |
 | --- | --- | --- | --- | --- |
 | 会话列表里的群 | `GET /api/rooms` | — | `room_id`、`name`、`owner_account_id`、`joined_at` | 失败只影响群列表，不挡私聊 |
-| 群头信息 | `GET /api/rooms/{room_id}` | — | `name`、`owner_account_id`、`member_count`、`created_at` | `not_room_member` 从列表移除；`not_found` 空状态 |
-| 成员列表 | `GET /api/rooms/{room_id}/members?page=&size=` | 默认 page=1、size=50，最大 100 | `items[]`：`account_id`、`display_name`、`is_friend`、`joined_at`；`page/size/total` | 分页加载；成员多时不要一次全量 |
+| 群头信息 | `GET /api/rooms/{roomId}` | — | `name`、`owner_account_id`、`member_count`、`created_at` | `not_room_member` 从列表移除；`not_found` 空状态 |
+| 成员列表 | `GET /api/rooms/{roomId}/members?page=&size=` | 默认 page=1、size=50，最大 100 | `items[]`：`account_id`、`display_name`、`is_friend`、`joined_at`；`page/size/total` | 分页加载；成员多时不要一次全量 |
 | 建群 | `POST /api/rooms` | `name`（≤20） | 201：`room_id`、`name`、`owner_account_id`、`created_at` | `validation_failed` 贴字段；`forbidden` 只对 agent 来源 |
-| 邀请入群 | `POST /api/rooms/{room_id}/members` | `account_id` | 201：`room_id`、`account_id`、`joined_at` | `conflict` 说明已在群里；`not_found` 目标不存在；`forbidden` 非成员 |
-| 退群 | `DELETE /api/rooms/{room_id}/members/me` | — | 204 | `owner_cannot_leave` 禁用按钮并说明；`not_room_member` 刷新 |
-| 移除成员 | `DELETE /api/rooms/{room_id}/members/{account_id}` | — | 204 | 只有群主；`forbidden` 隐藏按钮；`owner_cannot_leave` 不能移除自己 |
+| 邀请入群 | `POST /api/rooms/{roomId}/members` | `account_id` | 201：`room_id`、`account_id`、`joined_at` | `conflict` 说明已在群里；`not_found` 目标不存在；`forbidden` 非成员 |
+| 退群 | `DELETE /api/rooms/{roomId}/members/me` | — | 204 | `owner_cannot_leave` 禁用按钮并说明；`not_room_member` 刷新 |
+| 移除成员 | `DELETE /api/rooms/{roomId}/members/{accountId}` | — | 204 | 只有群主；`forbidden` 隐藏按钮；`owner_cannot_leave` 不能移除自己 |
 
 - 群的可见性只有成员可见，没有公开群和邀请链接。
 - 邀请即入群，不审批，不要求是好友；一次一个账号。
@@ -74,8 +74,8 @@ Authorization: Bearer <token>
 
 | 界面动作 | 接口 | 请求 | 用到的响应 | 错误处理 |
 | --- | --- | --- | --- | --- |
-| 发私聊 | `POST /api/conversations/dm/{peer_account_id}/messages` | `text`（≤500）；头 `X-Device-Type` | 201：`message_id`、`conversation`、`sent_at` | `not_friend` 禁发；`not_found` 对端不存在；`rate_limited` 草稿保留；`upstream_unavailable` 标失败可重试 |
-| 发群聊 | `POST /api/conversations/room/{room_id}/messages` | 同上 | 同上 | `not_room_member` 回列表；`rate_limited` 同上 |
+| 发私聊 | `POST /api/conversations/dm/{peerAccountId}/messages` | `text`（≤500）；头 `X-Device-Type` | 201：`message_id`、`conversation`、`sent_at` | `not_friend` 禁发；`not_found` 对端不存在；`rate_limited` 草稿保留；`upstream_unavailable` 标失败可重试 |
+| 发群聊 | `POST /api/conversations/room/{roomId}/messages` | 同上 | 同上 | `not_room_member` 回列表；`rate_limited` 同上 |
 | 读历史 | 不经过 Biz | Turms 客户端查询 | `deliveryDate` 分页 | 断线重连；不回退到 Biz |
 
 - `type` 只有 `dm` / `room`；私聊的 `id` 是对端账号 ID，不是会话 ID。

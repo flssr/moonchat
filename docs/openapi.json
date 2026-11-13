@@ -85,12 +85,12 @@
         }
       }
     },
-    "/api/rooms/{room_id}/members" : {
+    "/api/rooms/{roomId}/members" : {
       "get" : {
         "tags" : [ "room-controller" ],
         "operationId" : "members",
         "parameters" : [ {
-          "name" : "room_id",
+          "name" : "roomId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -133,7 +133,7 @@
         "tags" : [ "room-controller" ],
         "operationId" : "addMember",
         "parameters" : [ {
-          "name" : "room_id",
+          "name" : "roomId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -217,12 +217,12 @@
         }
       }
     },
-    "/api/friendships/{peer_account_id}" : {
+    "/api/friendships/{peerAccountId}" : {
       "post" : {
         "tags" : [ "friendship-controller" ],
         "operationId" : "respond",
         "parameters" : [ {
-          "name" : "peer_account_id",
+          "name" : "peerAccountId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -257,7 +257,7 @@
         "tags" : [ "friendship-controller" ],
         "operationId" : "delete",
         "parameters" : [ {
-          "name" : "peer_account_id",
+          "name" : "peerAccountId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -455,12 +455,12 @@
         }
       }
     },
-    "/api/rooms/{room_id}" : {
+    "/api/rooms/{roomId}" : {
       "get" : {
         "tags" : [ "room-controller" ],
         "operationId" : "info",
         "parameters" : [ {
-          "name" : "room_id",
+          "name" : "roomId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -482,12 +482,12 @@
         }
       }
     },
-    "/api/accounts/{account_id}" : {
+    "/api/accounts/{accountId}" : {
       "get" : {
         "tags" : [ "account-controller" ],
         "operationId" : "profile",
         "parameters" : [ {
-          "name" : "account_id",
+          "name" : "accountId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -527,12 +527,12 @@
         }
       }
     },
-    "/api/rooms/{room_id}/members/{account_id}" : {
+    "/api/rooms/{roomId}/members/{accountId}" : {
       "delete" : {
         "tags" : [ "room-controller" ],
         "operationId" : "removeMember",
         "parameters" : [ {
-          "name" : "room_id",
+          "name" : "roomId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -540,7 +540,7 @@
             "format" : "int64"
           }
         }, {
-          "name" : "account_id",
+          "name" : "accountId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -555,12 +555,12 @@
         }
       }
     },
-    "/api/rooms/{room_id}/members/me" : {
+    "/api/rooms/{roomId}/members/me" : {
       "delete" : {
         "tags" : [ "room-controller" ],
         "operationId" : "leave",
         "parameters" : [ {
-          "name" : "room_id",
+          "name" : "roomId",
           "in" : "path",
           "required" : true,
           "schema" : {
@@ -920,6 +920,9 @@
           "joined_at" : {
             "type" : "string",
             "format" : "date-time"
+          },
+          "turms_group_id" : {
+            "type" : "string"
           }
         }
       },

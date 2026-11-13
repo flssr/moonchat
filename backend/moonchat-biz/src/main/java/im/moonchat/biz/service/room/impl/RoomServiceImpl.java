@@ -89,8 +89,13 @@ public class RoomServiceImpl implements RoomService {
                 .stream()
                 .collect(Collectors.toMap(RoomInfo::getId, Function.identity()));
         List<RoomResponses.Item> items = links.stream()
-                .map(link -> new RoomResponses.Item(link.getRoomId(), rooms.get(link.getRoomId()).getName(),
-                        rooms.get(link.getRoomId()).getOwnerAccountId(), link.getJoinedAt().toInstant()))
+                .map(link -> {
+                    RoomInfo room = rooms.get(link.getRoomId());
+                    Long turmsGroupId = room.getTurmsGroupId();
+                    return new RoomResponses.Item(link.getRoomId(), room.getName(), room.getOwnerAccountId(),
+                            link.getJoinedAt().toInstant(),
+                            turmsGroupId == null ? null : turmsGroupId.toString());
+                })
                 .toList();
         return new RoomResponses.ListResponse(items);
     }

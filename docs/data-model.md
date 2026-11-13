@@ -247,7 +247,7 @@ create table room_info (
 
 | 列 | 类型 | 是否可空 | 规则 |
 | --- | --- | --- | --- |
-| `id` | `bigint` | 否 | 主键，也是对外使用的 `roomId` |
+| `id` | `bigint` | 否 | 主键，也是对外使用的 `room_id` |
 | `name` | `text` | 否 | 群名；不能为空，可以重复 |
 | `owner_account_id` | `bigint` | 否 | 逻辑引用 `account.id`；群主只有一个 |
 | `turms_group_id` | `bigint` | 是 | Turms 群句柄；建群投影成功前为空 |

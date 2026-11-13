@@ -40,9 +40,9 @@ public class FriendshipController {
     }
 
     /** `accept` 有 body（关系变了），`reject` 没有（只写了 tombstone）。 */
-    @PostMapping("/{peer_account_id}")
+    @PostMapping("/{peerAccountId}")
     public ResponseEntity<FriendshipResponses.AcceptResponse> respond(CurrentAccount me,
-            @PathVariable("peer_account_id") long peerAccountId,
+            @PathVariable("peerAccountId") long peerAccountId,
             @Valid @RequestBody FriendshipRequests.RespondRequest request) {
         if ("accept".equals(request.action())) {
             return ResponseEntity.ok(friendshipService.accept(me, peerAccountId));
@@ -51,9 +51,9 @@ public class FriendshipController {
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/{peer_account_id}")
+    @DeleteMapping("/{peerAccountId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(CurrentAccount me, @PathVariable("peer_account_id") long peerAccountId) {
+    public void delete(CurrentAccount me, @PathVariable("peerAccountId") long peerAccountId) {
         friendshipService.delete(me, peerAccountId);
     }
 }

@@ -32,9 +32,9 @@ public class AccountController {
         return accountService.rename(me, request);
     }
 
-    @GetMapping("/{account_id}")
+    @GetMapping("/{accountId}")
     public AccountResponses.ProfileResponse profile(CurrentAccount me,
-            @PathVariable("account_id") long accountId) {
+            @PathVariable("accountId") long accountId) {
         return accountService.profile(me, accountId);
     }
 }

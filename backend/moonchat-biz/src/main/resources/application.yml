@@ -30,7 +30,7 @@ springdoc:
   default-produces-media-type: application/json
   default-consumes-media-type: application/json
 
-# 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/account-and-ownership.md。
+# 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/DDD.md。
 moonchat:
   turms:
     # Turms Admin REST（建用户 / 建群 / 代发）。本地编排固定 turms/turms。
@@ -50,9 +50,9 @@ moonchat:
     jwt-secret: ${MOONCHAT_AUTH_JWT_SECRET}
     login-token-ttl: 7d
   agent:
-    # agent 账号密钥的 HMAC pepper（docs/biz-data-model.md §4.2）：部署必须显式给出，不给默认值。
+    # agent 账号密钥的 HMAC pepper（docs/data-model.md §4.2）：部署必须显式给出，不给默认值。
     key-pepper: ${MOONCHAT_AGENT_KEY_PEPPER}
   limit:
-    # 只作用于 agent 来源的两级桶（好友申请、发言）；速率暂定，见 docs/agent-connection.md 的「限流与来源」。
+    # 只作用于 agent 来源的两级桶（好友申请、发言）；速率暂定，见 docs/DDD.md 的「限流与来源」。
     account-per-minute: ${MOONCHAT_LIMIT_ACCOUNT_PER_MINUTE:60}
     conversation-per-minute: ${MOONCHAT_LIMIT_CONVERSATION_PER_MINUTE:20}
