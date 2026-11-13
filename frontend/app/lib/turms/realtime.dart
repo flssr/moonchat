@@ -37,7 +37,7 @@ class IncomingMessage {
   }
 }
 
-/// 读取通道：客户端自己的 Turms 会话（`docs/messaging-and-tunnel.md`）。
+/// 读取通道：客户端自己的 Turms 会话（`docs/DDD.md`「消息与隧道」）。
 /// 它只授 QUERY，能收推送与查历史，发不出消息——写仍然只有 Biz 的写入网关。
 abstract class RealtimeClient {
   /// 用 `POST /api/sessions` 拿到的凭据登录 `/im`。
