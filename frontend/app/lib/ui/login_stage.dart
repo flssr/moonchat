@@ -26,17 +26,26 @@ class LoginStage extends StatelessWidget {
       child: ClipRect(
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
+            final double w = c.maxWidth;
             final double h = c.maxHeight;
             // 火箭按舞台高度收放；窄屏（300 高）也不出画。
             final double rocketWidth = min(240.0, h * 0.44);
+            final double rocketHeight = rocketWidth * 649 / 420;
+            // 月亮与火箭的几何在动画外算一次：离场时朝月亮中心收缩。
+            final double moonR = (min(w, h) * 0.175).clamp(46.0, 92.0).toDouble();
+            final Offset moonCenter = Offset(w - moonR - 34, 26 + moonR * 0.72);
+            final Offset rocketCenter = Offset(w / 2, h - 96 - rocketHeight / 2);
             return AnimatedBuilder(
               animation: arrival,
               builder: (BuildContext context, Widget? _) {
                 final double t = arrival.value;
                 final double door = (t / 0.22).clamp(0.0, 1.0);
                 final double ignite = ((t - 0.22) / 0.12).clamp(0.0, 1.0);
-                final double lift =
-                    Curves.easeOutCubic.transform(((t - 0.22) / 0.78).clamp(0.0, 1.0));
+                // 关闭 → 点火之后朝月亮飞走：位移到月心、缩到约 0.08、淡出。
+                // easeIn 让前半段仍看得清，后半段才明显加速，读起来是“越来越远”。
+                final double flight =
+                    Curves.easeIn.transform(((t - 0.22) / 0.78).clamp(0.0, 1.0));
+                final Offset flightOffset = (moonCenter - rocketCenter) * flight;
                 return Stack(
                   children: <Widget>[
                     Positioned.fill(child: CustomPaint(painter: _SkyPainter(p))),
@@ -49,11 +58,11 @@ class LoginStage extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 96),
                           child: Transform.translate(
-                            offset: Offset(0, -56 * lift),
+                            offset: flightOffset,
                             child: Transform.scale(
-                              scale: 1 - 0.06 * lift,
+                              scale: 1 - 0.92 * flight,
                               child: Opacity(
-                                opacity: 1 - 0.85 * lift,
+                                opacity: 1 - 0.95 * flight * flight,
                                 child: SizedBox(
                                   width: rocketWidth,
                                   child: AspectRatio(

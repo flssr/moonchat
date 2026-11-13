@@ -211,41 +211,37 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          // 站点标记 + 品牌：一行小字压住版面，把标题让给下面的大字号。
+          // 品牌锁排：标与字标并排一次，不再重复小字 MOONCHAT。
           Row(
             children: <Widget>[
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: BorderRadius.circular(7),
                 child: Image.asset(
                   'assets/moonchat-logo.png',
-                  width: 20,
-                  height: 20,
+                  width: 30,
+                  height: 30,
                   filterQuality: FilterQuality.high,
                 ),
               ),
-              const SizedBox(width: 8),
-              Text(
-                'MOONCHAT',
-                style: TextStyle(
-                  fontSize: 10,
-                  letterSpacing: 3.2,
-                  color: p.ink3,
-                  fontFamilyFallback: kMonoFallback,
+              const SizedBox(width: 10),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'MoonChat',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w400,
+                      letterSpacing: -0.8,
+                      color: p.ink,
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          Text(
-            'MoonChat',
-            style: TextStyle(
-              fontSize: 30,
-              fontWeight: FontWeight.w400,
-              letterSpacing: -0.8,
-              color: p.ink,
-            ),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
           ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 84),
