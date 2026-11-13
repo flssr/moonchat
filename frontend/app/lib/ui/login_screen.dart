@@ -214,12 +214,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           // 站点标记 + 品牌：一行小字压住版面，把标题让给下面的大字号。
           Row(
             children: <Widget>[
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: p.ink3),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Image.asset(
+                  'assets/moonchat-logo.png',
+                  width: 20,
+                  height: 20,
+                  filterQuality: FilterQuality.high,
                 ),
               ),
               const SizedBox(width: 8),

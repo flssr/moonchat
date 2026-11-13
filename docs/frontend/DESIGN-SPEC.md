@@ -104,6 +104,12 @@
 
 ## 6. 组件
 
+### 品牌标
+
+- 资产：`frontend/app/assets/moonchat-logo.png`（源图 `frontend/preview/assets/moonchat-logo.svg`）。这是唯一允许带品牌色（靛蓝）的资产，不套用 §2 的 token。
+- 只出现在两处：登录页品牌行（20px、圆角 6px，紧邻 `MOONCHAT` 字标）与浏览器 / PWA 图标。
+- 不加光晕、描边、投影，不放大成主视觉；主界面、资料页、空状态不重复出现。
+
 ### 登录舞台（发射平台夜景）
 
 登录右侧的舞台是一张「观测窗」插画，画的是夜里的发射平台：
