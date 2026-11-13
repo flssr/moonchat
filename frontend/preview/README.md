@@ -14,7 +14,7 @@
 
 ## 依据
 
-- 行为：`D:\CODE_SPACE\MoonChat\docs\goal-and-requirements.md`、`docs\api-contracts.md`
+- 行为：`goal-and-requirements.md`、`docs\api-contracts.md`
 - 视觉基线：`Moonchat-UI.zip` 的登录与聊天页，火箭三态插画沿用原资产
 - 本页只是前端样机，不连后端，所有数据都在页面内存里；刷新即复位。
 - 交付文档：`frontend\docs\DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`、`HANDOFF.md`

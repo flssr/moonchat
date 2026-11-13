@@ -1,7 +1,7 @@
 # 冒烟用的临时覆盖文件，不是部署配置。
 # 它把 turms-gateway 的身份认证切成 JWT 模式，让 infra/turms/smoke 验证
 # 客户端凭据与群/消息的输入边界。
-# 三条属性对应 docs/messaging-and-tunnel.md 的「凭据与客户端权限」：
+# 三条属性对应 docs/DDD.md 的「凭据与客户端权限」：
 #   type = jwt；HMAC 密钥从文件读（Turms 只支持 file/p12，不收内联字符串）；
 #   type != PASSWORD 时 gateway 不查用户库，所以「Turms 用户不存密码」也成立。
 

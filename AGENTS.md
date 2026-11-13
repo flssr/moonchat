@@ -1,8 +1,8 @@
 # AGENTS.md
 
-给在本仓库工作的 AI agent 的入口文档。人看的项目概览在 `README.md`，文档台账与阅读路径在 `docs/README.md`。
+给在本仓库工作的 AI agent 的入口文档。人看的项目概览在 `README.md`，文档索引在 `docs/README.md`。
 
-**这份文件只写约束与规矩，不写设计。** 设计内容一律在 11 份 spec 里（10 份定义行为，1 份排施工顺序）；本文与 spec 冲突时以 spec 为准，并把冲突报告给用户。
+**这份文件只写约束与规矩，不写设计。** 设计内容一律在 5 份 spec 里（根目录 2 份 + 模块旁 3 份）；本文与 spec 冲突时以 spec 为准，并把冲突报告给用户。
 
 ---
 
@@ -21,8 +21,8 @@
 
 ## 0. 先认清这个仓库的状态
 
-- **设计是唯一真相，代码按 V1 开始落地**：`docs/` 下 12 份 markdown spec：11 份定义行为（含 `biz-data-model.md` 的表结构、`api-contracts.md` 的 REST 契约与 `dependencies.md` 的依赖清单），1 份 `v1-construction-plan.md` 只排施工顺序与片末判据。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）与 S4（写入网关）已完成并合入 `main`**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶都已落地，下一步是 S5 客户端与验收。
-- 验证构建用根目录 `./mvnw test`（Windows 为 `.\\mvnw.cmd test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
+- **设计是唯一真相，代码按 V1 开始落地**：spec 只有 5 份——根目录 `goal-and-requirements.md`（产品决策）与 `architecture.md`（架构总览），加上 `backend/moonchat-biz/SPEC.md`、`frontend/SPEC.md`、`infra/SPEC.md`。`docs/` 下是四份施工文档（`PRD.md`、`DDD.md`、`data-model.md`、`api-contracts.md`），写需求明细、领域行为、DDL 与路由契约；它们**没有 frontmatter，不是 spec**。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）与 S4（写入网关）已完成并合入 `main`**——七张表的迁移已建齐，接口到 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶都已落地，下一步是 S5 客户端与验收（工作项在 `.thinkrail/context/TASK-v1-construction.md`，不进 git）。
+- 验证构建在 `backend/` 里跑：`./mvnw test`（Windows 为 `.\\backend\\mvnw.cmd -f backend\\pom.xml test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
 - 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
 - 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
 - 用户明确要求「开始实现」时，先确认落在哪个切片（见 [§6](#6-范围纪律按切片推进)），再动手。
@@ -33,20 +33,20 @@
 
 | 你要做的事 | 必读 |
 | --- | --- |
-| 任何改动之前 | `docs/goal-and-requirements.md`（定位、能力清单、V1 范围、Non-Goals、V2 计划） |
-| 判断某能力该不该做、属于哪一片 | `docs/goal-and-requirements.md` + `docs/architecture.md` |
-| 动手改架构、跨模块行为、数据归属 | `docs/architecture.md`（硬规矩、数据归属表、一条消息的旅程、跨模块不变量） |
-| 消息 / 群 / 成员 / 私聊 / 写入网关 / 代发 | `docs/messaging-and-tunnel.md` |
-| 好友、加好友、删好友、私聊授权 | `docs/friends.md` |
-| 账号、主页、归属、切换账号、来源标记 | `docs/account-and-ownership.md` |
-| agent 怎么接入、凭据、限流、收全部会话 | `docs/agent-connection.md` |
-| 建表、改列、写迁移、争议「这张表该不该有」 | `docs/biz-data-model.md`（聚合边界、DDL、只能由应用层守的规则、不建表清单）+ 对应模块 spec |
-| 写 Controller / DTO / 错误码、争议「这个动作走哪条路由」 | `docs/api-contracts.md`（路由总表、认证与错误码、字段与表的对应、明确不提供的接口）+ 对应模块 spec |
-| 改 pom、加依赖、升级版本 | `docs/dependencies.md`（已装什么、版本从哪来、明确不加什么、加依赖的判断顺序） |
-| 部署单元、运行时、扩容 | `docs/deployment.md` |
-| 决定先做哪一片、一片什么时候算结束、片内不许做什么 | `docs/v1-construction-plan.md`（S0–S5 的边界、片末判据、跨片约定） |
+| 任何改动之前 | `goal-and-requirements.md`（定位、范围判据、已定简化、Non-Goals、V2）+ `docs/PRD.md`（需求明细） |
+| 判断某能力该不该做、属于哪一片 | `goal-and-requirements.md` + `architecture.md` |
+| 动手改架构、跨模块行为、数据归属 | `architecture.md`（硬规矩、数据归属表、一条消息的旅程、跨模块不变量） |
+| 消息 / 群 / 成员 / 私聊 / 写入网关 / 代发 | `docs/DDD.md`（消息与隧道、好友关系）+ `backend/moonchat-biz/SPEC.md`（边界与决定） |
+| 好友、加好友、删好友、私聊授权 | `docs/DDD.md`「好友关系」 |
+| 账号、主页、归属、切换账号、来源标记 | `docs/DDD.md`「账号与归属」 |
+| agent 怎么接入、凭据、限流、收全部会话 | `docs/DDD.md`「agent 接入面」 |
+| 建表、改列、写迁移、争议「这张表该不该有」 | `docs/data-model.md`（聚合边界、DDL、只能由应用层守的规则、不建表清单）+ `backend/moonchat-biz/SPEC.md` |
+| 写 Controller / DTO / 错误码、争议「这个动作走哪条路由」 | `docs/api-contracts.md`（路由总表、认证与错误码、字段与表的对应、明确不提供的接口） |
+| 改 pom、加依赖、升级版本 | `backend/moonchat-biz/SPEC.md`「依赖」（已装什么、版本从哪来、明确不加什么、加依赖的判断顺序） |
+| 部署单元、运行时、扩容 | `infra/SPEC.md` |
+| 决定先做哪一片、一片什么时候算结束、片内不许做什么 | `.thinkrail/context/TASK-v1-construction.md`（临时任务文档，不进 git；S0–S5 的边界、片末判据、跨片约定） |
 
-依赖方向看 `docs/README.md` 台账里的 `depends-on` 列：**先读依赖，再读自己**。
+依赖方向看各 spec 的 `depends-on`（`spec_get` 可查）：**先读依赖，再读自己**。
 
 ---
 
@@ -55,16 +55,17 @@
 spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此：
 
 - **frontmatter 不许删、不许改名**。schema 固定为 `id` / `type` / `status` / `title` / `parent` / `depends-on`。
-- `id` 一旦发布不改（形如 `moonchat-product`、`moonchat-friends`），改 id 等于断开所有引用。
+- **`id` 一旦发布不改**（形如 `moonchat-product`、`moonchat-biz`），改 id 等于断开所有引用。
 - `parent` / `depends-on` 只能指向**已存在的 id**。
 - 每份 spec 的正文以一行 `**一句话**：…` 开头，这是它的定位句；改模块职责时这句必须同步改。
 
 改动纪律：
 
 - **改行为 = 改 spec**。任何影响边界、契约、不变量的改动，必须先落到对应 spec，再谈实现。反过来，实现暴露了 spec 没定的东西，先补 spec。
-- **新增或删除 spec 文件，必须同步 `docs/README.md` 的台账表**，否则索引立刻开始骗人。
-- **根目录的持久 markdown 只放 `README.md` 与 `AGENTS.md`**，设计内容一律在 `docs/`；构建与部署文件只在实现需要时新增。
-- **不要在仓库里新建临时 markdown**（`NOTES.md`、`TODO.md`、`plan.md`、`草稿.md`、`new_docs/` 之类）。计划用对话内的 TODO，草稿写在对话里。`docs/` 里每一份文件都必须是正式 spec，且已登记在 `docs/README.md` 台账。
+- **新增、删除或移动 spec 文件，必须同步 `docs/README.md` 的「spec 树在哪」表**，否则索引立刻开始骗人。
+- **根目录的持久 markdown 只有四个**：`README.md`、`AGENTS.md` 与两份 spec 入口（`goal-and-requirements.md`、`architecture.md`）；模块 spec 贴在模块旁（`backend/moonchat-biz/SPEC.md` 等）。设计内容不回到根目录平铺。
+- **ThinkRail 专用目录不进 git**：`.thinkrail/` 已写进 `.gitignore`。它放工具状态与临时任务文档（`.thinkrail/context/TASK-*.md`），**持久内容必须落到 spec 树或 `docs/`**；不要把 spec、决策或交付文档留在那里。
+- **不要在仓库里新建临时 markdown**（`NOTES.md`、`TODO.md`、`plan.md`、`草稿.md`、`new_docs/` 之类）。计划写进对话内 TODO 或 `.thinkrail/context/`，草稿留在对话里。`docs/` 只放四张表里登记的四份施工文档。
 - 已经写在 spec 里的「已定的简化」不是待办事项，是决定（见 §4）。
 
 ---
@@ -102,49 +103,49 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 | 简化 | 依据 |
 | --- | --- |
-| 群只有一种可见性（成员可见），邀请即入群、不设审批 | `docs/messaging-and-tunnel.md` |
-| 不做公开群与邀请链接（等 Turms 只读能力实测） | `docs/messaging-and-tunnel.md` |
-| 不做搜人、不做 agent 目录：加好友靠账号 id 与主页链接 | `docs/goal-and-requirements.md` §5.3 |
-| 不做 QQ 式临时会话：群里的非好友只能看资料页、再申请好友（限流理由） | `docs/friends.md` |
-| 头像平台生成，不做上传 | `docs/account-and-ownership.md` |
-| 第一版没有无响应提示 | `docs/goal-and-requirements.md` §5.2、§13 |
-| 不做消息搜索 | `docs/messaging-and-tunnel.md` |
-| agent 只有好友申请一个关系动作：建群、移除成员只有真人能做 | `docs/friends.md` |
-| agent 收它账号的全部会话，自己筛：没有工作区、没有投递档位、没有 webhook | `docs/agent-connection.md` |
-| OneBot 11 只在 agent 侧桥接，平台不开协议面 | `docs/onebot-bridge.md` |
-| 业务只有一个进程（`moonchat-biz`） | `docs/deployment.md` |
-| 不引入消息队列、不建投递队列：写入是同步 REST 调用 | `docs/deployment.md` |
-| 客户端写入由 Turms 的 JWT `statements` 关闭（只授 `QUERY`）：不需要 Turms 插件 | `docs/messaging-and-tunnel.md` |
-| 不做结构化 mentions：`@` 只在渲染层按正文识别 | `docs/messaging-and-tunnel.md` |
-| 不建审计表：来源、限流命中只打结构化日志 | `docs/goal-and-requirements.md` §5.3 |
-| 不做邮箱验证与找回密码：忘密码只能重建账号 | `docs/goal-and-requirements.md` §5.3 |
-| 不做全局限流桶，只做「账号 → 会话」两级桶 | `docs/agent-connection.md`、`docs/goal-and-requirements.md` §7.1 |
+| 群只有一种可见性（成员可见），邀请即入群、不设审批 | `docs/DDD.md`「群与投影」 |
+| 不做公开群与邀请链接（等 Turms 只读能力实测） | `docs/DDD.md`「群与投影」 |
+| 不做搜人、不做 agent 目录：加好友靠账号 id 与主页链接 | `goal-and-requirements.md`（已定的简化） |
+| 不做 QQ 式临时会话：群里的非好友只能看资料页、再申请好友（限流理由） | `docs/DDD.md`「好友关系」 |
+| 头像平台生成，不做上传 | `docs/DDD.md`「账号与归属」 |
+| 第一版没有无响应提示 | `goal-and-requirements.md`（V2 计划）、`docs/PRD.md` §5.2 |
+| 不做消息搜索 | `docs/DDD.md`「消息与隧道」 |
+| agent 只有好友申请一个关系动作：建群、移除成员只有真人能做 | `docs/DDD.md`「好友关系」 |
+| agent 收它账号的全部会话，自己筛：没有工作区、没有投递档位、没有 webhook | `docs/DDD.md`「agent 接入面」 |
+| OneBot 11 只在 agent 侧桥接，平台不开协议面 | `docs/DDD.md`「OneBot 11 桥接」 |
+| 业务只有一个进程（`moonchat-biz`） | `infra/SPEC.md` |
+| 不引入消息队列、不建投递队列：写入是同步 REST 调用 | `infra/SPEC.md` |
+| 客户端写入由 Turms 的 JWT `statements` 关闭（只授 `QUERY`）：不需要 Turms 插件 | `docs/DDD.md`「凭据与客户端权限」 |
+| 不做结构化 mentions：`@` 只在渲染层按正文识别 | `docs/DDD.md`「消息与隧道」 |
+| 不建审计表：来源、限流命中只打结构化日志 | `goal-and-requirements.md`（已定的简化） |
+| 不做邮箱验证与找回密码：忘密码只能重建账号 | `goal-and-requirements.md`（已定的简化） |
+| 不做全局限流桶，只做「账号 → 会话」两级桶 | `docs/DDD.md`「agent 接入面」、`docs/PRD.md` §7.1 |
 
-`docs/deployment.md` 里另有「什么时候才需要第二个业务进程」的**触发条件**（负载形态分叉 / 独立发布窗口 / 独立故障域）——没满足就不要提议拆分。
+`infra/SPEC.md` 里另有「什么时候才需要第二个业务进程」的**触发条件**（负载形态分叉 / 独立发布窗口 / 独立故障域）——没满足就不要提议拆分。
 
 ---
 
 ## 5. 已知缺口：动到相关代码前必须处理
 
-1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/messaging-and-tunnel.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户的密码是平台不保存也不分发的随机值、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
+1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/DDD.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户的密码是平台不保存也不分发的随机值、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
 2. **Turms 被配置成不校验好友关系**：`allowSendMessagesToStranger = true` 是这套设计成立的前提，不是可选项——好友从不投影进 Turms，设成 false 会拒掉所有私聊。好友校验只在写入网关。
-3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `docs/goal-and-requirements.md` §13 重写判据。
+3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `goal-and-requirements.md` 的 V2 计划重写判据。
 4. **若干数字没有依据**：P95 300ms 沿用上一版且未经实测，两级限流桶的具体速率尚未确定。凭空引入一个阈值比留白更糟。
-5. ~~**代发路径需端到端跑通**~~：**S0 已实测**（`infra/turms/smoke` 10 条硬断言）——Admin 带 `senderId` 代发能落库、能推到在线端，被移出群的账号代发回 `403` / `5009`。结论已回写 `docs/messaging-and-tunnel.md`，余下的只对 S4 有约束的面已写在那份 spec 的「已知缺口」里。
+5. ~~**代发路径需端到端跑通**~~：**S0 已实测**（`infra/turms/smoke` 10 条硬断言）——Admin 带 `senderId` 代发能落库、能推到在线端，被移出群的账号代发回 `403` / `5009`。结论已回写 `docs/DDD.md`，余下的只对 S4 有约束的面已写在那份文档的「已知缺口」里。
 6. **公开群的 Turms 只读能力未实测**：因此公开群与邀请链接被推迟，不要在 Turms 实测前把它们当可用能力去实现。
 7. **Turms 里可能有残留的游离 group**：客户端已经建不了新群（JWT 不授 `GROUP` 的 CREATE），但历史上可能有。平台不认它们（无授权、不进列表、不投递），Turms 的群列表也因此不等于 PG 的 `room_info` 表。任何代码不得把 Turms 的群列表当业务列表。
-8. **客户端没有 spec**（用户已确认暂不写）：导航、会话列表、切账号入口、成员资料页都未描述；界面级规则（非好友只见资料页、私聊入口只在好友列表）目前唯一出处是 `docs/friends.md`。实现客户端前先回读它，不要自己发明入口。
+8. **客户端 spec 只写到边界**（`frontend/SPEC.md`）：导航、会话列表、切账号入口、成员资料页仍未描述；界面级规则（非好友只见资料页、私聊入口只在好友列表）的详细出处是 `docs/DDD.md`「好友关系」与「账号与归属」。实现客户端前先回读它们，不要自己发明入口。
 
 ---
 
 ## 6. 范围纪律：按切片推进
 
-产品按 V1 / V2 两片推进，**每一片结束时都是可验证状态**，不按「做完一半」推进（`docs/goal-and-requirements.md` §5、§6）。
+产品按 V1 / V2 两片推进，**每一片结束时都是可验证状态**，不按「做完一半」推进（`docs/PRD.md` §5、§6）。
 
-- 接到实现请求，先回答两个问题：它属于哪一片？该片的验收判据是什么？施工顺序与片末判据在 `docs/v1-construction-plan.md`：V1 是它 S1–S5 的并集，不是一次做完。
+- 接到实现请求，先回答两个问题：它属于哪一片？该片的验收判据是什么？施工顺序与片末判据在 `.thinkrail/context/TASK-v1-construction.md`（临时任务文档，不进 git）：V1 是它 S1–S5 的并集，不是一次做完。
 - **V1 不包含**：内容层（发帖、评论、点赞、图片）、朋友圈、拉黑、举报与封禁、消息搜索、多端同步、无响应提示、公开群与邀请链接、图片上传、音视频、agent 目录与搜索、应用商店上架。V1 里遇到这些需求 = 范围越界，报告给用户，不要「先做个简单的版本」。
 - **Non-Goals 一律不动**：语音与视频通话、平台托管 agent 的记忆与上下文、账号转让与共同归属、agent 市场 / 付费订阅 / 平台代收模型费、应用商店上架（第一版只发 Flutter Web 构建）、推荐与打分排序。这些不是延期项，是产品选择。
-- **V2 是计划，不是待办**：内容层、拉黑举报、无响应提示、公开群都在 `docs/goal-and-requirements.md` §13，没人要求做之前不启动、不预留接口、不在别处引用它作为依据。
+- **V2 是计划，不是待办**：内容层、拉黑举报、无响应提示、公开群都在 `goal-and-requirements.md` 的 V2 计划，没人要求做之前不启动、不预留接口、不在别处引用它作为依据。
 - 只做了「能跑」的一半功能而没满足该片验收判据，比没做更糟——它会让人误判命题成立。
 
 ---
@@ -162,13 +163,13 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 
 ## 8. 实现约定（代码形状）
 
-这一节不是设计（设计在 `docs/`），是 S1 落地时定下的代码形状。它决定下一个改这块代码的人怎么找文件，改之前先跟用户确认。
+这一节不是设计（设计在 spec 与 `docs/`），是 S1 落地时定下的代码形状。它决定下一个改这块代码的人怎么找文件，改之前先跟用户确认。
 
 | 约定 | 内容 | 为什么 |
 | --- | --- | --- |
 | 分包 | 层 + 模块二级包：`controller/account`、`service/account` + `impl`、`mapper/account`、`dto/account`，好友与待加限流同构（`friendship`）；不按接口拆包的组件放 `service/limiter`；`entity`、`client/turms`、`config`、`common`、`auth` 平铺 | 经典 Spring 分层，看类名就知道去哪找 |
 | service | 接口 + `impl` 两个文件 | 与团队习惯一致 |
-| 持久层 | MyBatis-Plus：`@TableName` 实体 + `extends BaseMapper`，条件用 Wrapper；不写裸 `JdbcClient`，不上 JPA | `docs/dependencies.md` |
+| 持久层 | MyBatis-Plus：`@TableName` 实体 + `extends BaseMapper`，条件用 Wrapper；不写裸 `JdbcClient`，不上 JPA | `backend/moonchat-biz/SPEC.md`「依赖」 |
 | 实体 | `@Data @Builder @NoArgsConstructor @AllArgsConstructor`；`account_info.credential_hash` 标 `@ToString.Exclude` | builder 给业务代码用，无参构造给 MyBatis 回填；哈希不能进日志 |
 | 响应 | 只走 `dto/*` 里的白名单 record，实体绝不出现在响应里 | 否则 `email`、`credential_hash` 会漏出去 |
 | 日志 | SLF4J 门面（`@Slf4j`）+ Logback，配置在 `logback-spring.xml`，根级别 `info` | 调到 `debug` 会让 MyBatis 把 SQL 参数（含哈希）打成明文 |
@@ -194,7 +195,7 @@ spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此�
 - [ ] 改动是否触犯 §3 的任何一条硬边界（尤其：有没有给群或好友建表）？
 - [ ] 是否把 §4 的某条「已定的简化」顺手升级了？
 - [ ] 是否落进了 §6 里 V1 不包含的范围，或撞上 Non-Goals？
-- [ ] 改了行为有没有同步改 spec？改了 spec 有没有同步改 `docs/README.md` 台账？
+- [ ] 改了行为有没有同步改 spec？改了 spec 有没有同步改 `docs/README.md` 的索引？
 - [ ] frontmatter 完整、`id` 未改、`parent` / `depends-on` 指向存在的 id？
 - [ ] 新引入的数字有没有依据或「（未确认）」标记？
 - [ ] 有没有新建临时 markdown，或在根目录多出不承担构建/仓库配置职责的 markdown 文件？

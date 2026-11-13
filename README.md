@@ -4,7 +4,7 @@
 
 agent 不是插件、不是命令，而是通讯录里一个真的账号：它用自己账号的凭据连同一个 `/im` 入口、走同一个 `/api` 写入，收到它账号的全部会话，自己决定何时回话。
 
-> **当前状态：V1 施工中。** S0–S4 已完成并合入 `main`（七张表的迁移、20 条接口、群投影与重放器、两级限流桶）；下一步是 S5 客户端与 V1 验收。设计与进度以 `docs/` 为准，本文件只讲怎么上手。
+> **当前状态：V1 施工中。** S0–S4 已完成并合入 `main`（七张表的迁移、20 条接口、群投影与重放器、两级限流桶）；下一步是 S5 客户端与 V1 验收。设计与进度以根目录两份 spec（`goal-and-requirements.md`、`architecture.md`）、模块旁的 `SPEC.md` 与 `docs/` 四份文档为准，本文件只讲怎么上手。
 
 ## 技术栈
 
@@ -20,14 +20,17 @@ agent 不是插件、不是命令，而是通讯录里一个真的账号：它�
 
 ```
 .
-├── README.md            # 本文件：上手与协作
-├── AGENTS.md            # 给 AI agent 的硬边界与纪律（动代码前必读）
-├── moonchat-biz/        # 唯一的业务进程
-├── frontend/            # 客户端（Flutter 工程 + 网页预览）
-├── infra/               # 本地与部署的基础设施配置（Turms 覆盖、冒烟脚本）
-├── vendor/turms/        # Turms 上游子模块，固定在具体提交
-├── deliverables/        # 对外交付稿（不是 spec，不作为设计依据）
-└── docs/                # 12 份 spec（从 docs/README.md 的台账进）与 openapi.json
+├── README.md                    # 本文件：上手与协作
+├── AGENTS.md                    # 给 AI agent 的硬边界与纪律（动代码前必读）
+├── goal-and-requirements.md     # spec：产品决策（范围判据、已定简化、Non-Goals、V2）
+├── architecture.md              # spec：分层、拓扑、四条边界、跨模块不变量
+├── backend/                     # Maven 聚合工程（pom.xml、mvnw、.mvn/ 都在这层）
+│   └── moonchat-biz/            # 唯一的业务进程（SPEC.md 在其根）
+├── frontend/                    # 客户端（SPEC.md + Flutter 工程 + 网页预览）
+├── infra/                       # 基础设施与冒烟脚本（SPEC.md 在部署与运行时的决定）
+├── vendor/turms/                # Turms 上游子模块，固定在具体提交
+└── docs/                        # 四份施工文档：PRD、DDD、表结构、接口契约 + openapi.json
+    └── frontend/                # 客户端视觉与页面的交接稿（不是 spec）
 ```
 
 ## 快速开始
@@ -39,7 +42,7 @@ agent 不是插件、不是命令，而是通讯录里一个真的账号：它�
 git submodule update --init --recursive
 
 # 2. 构建与测试（接口测试用 Testcontainers 起真 PG / Redis，需要 Docker 在跑）
-.\mvnw.cmd test
+.\backend\mvnw.cmd -f backend\pom.xml test
 
 # 3. 起 Turms 开发环境
 $env:ENV = 'dev'
@@ -56,10 +59,10 @@ $env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
 $env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"  # 与 turms-gateway 共用同一份
 $env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'                   # 登录 JWT 自签自验
 $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
-.\mvnw.cmd -pl moonchat-biz spring-boot:run
+.\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz spring-boot:run
 ```
 
-密钥文件在本地生成、不进仓库（`infra/turms/secrets/` 只跟踪它自己的 `.gitignore`）。密钥生成、Turms 冒烟与身份链路两条端到端脚本的跑法见 `docs/deployment.md` 与 `infra/turms/smoke/`。
+密钥文件在本地生成、不进仓库（`infra/turms/secrets/` 只跟踪它自己的 `.gitignore`）。密钥生成、Turms 冒烟与身份链路两条端到端脚本的跑法见 `infra/SPEC.md` 与 `infra/turms/smoke/`。
 
 ## 接口文档
 
@@ -67,14 +70,14 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 改了控制器或 DTO 之后重新生成并一起提交（文件不存在时也会自动生成）：
 
 ```powershell
-.\mvnw.cmd -pl moonchat-biz -Dtest=OpenApiDocTest -Dmoonchat.openapi.write=true test
+.\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz -Dtest=OpenApiDocTest -Dmoonchat.openapi.write=true test
 ```
 
-`.\mvnw.cmd test` 会顺带校验这份文件与代码一致，忘了重新生成会让构建失败。
+`.\backend\mvnw.cmd -f backend\pom.xml test` 会顺带校验这份文件与代码一致，忘了重新生成会让构建失败。
 
 ## 协作
 
-**分支与合并**：`main` 受保护，只收 PR，不能直接推。每件事开短分支，合完就删。
+**分支与合并**：`main` 约定只收 PR、不直接推（免费版私有仓库开不了强制保护，靠约定 + CI 守住）。每件事开短分支，合完就删。
 
 | 用途 | 分支名 |
 | --- | --- |
@@ -84,8 +87,8 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 
 **PR 要求**：
 
-1. CI（`.github/workflows/ci.yml`）跑 `mvnw test` 必须绿。
-2. 改了行为必须同时改对应 spec；改了 spec 必须同时更新 `docs/README.md` 台账。
+1. CI（`.github/workflows/ci.yml`）在 `backend/` 里跑 `./mvnw -B test`，必须绿。
+2. 改了行为必须同时改对应 spec（根目录两份或模块旁的 `SPEC.md`）；改了 spec 必须同时更新 `docs/README.md` 的索引。
 3. 不夹带无关改动：一次 PR 一件事。
 
 **提交信息**：中文陈述句，说清做了什么决定；不加 `feat:` 前缀、不加 emoji、不加工具署名。例：`按社交骨架重写 8 份 spec：好友归 Turms、私聊进 V1、内容层撤出`。
@@ -96,10 +99,13 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 
 | 入口 | 用途 |
 | --- | --- |
-| [`docs/README.md`](docs/README.md) | **文档台账**：每份 spec 的 id、依赖、覆盖的问题、按角色的阅读路径 |
-| [`docs/goal-and-requirements.md`](docs/goal-and-requirements.md) | PRD：定位、能力清单、V1 范围与验收、Non-Goals |
-| [`docs/architecture.md`](docs/architecture.md) | 分层、数据归属、一条消息的旅程、跨模块不变量 |
-| [`docs/v1-construction-plan.md`](docs/v1-construction-plan.md) | S0–S5 的交付边界与片末判据 |
+| [`goal-and-requirements.md`](goal-and-requirements.md) | **产品决策**：定位、范围判据、已定简化、Non-Goals、V2 |
+| [`architecture.md`](architecture.md) | 分层、数据归属、一条消息的旅程、跨模块不变量 |
+| [`backend/moonchat-biz/SPEC.md`](backend/moonchat-biz/SPEC.md) | 业务进程的职责、边界、写入网关、数据与依赖 |
+| [`frontend/SPEC.md`](frontend/SPEC.md) | 客户端的职责与界面边界 |
+| [`infra/SPEC.md`](infra/SPEC.md) | 部署单元、单进程的理由、扩容触发条件 |
+| [`docs/README.md`](docs/README.md) | **文档索引**：PRD / DDD / 表结构 / 接口契约四份施工文档 |
+| [`docs/PRD.md`](docs/PRD.md) | 需求明细：场景、能力清单、V1 范围、验收、非功能要求 |
 | [`AGENTS.md`](AGENTS.md) | 给 AI agent / 新人的协作规则与交付前自检 |
 
-第一次读：`docs/goal-and-requirements.md` → `docs/architecture.md` → 你关心的那个模块。
+第一次读：`goal-and-requirements.md` → `architecture.md` → `docs/DDD.md` → 你关心的那份文档。

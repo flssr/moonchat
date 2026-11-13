@@ -12,6 +12,9 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v5
       # vendor/turms 是固定提交的子模块，测试不依赖它，不拉取
