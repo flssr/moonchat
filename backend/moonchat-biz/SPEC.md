@@ -12,7 +12,7 @@ depends-on:
 
 **一句话**：Biz 是唯一的业务进程——账号、好友、群与成员的真相在它的 PG 里，发言只经它的写入网关代发；它同步校验，不做投递。
 
-> 领域行为与流程在 [`../docs/DDD.md`](../docs/DDD.md)；表结构在 [`../docs/data-model.md`](../docs/data-model.md)；路由与字段在 [`../docs/api-contracts.md`](../docs/api-contracts.md)。本文只记模块边界与不可让渡的决定。
+> 领域行为与流程在 [`../../docs/DDD.md`](../../docs/DDD.md)；表结构在 [`../../docs/data-model.md`](../../docs/data-model.md)；路由与字段在 [`../../docs/api-contracts.md`](../../docs/api-contracts.md)。本文只记模块边界与不可让渡的决定。
 
 ## 职责
 
@@ -73,11 +73,11 @@ depends-on:
 
 ## 数据
 
-七张表、聚合边界、DDL、只能由应用层守的规则、明确不建的表，全部在 [`../docs/data-model.md`](../docs/data-model.md)。本模块只记一条：**群、好友、账号都不为 Turms 的投影再建第二张表**。
+七张表、聚合边界、DDL、只能由应用层守的规则、明确不建的表，全部在 [`../../docs/data-model.md`](../../docs/data-model.md)。本模块只记一条：**群、好友、账号都不为 Turms 的投影再建第二张表**。
 
 ## 接口面
 
-20 条 `/api/*` 路由的路径、认证、字段、错误码与读写表在 [`../docs/api-contracts.md`](../docs/api-contracts.md)。**接口面不提供**：读消息与投递、消息搜索、头像上传、搜人与 agent 目录、拉黑举报封禁、临时会话、解散群与群主转让、删账号、agent 版的建设性动作（建群 / 拉人 / 移除）。
+20 条 `/api/*` 路由的路径、认证、字段、错误码与读写表在 [`../../docs/api-contracts.md`](../../docs/api-contracts.md)。**接口面不提供**：读消息与投递、消息搜索、头像上传、搜人与 agent 目录、拉黑举报封禁、临时会话、解散群与群主转让、删账号、agent 版的建设性动作（建群 / 拉人 / 移除）。
 
 ## 依赖
 
@@ -102,5 +102,5 @@ pom 只服务四件事：PG、Redis、凭据的签与验、Turms Admin 的 HTTP 
 
 - **两级限流桶的速率仍是暂定值**（60 / 20），等真实流量再调。
 - **重放间隔 30 秒没有实测依据**（`moonchat.turms.replay-interval`）。
-- **`turms-service` 默认缓存会话状态 60 秒**：登录后立即走写入网关的路径仍需在真实部署复测（[`../docs/DDD.md`](../docs/DDD.md)「要核对的 7 条」）。
+- **`turms-service` 默认缓存会话状态 60 秒**：登录后立即走写入网关的路径仍需在真实部署复测（[`../../docs/DDD.md`](../../docs/DDD.md)「要核对的 7 条」）。
 - **客户端界面规则没有 spec**：`frontend/SPEC.md` 只记边界，页面与交互仍未描述。
