@@ -2,8 +2,8 @@
   const root = document.documentElement;
   const btn = document.getElementById('themeBtn');
   const store = {
-    get() { try { return localStorage.getItem('moonchat-theme'); } catch { return null; } },
-    set(v) { try { localStorage.setItem('moonchat-theme', v); } catch { /* file:// or private mode */ } },
+    get() { try { return localStorage.getItem('mondchat-theme'); } catch { return null; } },
+    set(v) { try { localStorage.setItem('mondchat-theme', v); } catch { /* file:// or private mode */ } },
   };
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
