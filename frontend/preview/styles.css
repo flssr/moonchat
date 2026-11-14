@@ -14,6 +14,7 @@
   --ease-in: cubic-bezier(.42, 0, 1, 1);
   --fly-x: 178px;
   --fly-y: -173px;
+  --fly-rotate: 46deg;
 }
 
 [data-theme="light"] {
@@ -497,14 +498,19 @@ h3 { font-size: 16px; font-weight: 600; letter-spacing: -.01em; }
 .screen[data-phase="launching"] .stage__ground { opacity: 0; transition: opacity 300ms var(--ease); }
 .screen[data-phase="arrived"] .rocket { opacity: 0; }
 @keyframes fly-away {
-  0% { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+  0% { transform: translateX(-50%) translateY(0) rotate(0) scale(1); opacity: 1; }
+  55% {
+    /* 中段外鼓一点，避免死板的直线；机身已开始朝月亮转。 */
+    transform: translateX(calc(-50% + var(--fly-x) * .62 + 12px)) translateY(calc(var(--fly-y) * .62 + 10px)) rotate(12deg) scale(.55);
+    opacity: .85;
+  }
   100% {
-    transform: translateX(calc(-50% + var(--fly-x))) translateY(var(--fly-y)) scale(.08);
+    transform: translateX(calc(-50% + var(--fly-x))) translateY(var(--fly-y)) rotate(var(--fly-rotate)) scale(.08);
     opacity: 0;
   }
 }
 @media (max-width: 900px) {
-  :root { --fly-x: 90px; --fly-y: -96px; }
+  :root { --fly-x: 90px; --fly-y: -96px; --fly-rotate: 43deg; }
 }
 
 .arrived {

@@ -35,6 +35,13 @@ class LoginStage extends StatelessWidget {
             final double moonR = (min(w, h) * 0.175).clamp(46.0, 92.0).toDouble();
             final Offset moonCenter = Offset(w - moonR - 34, 26 + moonR * 0.72);
             final Offset rocketCenter = Offset(w / 2, h - 96 - rocketHeight / 2);
+            // 飞行方向、法线与倾角：机身朝月球转过去，路径带一点外弧，不做直线平移。
+            final Offset delta = moonCenter - rocketCenter;
+            final double distance = delta.distance;
+            final Offset direction = distance == 0 ? const Offset(0, -1) : delta / distance;
+            final Offset normal = Offset(-direction.dy, direction.dx);
+            // 图标鼻尖朝上：把 (0,-1) 转到 direction 的角度就是机身倾角。
+            final double tilt = atan2(direction.dx, -direction.dy);
             return AnimatedBuilder(
               animation: arrival,
               builder: (BuildContext context, Widget? _) {
@@ -45,7 +52,11 @@ class LoginStage extends StatelessWidget {
                 // easeIn 让前半段仍看得清，后半段才明显加速，读起来是“越来越远”。
                 final double flight =
                     Curves.easeIn.transform(((t - 0.22) / 0.78).clamp(0.0, 1.0));
-                final Offset flightOffset = (moonCenter - rocketCenter) * flight;
+                // sin(πt) 的弧：两端为零、中段外鼓，避免走成死板的直线。
+                final double arc = sin(pi * flight) * distance * 0.06;
+                final Offset flightOffset = delta * flight + normal * arc;
+                // 倾角提前到位（easeOut），飞的时候机身已经对着月亮。
+                final double rotation = tilt * Curves.easeOut.transform(flight);
                 return Stack(
                   children: <Widget>[
                     Positioned.fill(child: CustomPaint(painter: _SkyPainter(p))),
@@ -59,33 +70,36 @@ class LoginStage extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 96),
                           child: Transform.translate(
                             offset: flightOffset,
-                            child: Transform.scale(
-                              scale: 1 - 0.92 * flight,
-                              child: Opacity(
-                                opacity: 1 - 0.95 * flight * flight,
-                                child: SizedBox(
-                                  width: rocketWidth,
-                                  child: AspectRatio(
-                                    aspectRatio: 420 / 649,
-                                    child: Stack(
-                                      fit: StackFit.expand,
-                                      children: <Widget>[
-                                        Opacity(
-                                          opacity: 1 - door,
-                                          child: Image.asset('assets/rocket-open.png',
-                                              fit: BoxFit.contain),
-                                        ),
-                                        Opacity(
-                                          opacity: door * (1 - ignite),
-                                          child: Image.asset('assets/rocket-closed.png',
-                                              fit: BoxFit.contain),
-                                        ),
-                                        Opacity(
-                                          opacity: ignite,
-                                          child: Image.asset('assets/rocket-launch.png',
-                                              fit: BoxFit.contain),
-                                        ),
-                                      ],
+                            child: Transform.rotate(
+                              angle: rotation,
+                              child: Transform.scale(
+                                scale: 1 - 0.92 * flight,
+                                child: Opacity(
+                                  opacity: 1 - 0.95 * flight * flight,
+                                  child: SizedBox(
+                                    width: rocketWidth,
+                                    child: AspectRatio(
+                                      aspectRatio: 420 / 649,
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: <Widget>[
+                                          Opacity(
+                                            opacity: 1 - door,
+                                            child: Image.asset('assets/rocket-open.png',
+                                                fit: BoxFit.contain),
+                                          ),
+                                          Opacity(
+                                            opacity: door * (1 - ignite),
+                                            child: Image.asset('assets/rocket-closed.png',
+                                                fit: BoxFit.contain),
+                                          ),
+                                          Opacity(
+                                            opacity: ignite,
+                                            child: Image.asset('assets/rocket-launch.png',
+                                                fit: BoxFit.contain),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
