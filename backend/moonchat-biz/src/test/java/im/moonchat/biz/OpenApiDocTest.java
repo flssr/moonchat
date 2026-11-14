@@ -30,6 +30,6 @@ class OpenApiDocTest extends ApiTestSupport {
                 }
             }
         }
-        assertThat(operations).isEqualTo(23);
+        assertThat(operations).isEqualTo(24);
     }
 }

@@ -14,6 +14,6 @@
 
 ## 个人资料
 
-资料编辑器当前提供昵称、性别、生日和自动计算的星座。昵称通过 `PATCH /api/accounts/me` 保存；后端当前只接受名字，因此性别与生日保存会失败，直到后端补齐接口与存储。
+资料编辑器提供昵称、性别、生日和自动计算的星座。回填用 `GET /api/accounts/me`，保存用 `PUT /api/accounts/me` 全量提交三个字段；`birthday` 传 `null` 表示清空，`gender` 只能取 `male` / `female` / `other` / `private`。
 
 界面语言即时切换，所有主要页面文案通过 `lib/i18n/moon_strings.dart` 查表。用户生成内容与账号 id 不翻译。

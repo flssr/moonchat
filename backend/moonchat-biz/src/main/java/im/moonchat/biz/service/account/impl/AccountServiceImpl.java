@@ -1,6 +1,7 @@
 package im.moonchat.biz.service.account.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import im.moonchat.biz.auth.CurrentAccount;
 import im.moonchat.biz.client.turms.TurmsAdminClient;
 import im.moonchat.biz.common.ApiException;
@@ -18,7 +19,9 @@ import im.moonchat.biz.service.account.CredentialHasher;
 import im.moonchat.biz.service.auth.LoginTokenService;
 import im.moonchat.biz.service.friendship.FriendshipService;
 import im.moonchat.biz.service.turms.TurmsCredentialService;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -66,7 +69,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     /**
-     * agent 账号与真人账号同构，只多一个不可转移的归属者（docs/truth/architecture.md）；
+     * agent 账号与真人账号同构，只多一个不可转移的归属者（docs/truth/backend/identity.md）；
      * 明文密钥只在这个响应里出现一次，库里只有它的确定性哈希。
      */
     @Override
@@ -130,33 +133,65 @@ public class AccountServiceImpl implements AccountService {
     }
 
     /**
-     * 名字只是展示，不参与任何判定；但 Turms 那边也存了一份，所以要同步。
-     * 同步失败就整笔回滚（名字与状态都不变），不留永远 `pending` 的账号。
+     * 资料全量提交（`PUT`）：三列一次写，名字变了才同步 Turms——名字只是展示，不参与任何判定，
+     * 但 Turms 那边也存了一份，所以变了才同步；同步失败整笔回滚（名字与状态都不变）。
      */
     @Override
     @Transactional
-    public AccountResponses.RenameResponse rename(CurrentAccount me, AccountRequests.DisplayNameRequest request) {
+    public AccountResponses.AccountProfileResponse updateProfile(CurrentAccount me,
+            AccountRequests.UpdateProfileRequest request) {
         AccountInfo info = accountInfoMapper.selectById(me.accountId());
         if (FROZEN.equals(info.getStatus())) {
             throw ApiException.accountFrozen();
         }
+        LocalDate birthday = parseBirthday(request.birthday());
+        boolean nameChanged = !Objects.equals(request.displayName(), info.getDisplayName());
 
         OffsetDateTime now = OffsetDateTime.now();
-        accountInfoMapper.updateById(AccountInfo.builder()
-                .accountId(me.accountId())
-                .displayName(request.displayName())
-                .updatedAt(now)
-                .build());
+        // birthday 清空时必须显式写 null：updateById 会跳过 null 字段，清生日就失效了
+        accountInfoMapper.update(null, new LambdaUpdateWrapper<AccountInfo>()
+                .eq(AccountInfo::getAccountId, me.accountId())
+                .set(AccountInfo::getDisplayName, request.displayName())
+                .set(AccountInfo::getGender, request.gender())
+                .set(AccountInfo::getBirthday, birthday)
+                .set(AccountInfo::getUpdatedAt, now));
 
-        turmsAdmin.updateUserName(me.accountId(), request.displayName());
+        if (nameChanged) {
+            turmsAdmin.updateUserName(me.accountId(), request.displayName());
+            accountMapper.updateById(Account.builder()
+                    .id(me.accountId())
+                    .turmsSyncState(TurmsSyncState.SYNCED)
+                    .updatedAt(now)
+                    .build());
+        }
 
-        accountMapper.updateById(Account.builder()
-                .id(me.accountId())
-                .turmsSyncState(TurmsSyncState.SYNCED)
-                .updatedAt(now)
-                .build());
+        return new AccountResponses.AccountProfileResponse(me.accountId(), request.displayName(),
+                request.gender(), birthday, now.toInstant());
+    }
 
-        return new AccountResponses.RenameResponse(me.accountId(), request.displayName(), now.toInstant());
+    /** #24 只读自己那一行：不碰 `account` 表、不查好友关系。 */
+    @Override
+    public AccountResponses.AccountProfileResponse myProfile(CurrentAccount me) {
+        AccountInfo info = accountInfoMapper.selectById(me.accountId());
+        return new AccountResponses.AccountProfileResponse(info.getAccountId(), info.getDisplayName(),
+                info.getGender(), info.getBirthday(), info.getUpdatedAt().toInstant());
+    }
+
+    /** 正则只挡形状：日历上不存在的日期与未来日期都在这里挡，`field` 始终指回 `birthday`。 */
+    private static LocalDate parseBirthday(String birthday) {
+        if (birthday == null) {
+            return null;
+        }
+        LocalDate parsed;
+        try {
+            parsed = LocalDate.parse(birthday);
+        } catch (DateTimeParseException e) {
+            throw ApiException.validationFailed("birthday", "birthday 不是合法日期");
+        }
+        if (parsed.isAfter(LocalDate.now())) {
+            throw ApiException.validationFailed("birthday", "生日不能晚于今天");
+        }
+        return parsed;
     }
 
     /** 资料页只返回名字、账号 id、是否已是好友；`type`、`email`、归属与时间列一概不出门。 */

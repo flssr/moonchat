@@ -15,11 +15,11 @@
 
 ## 接口面
 
-当前共 23 条 `/api/*` 路由：
+当前共 24 条 `/api/*` 路由：
 
 | 功能 | 路由 |
 | --- | --- |
-| 身份与账号 | `POST /api/auth/register`、`/login`、`/refresh`、`/api/sessions`、`GET/PATCH /api/accounts/me`、`GET /api/accounts/mine`、`GET /api/accounts/{accountId}`、`POST /api/agent-accounts` |
+| 身份与账号 | `POST /api/auth/register`、`/login`、`/refresh`、`/api/sessions`、`GET/PUT /api/accounts/me`、`GET /api/accounts/mine`、`GET /api/accounts/{accountId}`、`POST /api/agent-accounts` |
 | 好友 | `GET/POST /api/friendships`、`POST/DELETE /api/friendships/{peerAccountId}` |
 | 群 | `POST/GET /api/rooms`、`GET /api/rooms/{roomId}`、`GET/POST /api/rooms/{roomId}/members`、`DELETE /api/rooms/{roomId}/members/me`、`DELETE /api/rooms/{roomId}/members/{accountId}` |
 | 黑名单 | `GET/POST /api/blocklist`、`DELETE /api/blocklist/{accountId}` |

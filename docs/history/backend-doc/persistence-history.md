@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 资料字段迁移
+
+2026-11-14 20:41 CST   [2026-11-14 12:41 UTC]
+
+决策：新增 `V5__biz_account_profile.sql`，只在 `account_info` 上加列：`gender text not null default 'private'` 带 `account_info_gender_chk`，`birthday date` 可空；不建新表、不加索引。
+
+原因：资料字段天然属于 `account_info`，单独建表会把一账号一行的事实拆成两张表。`gender` 用 DDL 默认值让老行自动回填、建号路径不用改；生日没有合理默认值，留 null 表示未设置。
+
 ### 黑名单表
 
 2026-11-14 15:02 CST   [2026-11-14 07:02 UTC]

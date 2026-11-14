@@ -60,6 +60,29 @@ public final class AccountRequests {
         }
     }
 
+    /**
+     * #6 改资料：路由是 `PUT`，按**全量提交**语义——三个字段全部必传，不是部分更新。
+     * `birthday` 用字符串 + 正则接，非法格式才会把 `field` 指回 `birthday`（直接 `LocalDate` 会走通用 400）；
+     * 日历上不存在的日期（`2026-02-31`）由 service 严格解析时报 400。
+     */
+    public record UpdateProfileRequest(
+            @NotBlank(message = "名字不能为空")
+            @Size(max = 20, message = "名字最长 20 字符")
+            String displayName,
+
+            @NotBlank(message = "gender 不能为空")
+            @Pattern(regexp = "male|female|other|private",
+                    message = "gender 只能是 male / female / other / private")
+            String gender,
+
+            @Pattern(regexp = "^\\d{4}-\\d{2}-\\d{2}$", message = "birthday 形如 YYYY-MM-DD")
+            String birthday) {
+
+        public UpdateProfileRequest {
+            displayName = displayName == null ? null : displayName.trim();
+        }
+    }
+
     private static String normalizeEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }

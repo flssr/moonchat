@@ -3,6 +3,7 @@ package im.moonchat.biz.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -29,6 +30,12 @@ public class AccountInfo {
     private String displayName;
 
     private String status;
+
+    /** 资料字段：`private` 同时表示「没选」与「选了保密」，这是有意的（docs/truth/backend/persistence.md）。 */
+    private String gender;
+
+    /** 未设置生日就是 null：日期没有合理的默认值。 */
+    private LocalDate birthday;
 
     private String email;
 
