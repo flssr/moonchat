@@ -6,8 +6,8 @@
 | --- | --- |
 | [`PRD.md`](PRD.md) | 为谁解决什么？核心场景、能力清单、第一版范围、验收步骤、技术栈与非功能要求 |
 | [`DDD.md`](DDD.md) | 领域怎么切？账号、好友、消息与隧道、agent 接入、OneBot 桥接的规则、流程与不变量 |
-| [`data-model.md`](data-model.md) | 表怎么建？聚合边界、七张表的 DDL、字段语义、只能由应用层守的规则、明确不建的表 |
-| [`api-contracts.md`](api-contracts.md) | 接口长什么样？20 条 `/api/*` 路由、认证、字段、错误码、每条接口读写哪张表 |
+| [`data-model.md`](data-model.md) | 表怎么建？聚合边界、八张表的 DDL、字段语义、只能由应用层守的规则、明确不建的表 |
+| [`api-contracts.md`](api-contracts.md) | 接口长什么样？23 条 `/api/*` 路由、认证、字段、错误码、每条接口读写哪张表 |
 | [`openapi.json`](openapi.json) | 上面那份契约的机器可读副本，由代码生成、给 Apifox 导入 |
 
 客户端设计文档（`DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`、`HANDOFF.md`）在 [`frontend/`](frontend/)，它们是给实现者看的稿子，不是 spec、不进台账。

@@ -1,4 +1,4 @@
-**一句话**：`moonchat-biz` 的 PostgreSQL 只有七张表——账号与统一认证信息、好友正反表、群信息与群成员正反表；消息与投递状态都不在这里。
+**一句话**：`moonchat-biz` 的 PostgreSQL 只有八张表——账号与统一认证信息、好友正反表、群信息与群成员正反表、黑名单；消息与投递状态都不在这里。
 
 > 表结构是施工参考：聚合边界、DDL、字段语义与约束。领域行为在 [`DDD.md`](DDD.md)；接口读写哪张表在 [`api-contracts.md`](api-contracts.md)；跨模块的数据归属只在 [`../architecture.md`](../architecture.md) 写一次。
 
@@ -38,6 +38,7 @@
 | `room_info` | 一个群（名称、群主） | 群数 | 建群、改名 |
 | `room_member` | 一个账号在一个群里 | `(room, account)` 唯一 | 建群、拉人、退群、移除 |
 | `account_room` | 同一群成员关系按账号 id 反向存放的查询镜像 | 与 `room_member` 1 : 1 | 随 `room_member` 同事务写入、删除 |
+| `blocklist` | 一个账号拉黑了另一个账号 | 有向、成对唯一 | 拉黑、取消拉黑 |
 
 行生命周期（V1 不删账号，也不解散群）：
 
@@ -45,13 +46,14 @@
 | --- | --- |
 | `friendship`、`friendship_reverse` | 拒绝申请、删好友 → 同事务写 `deleted_at`；超过保留期后由 Biz purge 物理删行 |
 | `room_member`、`account_room` | 退群、被移除 → 同事务写 `deleted_at`；超过保留期后由 Biz purge 物理删行 |
+| `blocklist` | 取消拉黑 → 直接物理删行，没有 tombstone、没有 purge 参与（拉黑没有状态机，也没有「曾经拉黑过」的语义） |
 | `account`、`account_info`、`room_info` | V1 不减行 |
 
 ## 3. 迁移与命名约定
 
-- 迁移用 **Flyway**：路径 `backend/moonchat-biz/src/main/resources/db/migration/`，按聚合切三个文件——`V1__biz_account.sql`（`account`、`account_info`）、`V2__biz_friendship.sql`（`friendship`、`friendship_reverse`）、`V3__biz_room.sql`（`room_info`、`room_member`、`account_room`）；七张表一次建齐，不产生无效的中间结构。`backend/moonchat-biz/pom.xml` 已有 `flyway-core`、`flyway-database-postgresql` 与 `org.postgresql:postgresql`（版本来源见 [`../backend/moonchat-biz/SPEC.md`](../backend/moonchat-biz/SPEC.md)）。
-- 持久层是 **MyBatis-Plus**：七张表的读写、聚合事务与唯一的群成员分页都走它，不引入 JPA，也不写裸 `JdbcClient`（[`../backend/moonchat-biz/SPEC.md`](../backend/moonchat-biz/SPEC.md)）。
-- 表名**单数 snake_case、不加前缀**（单库单域，七张表全部属于 biz）：`account`、`account_info`、`friendship`、`friendship_reverse`、`room_info`、`room_member`、`account_room`。
+- 迁移用 **Flyway**：路径 `backend/moonchat-biz/src/main/resources/db/migration/`，按聚合切四个文件——`V1__biz_account.sql`（`account`、`account_info`）、`V2__biz_friendship.sql`（`friendship`、`friendship_reverse`）、`V3__biz_room.sql`（`room_info`、`room_member`、`account_room`）、`V4__biz_blocklist.sql`（`blocklist`，V2 开工时追加）；前七张表一次建齐，不产生无效的中间结构，`V4` 只追加一张。`backend/moonchat-biz/pom.xml` 已有 `flyway-core`、`flyway-database-postgresql` 与 `org.postgresql:postgresql`（版本来源见 [`../backend/moonchat-biz/SPEC.md`](../backend/moonchat-biz/SPEC.md)）。
+- 持久层是 **MyBatis-Plus**：八张表的读写、聚合事务与唯一的群成员分页都走它，不引入 JPA，也不写裸 `JdbcClient`（[`../backend/moonchat-biz/SPEC.md`](../backend/moonchat-biz/SPEC.md)）。
+- 表名**单数 snake_case、不加前缀**（单库单域，八张表全部属于 biz）：`account`、`account_info`、`friendship`、`friendship_reverse`、`room_info`、`room_member`、`account_room`、`blocklist`。
 - 枚举用 **`text` + `check`**，不用 PG 原生 enum 类型：加一个取值是一条 check 迁移，不必改类型、不锁表。
 - 时间列一律 `timestamptz`（UTC）；`updated_at` 由应用写，**不建触发器**。
 - **所有外键都是逻辑外键**：DDL 不写 `references` / `on delete cascade`；写入时由应用层校验引用目标存在，删除父行时由同一事务处理不再需要的子行。
@@ -68,7 +70,7 @@
 
 ## 4. DDL
 
-下面七个小节每节只定义一张表，并按上面的聚合顺序落成三个迁移文件（`V1__biz_account.sql` → `V2__biz_friendship.sql` → `V3__biz_room.sql`）：`account` → `account_info` → `friendship` → `friendship_reverse` → `room_info` → `room_member` → `account_room`。
+下面八个小节每节只定义一张表，并按上面的聚合顺序落成四个迁移文件（`V1__biz_account.sql` → `V2__biz_friendship.sql` → `V3__biz_room.sql` → `V4__biz_blocklist.sql`）：`account` → `account_info` → `friendship` → `friendship_reverse` → `room_info` → `room_member` → `account_room` → `blocklist`。
 
 ### 4.1 account
 
@@ -317,6 +319,29 @@ create index account_room_deleted_at_idx
 - **不参与 Turms 投影**：`room_info.turms_sync_state` 的重算只读取 `room_member`。
 - **V1 单库不带来查询性能收益**：代价是每条成员关系写两行；收益是未来按群、按账号分片时两端都能直接路由。
 
+### 4.8 blocklist
+
+```sql
+create table blocklist (
+    owner_account_id   bigint      not null,
+    blocked_account_id bigint      not null,
+    created_at         timestamptz not null default now(),
+    constraint blocklist_pk       primary key (owner_account_id, blocked_account_id),
+    constraint blocklist_self_chk check (owner_account_id <> blocked_account_id)
+);
+```
+
+| 列 | 类型 | 是否可空 | 规则 |
+| --- | --- | --- | --- |
+| `owner_account_id` | `bigint` | 否 | 逻辑引用 `account.id`；拉黑方，也是主键前导列 |
+| `blocked_account_id` | `bigint` | 否 | 逻辑引用 `account.id`；被拉黑方 |
+| `created_at` | `timestamptz` | 否 | 拉黑时间，对外就是 `created_at` |
+
+- **有向关系，不是无向的一对**：`(A, B)` 与 `(B, A)` 是两行、两件独立的事。主键 `(owner_account_id, blocked_account_id)` 保证同一方向只有一行。
+- **不加反向索引**：写入网关与好友申请查的都是「接收方是否拉黑了发送方」，即 `owner = 接收方 AND blocked = 发送方`，主键前导列直接命中；「谁拉黑了我」这个方向产品不暴露，`blocked_account_id` 单独从不查询。
+- **不写 `deleted_at`**：取消拉黑就是物理删行（与 §2 的行生命周期一致），也没有 purge 参与。
+- **不参与 Turms 投影**：拦截只在 Biz 写入网关与好友申请入口（[`api-contracts.md`](api-contracts.md) §7），表里不需要同步状态列。
+
 ## 5. 只能由应用层守的规则
 
 数据库是最后兜底，不是全部规则。下面这些约束表达不了，落在 Biz 的领域层，实现时逐条对应到代码：
@@ -337,6 +362,7 @@ create index account_room_deleted_at_idx
 | 写入网关的 `senderId` 必须来自入口凭据，不允许代他人发言 | [`DDD.md`](DDD.md)、[`DDD.md`](DDD.md) | 这是认证结果向写入路径的传递，不是存储约束 |
 | 名字、邮箱与密码的长度规则 | 名字 ≤ 20（Turms 默认）、邮箱 ≤ 254（RFC 上限）、密码 8..72 且不能纯数字（72 是 bcrypt 硬上限） | 名字来自 Turms；邮箱与密码是我们自己定的（腾讯系卡在 16 位且不能纯数字，我们更宽松） |
 | 冻结账号停写入、停好友申请 | [`DDD.md`](DDD.md)、[`DDD.md`](DDD.md) | 读 `account_info.status` 的是写入网关与好友接口，不在写库路径上 |
+| 黑名单每人最多 100 人：达到上限后拒绝新增（`409 blocklist_full`），并发下最多超出 1 条可容忍 | [`api-contracts.md`](api-contracts.md) §7.2 | 是「每个 owner 的行数上限」，PG 单行 check 表达不了；为它加锁或建计数表不划算 |
 
 **一条硬底线**：上表任何一条都**不许**用「顺手加个表、加个缓存」来实现。授权事实一律现查 PG，因为「业务真相只在 PG」是整套设计的支点。
 
@@ -352,7 +378,7 @@ create index account_room_deleted_at_idx
 | 授权表、角色权限表、agent 用户映射表 | 身份只有一处真相：`account.id` 就是 Turms 用户 id，归属关系本身就是授权 | `account` |
 | Turms group / member 的本地副本 | 它们是可重建投影，再存一份就是第二个真相 | 投影源是 `room_info` / `room_member` |
 | 好友申请单独一张表 | 申请与成立只是同一行的两个状态 | `friendship.status` |
-| 拉黑、举报、备注、分组、亲密度 | 范围问题，不是表结构问题 | 不做 |
+| 举报、备注、分组、亲密度 | 范围问题，不是表结构问题 | 不做 |
 | 邮箱验证、找回密码、密钥轮换 | 已定的简化，对应能力不存在 | 不做 |
 | `version`、通用审计列 | 关系表与成员表只需要 `deleted_at` tombstone，不需要通用版本或审计 | 不需要 |
 
@@ -364,6 +390,7 @@ create index account_room_deleted_at_idx
 | `account_info` | [`DDD.md`](DDD.md)「账号与归属」 | 账号名字、状态与统一认证哈希；真人邮箱密码，agent 用确定性密钥哈希 |
 | `friendship`、`friendship_reverse` | [`DDD.md`](DDD.md)（`id`、规范序、`requested_by`）；反向表为本次表结构决策 | 好友主从镜像：`friendship` 是唯一真相，反向表按账号查询 |
 | `room_info`、`room_member`、`account_room` | [`DDD.md`](DDD.md)（群与成员投影、`turms_group_id` 回填）；反向表与软删为本次表结构决策 | 群信息与群成员主从镜像：`room_member` 是唯一真相，反向表按账号查询 |
+| `blocklist` | [`DDD.md`](DDD.md)（好友关系 →「黑名单」）、[`api-contracts.md`](api-contracts.md) §7 | 拉黑是业务真相，进 PG；拦截只在 Biz，不投影 Turms |
 
 ## 8. 待确认
 

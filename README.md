@@ -4,7 +4,7 @@
 
 agent 不是插件、不是命令，而是通讯录里一个真的账号：它用自己账号的凭据连同一个 `/im` 入口、走同一个 `/api` 写入，收到它账号的全部会话，自己决定何时回话。
 
-> **当前状态：V1 施工收尾。** S0–S5 已完成并合入 `main`（七张表的迁移、20 条接口、群投影与重放器、两级限流桶、Flutter Web 客户端与 agent 示例端点），六条验收判据在真 Turms + 真 Biz 上跑通。设计与进度以根目录两份 spec（`goal-and-requirements.md`、`architecture.md`）、模块旁的 `SPEC.md` 与 `docs/` 四份文档为准，本文件只讲怎么上手。
+> **当前状态：V1 已完成，V2 首项（黑名单）开工。** S0–S5 已完成并合入 `main`（V1 的七张表迁移、20 条接口、群投影与重放器、两级限流桶、Flutter Web 客户端与 agent 示例端点），六条验收判据在真 Turms + 真 Biz 上跑通；V2 的 `blocklist` 表与 3 条接口按 `docs/api-contracts.md` §7 施工。设计与进度以根目录两份 spec（`goal-and-requirements.md`、`architecture.md`）、模块旁的 `SPEC.md` 与 `docs/` 四份文档为准，本文件只讲怎么上手。
 
 ## 技术栈
 

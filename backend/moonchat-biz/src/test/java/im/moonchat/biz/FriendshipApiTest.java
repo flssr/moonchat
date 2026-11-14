@@ -193,6 +193,31 @@ class FriendshipApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 被对方拉黑后申请好友回blocked() throws Exception {
+        Caller a = newCaller();
+        Caller b = newCaller();
+        mockMvc.perform(post("/api/blocklist")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(b.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"account_id":%d}
+                                """.formatted(a.accountId())))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/friendships")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(a.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"peer_account_id":%d}
+                                """.formatted(b.accountId())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("blocked"));
+
+        // 反方向不拦：拉黑方主动申请仍然允许（拉黑不解除好友关系）
+        requestFriend(b, a.accountId());
+    }
+
+    @Test
     void 已是好友或已有待处理申请都是冲突() throws Exception {
         Caller a = newCaller();
         Caller b = newCaller();

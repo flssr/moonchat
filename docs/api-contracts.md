@@ -1,6 +1,6 @@
 # Biz 业务接口契约（REST）
 
-**一句话**：Biz 对外只有 20 条 `/api/*` 路由——身份、好友、群与成员、发言；消息的读与投递一条都不在这里。
+**一句话**：Biz 对外只有 23 条 `/api/*` 路由——身份、好友、群与成员、黑名单、发言；消息的读与投递一条都不在这里。
 
 > 接口契约是施工参考：路径、方法、认证、字段、错误码，以及每条接口读写哪张表。领域行为在 [`DDD.md`](DDD.md)；DDL 在 [`data-model.md`](data-model.md)；跨模块边界只在 [`../architecture.md`](../architecture.md) 写一次。`openapi.json` 由代码生成，是本文的机器可读副本。
 
@@ -10,12 +10,12 @@
 | --- | --- |
 | 路径、方法、认证、请求与响应字段、错误码、每条接口读写哪张表 | 业务规则从哪来（各 module spec）、表与列的 DDL（[`data-model.md`](data-model.md)） |
 | 「一个动作只有一条路由」这条纪律 | Turms 客户端 API（收消息、查历史，见 [`DDD.md`](DDD.md)） |
-| 接口面明确不提供什么 | 每个数字的依据（正文里逐个标了来源或「暂定」，汇总在 §10） |
+| 接口面明确不提供什么 | 每个数字的依据（正文里逐个标了来源或「暂定」，汇总在 §11） |
 
 三条纪律：
 
 - **本文不新增业务规则**，只把已定稿的 spec 落成可实施的路由与字段。与 module spec 冲突时以 module spec 为准，并当场改本文。
-- **接口里出现的每个字段都要能指回一列或一次投影**（§9 是这张对照表）；指不回去的字段，要么删掉，要么先在表结构或 module spec 里补上。
+- **接口里出现的每个字段都要能指回一列或一次投影**（§10 是这张对照表）；指不回去的字段，要么删掉，要么先在表结构或 module spec 里补上。
 - **读消息不在 Biz**：消息历史、会话列表、未读数、在线状态一律走客户端自己的 Turms 会话。Biz 不代理、不做可见性判断（[`DDD.md`](DDD.md) 的「读历史」）。
 
 ---
@@ -69,6 +69,7 @@ Authorization: Bearer <token>
 | `account_frozen` | 403 | 账号已冻结（V1 没有冻结入口，这个码只为 DDL 已有状态存在） |
 | `not_friend` | 403 | `dm` 会话的对端不是已成立的好友 |
 | `not_room_member` | 403 | 调用者不是该群的有效成员 |
+| `blocked` | 403 | 对方把你拉黑了：私聊发送与好友申请都拿这个码，客户端要能跟 `forbidden` 区分 |
 | `not_found` | 404 | 账号、群、好友关系、待处理申请不存在（含已写 `deleted_at` 的） |
 | `conflict` | 409 | 状态与请求冲突：已是好友、已在群里、申请已被处理、重复发起同类关系 |
 | `owner_cannot_leave` | 409 | 群主退群或移除自己（V1 没有转让，也没有解散群） |
@@ -83,7 +84,7 @@ Authorization: Bearer <token>
 | id | JSON number（`bigint`）。V1 的 identity 值域远小于 2^53，不做字符串包装 |
 | 时间 | ISO-8601 UTC，形如 `2026-01-01T10:00:00Z`；全部来自 `timestamptz` 列 |
 | 文本 | 服务端先 `trim` 再校验；空白视为缺失 |
-| 列表 | `{"items": [...]}`；唯一分页的接口（群成员）另外带 `page` / `size` / `total` |
+| 列表 | `{"items": [...]}`；分页的接口（群成员、黑名单）另外带 `page` / `size` / `total` |
 | 布尔 | `is_friend` 这类两态事实用布尔，不暴露 `status` 枚举给客户端拼 |
 
 ### 1.5 幂等与重试
@@ -96,7 +97,7 @@ Authorization: Bearer <token>
 
 ## 2. 接口总表
 
-20 条，一条动作只有一个入口。`来源` 列里 `owner` 指登录 JWT，`agent` 指账号密钥，`任意` 指两种都行。
+23 条，一条动作只有一个入口。`来源` 列里 `owner` 指登录 JWT，`agent` 指账号密钥，`任意` 指两种都行。
 
 | # | 方法与路径 | 用途 | 来源 | 读写的表 |
 | --- | --- | --- | --- | --- |
@@ -118,8 +119,11 @@ Authorization: Bearer <token>
 | 16 | `POST /api/rooms/{roomId}/members` | 拉人进群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 17 | `DELETE /api/rooms/{roomId}/members/me` | 退群 | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
 | 18 | `DELETE /api/rooms/{roomId}/members/{accountId}` | 移除成员（仅群主） | 仅 `owner` | 写 `room_member`、`account_room` + 投影标记 |
-| 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一写入口） | 任意 | 不写 PG；读 `room_member` / `friendship`；经 `im-facade` 写 Turms |
+| 19 | `POST /api/conversations/{type}/{id}/messages` | 发言（唯一写入口） | 任意 | 不写 PG；读 `room_member` / `friendship` / `blocklist`；经 `im-facade` 写 Turms |
 | 20 | `POST /api/auth/refresh` | 登录 JWT 滑动续期（无感续期的那一半） | 登录 JWT | 不写 PG |
+| 21 | `GET /api/blocklist` | 我的黑名单 | 任意 | 读 `blocklist`、`account_info` |
+| 22 | `POST /api/blocklist` | 拉黑一个账号 | 仅 `owner` | 写 `blocklist` |
+| 23 | `DELETE /api/blocklist/{accountId}` | 解除拉黑 | 仅 `owner` | 写 `blocklist` |
 
 ---
 
@@ -199,7 +203,7 @@ Authorization: Bearer <token>
 
 - **归属者形态顺带发一份登录 JWT**：`login_token` 的 `sub` 就是切进去的那个账号，所以它接下来调 `/api` 时来源是 `owner` 而不是 `agent`——这正是「归属者切进 agent 账号能建群、能发言，且不进 agent 限流桶」的实现方式（§6 与 [`DDD.md`](DDD.md)）。密钥形态**不发**登录 JWT：agent 端点不该有能力以 `owner` 来源写入。
 - 凭据是一个 JWT，payload 至少有 `sub`（= `account_id`）、`exp`、`statements` 与 `authenticated: true`；由 `im-facade` 用共享 HMAC 密钥签，**不落 PG**（[`DDD.md`](DDD.md)）。Turms 侧配 `identity-access-management.type = jwt`，按 `sub` 验证登录者就是 `user_id` 那一个人。
-- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §7 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 [`DDD.md`](DDD.md) 的「凭据与客户端权限」。
+- **`statements` 只授查询**：`{"effect":"ALLOW","actions":["QUERY"],"resources":["*"]}`。客户端因此能登录、收推送、查历史与资料，但发不出消息（`CREATE_MESSAGE_REQUEST` → `UNAUTHORIZED_REQUEST`）、也建不了 group。写入只能走 §8 的写入网关。payload 还必须带 `authenticated: true`——Turms 默认期望这个 claim，缺了会以 `2011` 拒绝登录（实测）。依据与前提（`type = jwt`、Turms 用户的密码是平台不保存的随机值）在 [`DDD.md`](DDD.md) 的「凭据与客户端权限」。
 - **有效期 12 小时**，客户端在过期前重调本接口（幂等读取，不创建任何会话状态）；过期后 Turms 会拒登录，重调即可。
 - `account_key` 形态只能换**密钥所属账号**的凭据，不存在「拿自己的密钥换别人账号」的路径；`account_id` 形态只能换**自己名下**的账号（归属关系本身就是授权）。
 - Turms 允许同一 user 多端在线，所以 agent 端点与归属者的客户端可以同时持同一账号的凭据。
@@ -394,7 +398,7 @@ Authorization: Bearer <token>
 
 ### 6.4 `GET /api/rooms/{roomId}/members?page=&size=`
 
-**这是唯一分页的接口**：群规模没有上限，其余列表（好友、待处理、我的群）V1 一次返回全量。
+**群成员与黑名单是两处分页的接口**：群规模没有上限、黑名单上限 100；其余列表（好友、待处理、我的群）V1 一次返回全量。
 
 | 查询参数 | 类型 | 默认 | 约束 |
 | --- | --- | --- | --- |
@@ -447,7 +451,63 @@ Authorization: Bearer <token>
 
 ---
 
-## 7. 发言：`POST /api/conversations/{type}/{id}/messages`
+## 7. 黑名单
+
+拉黑是**单向**的：只断「被拉黑方 → 拉黑方」这一个方向。被拉黑方不能私聊、不能发好友申请（`403 blocked`）；拉黑方主动私聊与申请**仍然允许**——拉黑不解除好友关系、也不改 `friendship`。群聊两个方向都不拦：群成员关系是另一条授权，不因一对一的个人关系被弄断。
+
+**只在 Biz 拦，不投影 Turms**：客户端对 Turms 只授 `QUERY`，所有发言都经 §8 的写入网关，网关一处拦下就覆盖了全部写路径；Turms 的 blocklist 还会改它自己的查询可见性，投上去等于把行为拆成两半，又没有重试与对账可以收敛。触发条件（出现一条不经网关的写路径）到了再谈投影。
+
+黑名单只给本人看，不出现在资料页（§4.4 不变）。拉黑与取消拉黑只有真人能做，`agent` 来源一律 `forbidden`（[`DDD.md`](DDD.md) 的「agent 只有一个关系动作」）。
+
+`blocklist` 是集合名、按单数写（一个账号只有一份自己的黑名单，与 `/api/accounts/mine` 同语义），不是笔误。
+
+### 7.1 `GET /api/blocklist?page=&size=`
+
+| 查询参数 | 类型 | 默认 | 约束 |
+| --- | --- | --- | --- |
+| `page` | number | `1` | ≥ 1 |
+| `size` | number | `50` | 1..100 |
+
+**响应** `200`
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `items[].account_id` | number | 被拉黑的账号 |
+| `items[].display_name` | string | 它的当前名字（现查 `account_info`） |
+| `items[].created_at` | string | 拉黑时间 |
+| `page` / `size` / `total` | number | `total` 为黑名单总条数 |
+
+按 `created_at` 倒序、再按 `blocked_account_id` 倒序：批量拉黑是同秒写入，只按时间排在 offset 翻页时会重复或漏行。空表回 `{"items": [], "page": 1, "size": 50, "total": 0}`，不是 404。
+
+**错误**：`unauthenticated` 401、`validation_failed` 400（`page` / `size` 非法）。
+
+### 7.2 `POST /api/blocklist`
+
+**请求**
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `account_id` | number | 是 | 要拉黑的账号；不能是自己 |
+
+**响应** `201`：回刚插入的那一项（`account_id`、`display_name`、`created_at`），客户端直接追加，不必再拉一次列表。
+
+**错误**：`validation_failed` 400（`account_id` 缺失、不是账号 id，或就是自己）、`forbidden` 403（`agent` 来源）、`account_frozen` 403（调用者冻结）、`not_found` 404（该账号不存在）、`conflict` 409（已经在黑名单里）、`blocklist_full` 409（黑名单已满 100 人）。
+
+**上限 100 人**：插入前 `selectCount(owner_account_id = 我) >= 100` → `409 blocklist_full`。用 409 而不是 400/403：请求格式没错、权限也够，是当前状态不允许；`code` 与「已经在黑名单里」的 `conflict` 分开，客户端要能按 code 分流出两种提示。并发边界：两个请求同时在 99→100 时可能多进 1 条，概率极低；不加锁、不加数据库约束（[`../AGENTS.md`](../AGENTS.md) §1 防过度防御），真出现按容忍 1 条处理。这条规则同时写在 [`data-model.md`](data-model.md) §5。
+
+**副作用**：只写 `blocklist` 一行，不动 `friendship`。并发的重复 `POST` 由主键兜底，落败方整笔回滚回 `conflict`（同 §1.5）。
+
+### 7.3 `DELETE /api/blocklist/{accountId}`
+
+**响应** `204`。
+
+**错误**：`forbidden` 403（`agent` 来源）、`account_frozen` 403、`not_found` 404（这个人不在你的黑名单里，含已经解除过的）。
+
+**副作用**：物理删那一行，不写 tombstone——拉黑没有状态机，也没有要保留的「曾经拉黑过」语义。取消后好友关系照旧。
+
+---
+
+## 8. 发言：`POST /api/conversations/{type}/{id}/messages`
 
 **唯一的写入口**（[`DDD.md`](DDD.md)、[`../architecture.md`](../architecture.md) 的「一条消息的旅程」）。客户端自己的 Turms 会话只授查询，**发不出消息**，所以用户从客户端发信就是直接调用这个接口。
 
@@ -477,12 +537,13 @@ Authorization: Bearer <token>
 | `validation_failed` 400 | `text` 空白或超长；`type` 不是 `room`/`dm`；`dm` 的 `id` 是调用者自己 |
 | `not_found` 404 | `dm` 的对端账号不存在；`room` 的 `room_id` 不存在 |
 | `not_friend` 403 | `dm` 且双方不是已成立好友（`friendship.status = 'accepted'` 且未 tombstone） |
+| `blocked` 403 | `dm` 且对端拉黑了调用者（现查 `blocklist`，在好友判断之前） |
 | `not_room_member` 403 | `room` 且调用者不是有效成员 |
 | `account_frozen` 403 | 调用者账号冻结 |
 | `rate_limited` 429 | `agent` 来源超账号级（60/分钟）或会话级（20/分钟）桶，两个数字暂定、可配置 |
 | `upstream_unavailable` 503 | `im-facade` 没从 Turms 拿到确认；或群还没有可用的 `turms_group_id` |
 
-**校验顺序**（与架构旅程一致，不许调换）：认证凭据 → 归属（凭据能不能代表这个账号）→ 会话解析（`type` / `id` 合法且目标存在）→ 授权事实（群成员 / 好友，现查 PG）→ 限流（只有 `agent` 来源进桶）→ 来源标记写日志 → 交出去。
+**校验顺序**（与架构旅程一致，不许调换）：认证凭据 → 归属（凭据能不能代表这个账号）→ 会话解析（`type` / `id` 合法且目标存在）→ 授权事实（群成员 / 好友 / 对端是否拉黑了我，现查 PG）→ 限流（只有 `agent` 来源进桶）→ 来源标记写日志 → 交出去。
 
 **副作用与不变量**
 
@@ -494,16 +555,16 @@ Authorization: Bearer <token>
 
 ---
 
-## 8. 明确不提供的接口
+## 9. 明确不提供的接口
 
 | 不提供 | 真相在哪 / 由谁做 | 依据 |
 | --- | --- | --- |
 | 消息历史、会话列表、未读数、在线状态 | 客户端用自己的 Turms 会话查 | [`DDD.md`](DDD.md) 的「读历史」 |
-| 客户端直接往 Turms 发消息 | 客户端 JWT 只授 `QUERY`，写入只能走 §7；Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST` | [`DDD.md`](DDD.md) 的「凭据与客户端权限」 |
+| 客户端直接往 Turms 发消息 | 客户端 JWT 只授 `QUERY`，写入只能走 §8；Turms 对 `CREATE_MESSAGE_REQUEST` 返回 `UNAUTHORIZED_REQUEST` | [`DDD.md`](DDD.md) 的「凭据与客户端权限」 |
 | 消息搜索 | 不做 | [`DDD.md`](DDD.md) 的「已定的简化」 |
 | 头像上传或头像接口 | 客户端按 `account.id` 确定性生成 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（已定的简化） |
 | 搜人 / agent 目录 | 加好友靠账号 id 与主页链接 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（已定的简化） |
-| 拉黑、举报、封禁、备注、分组 | V2 或不做 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（Non-Goals 与 V2 计划） |
+| 举报、封禁、备注、分组 | V2 或不做 | [`../goal-and-requirements.md`](../goal-and-requirements.md)（Non-Goals 与 V2 计划） |
 | 解散群、群主转让、批量拉人 | V1 没有这些动作 | [`DDD.md`](DDD.md) 的不变量 |
 | 临时会话（非好友私聊） | 入口本身不存在 | [`DDD.md`](DDD.md) 的「为什么不做临时会话」 |
 | 建群 / 拉人 / 移除成员的 agent 版本 | agent 只有一个关系动作：发好友申请 | [`DDD.md`](DDD.md) 的不变量 |
@@ -514,7 +575,7 @@ Authorization: Bearer <token>
 
 ---
 
-## 9. 表 ↔ 接口对照
+## 10. 表 ↔ 接口对照
 
 这张表就是「每列都要指回一句话」的落点：接口里能出现的数据，只能来自这里。
 
@@ -527,12 +588,13 @@ Authorization: Bearer <token>
 | `room_info` | #12、#16/#17/#18（只改 `turms_sync_state`） | #13、#14、#19 | `turms_sync_state`、`updated_at`；`turms_group_id` 只在 #13 以字符串出现（投递句柄，不是对外标识） |
 | `room_member` | #12、#16、#17、#18 | #14（计数）、#15、#19（授权） | `deleted_at`；不暴露角色（没有该列） |
 | `account_room` | #12、#16、#17、#18（同事务镜像） | #13 | 全部列；`joined_at` 通过 `room_member` 语义暴露 |
+| `blocklist` | #22、#23 | #21、#19（授权）、#9（好友申请授权） | 全部列都用得上（`owner_account_id` 就是对外的 `account_id`，从不以列名出现） |
 
 Red 线两条：**消息表不存在**（没有它可对照），**授权判断只读主表**（`friendship` / `room_member`），反向表只服务查询。
 
 ---
 
-## 10. 仍未定的事
+## 11. 仍未定的事
 
 已清掉的：Turms 凭据形态（JWT）、名字 20 / 正文 500（Turms 默认值）、客户端权限策略（`statements` 只授 `QUERY`）、邮箱 254 / 密码 8..72 且不能纯数字、登录 JWT 7 天 / Turms 12 小时、限流 60/20（暂定）、归属者切账号时附带登录 JWT、**消息 id 由网关生成**（Admin `POST /messages` 返回空 body，不回传 id）、`senderDeviceType` 由客户端声明（`X-Device-Type`）。剩下这些：
 

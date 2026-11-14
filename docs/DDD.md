@@ -131,12 +131,19 @@ PG 先写 tombstone（`deleted_at`）+ 同事务镜像到反向表，超过保�
 
 「非好友不能私聊」只在写入网关判 `friendship`，Turms 侧不校验好友（`allowSendMessagesToStranger = true`，Turms 默认值）——它只查黑名单。这看起来像缺口，但**客户端拿不到写入权限**：Turms 凭据是 Biz 签的 JWT，`statements` 只授 `QUERY`，`CREATE_MESSAGE_REQUEST` 会被 `UNAUTHORIZED_REQUEST` 拒（见「凭据与客户端权限」）。客户端「只从好友列表与资料页进私聊」仍是体验层规则，不承担授权。
 
+### 黑名单
+
+拉黑是**单向**的：只断「被拉黑方 → 拉黑方」这一个方向。被拉黑方不能私聊、不能发好友申请（`403 blocked`）；拉黑方主动私聊与申请仍然允许——拉黑不解除好友关系、也不改 `friendship`，取消拉黑后关系照旧。群聊两个方向都不拦：群成员关系是另一条授权，不因一对一的个人关系被弄断。
+
+真相在 PG 的 `blocklist`（[`data-model.md`](data-model.md) §4.8），拦截只有两处、都在 Biz：写入网关的私聊分支（在好友判断之前查「对端是否拉黑了我」）与好友申请入口。**不投影 Turms**：客户端对 Turms 只授 `QUERY`，所有发言都经写入网关，网关一处拦下就覆盖了全部写路径；Turms 的 blocklist 还会改它自己的查询可见性，投上去等于把行为拆成两半，又没有重试与对账可以收敛。触发条件是「出现一条不经网关的写路径」，到那时再谈投影。
+
 ### 不变量
 
 - **好友只在 PG**：Biz 是唯一真相；不投影进 Turms，不缓存成第二份。
 - **私聊授权 = 好友关系**：与群成员关系无关，与来源也无关；执行点在 Biz 的写入网关。
 - **来源不参与授权**：agent 发起的好友申请与本人点的一样处理，只是多一层账号级限流。agent 可以主动发好友申请；必须对方同意才成立。
 - **好友不改变群可见性**：群是成员可见（`room_member`），好友不构成任何跨群读取能力。
+- **黑名单只在 PG，且只拦一个方向**：被拉黑方 → 拉黑方断私聊与好友申请；反方向与群聊都不拦。拉黑不解除好友关系，也不进 Turms。
 
 ---
 
@@ -144,7 +151,7 @@ PG 先写 tombstone（`deleted_at`）+ 同事务镜像到反向表，超过保�
 
 **一句话**：Turms 是消息唯一的写入者与投递者；群与成员的真相在 PG，`im-facade` 是 Biz 把真相投影进 Turms 的唯一通道，并握着唯一一支代发消息的手。
 
-> 接口契约在 [`api-contracts.md`](api-contracts.md) §6、§7；本节只写隧道行为与不变量。
+> 接口契约在 [`api-contracts.md`](api-contracts.md) §6、§8；本节只写隧道行为与不变量。
 
 ### 职责
 
@@ -207,7 +214,7 @@ JWT 里的 `statements` claim 决定**这个客户端能发哪些请求类型**�
 拉人、移除成员、退群都是 Biz 的写：先改 PG（`room_member`），再经 `im-facade` 把新成员列表投影进 Turms。投影失败可重试，以 PG 为准重算。
 
 **说话（唯一的写入路径）**
-客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友）与限流 → 生成消息 id → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`id` / `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
+客户端 → `POST /api/conversations/{type}/{id}/messages` → Biz 的写入网关校验归属、会话、授权事实（群成员 / 好友 / 对端是否拉黑了我）与限流 → 生成消息 id → `im-facade.sendMessage` → Turms Admin API `POST /messages`（`id` / `senderId` / `senderDeviceType` / `senderIp` / `isGroupMessage` / `targetId`）→ Turms 用自己的投影再校验一次（群成员、黑名单）、落库、广播给双方的所有在线端。
 
 **读历史**
 客户端用自己的 Turms 会话查，**用最早一条的 `deliveryDate` 做游标**往回翻。Biz 完全不参与：既不做代理，也不做可见性判断——可见范围由 Turms 的会话与成员关系决定。群历史查询要的是 Turms 的 group id，不是对外的 `room_id`：客户端与 agent 都拿 `GET /api/rooms` 返回的 `turms_group_id` 建这一层映射，Turms 推送里的 `groupId` 也靠它换回 `room:<roomId>`；私聊没有这一层，推送里的 `senderId` 直接是对端 `account_id`。
@@ -354,7 +361,7 @@ flowchart LR
 - **平台不为 agent 保存任何投递设置**：没有 webhook 地址、没有档位、没有工作区、没有订阅声明。
 - **平台不筛会话**：agent 看到它账号的全部会话，这是有意的；筛选是 agent 自己的责任。
 - **凭据只存哈希**，明文只在创建时返回一次；Turms 凭据签发即用，不落 PG。
-- **agent 只有一个关系动作**：发好友申请（需对方同意）。建群、拉人、移除成员只有真人能做。
+- **agent 只有一个关系动作**：发好友申请（需对方同意）。建群、拉人、移除成员、拉黑与取消拉黑只有真人能做。
 
 ### 已定的简化
 
@@ -382,7 +389,7 @@ OneBot 11 约定的是「实现端 ↔ 应用端」之间的一对接口：实�
 | --- | --- | --- |
 | Biz 主动把消息推给 agent | Biz 不做投递、不订阅消息事件 | 把上一版删掉的 connector 请回来 |
 | 新增 `/onebot/*` 协议面 | 客户端只有一类，agent 与真人共用 `/api/*` | agent 多一套接口面，「发言只有一条服务端路径」要重新论证一遍 |
-| 把 OneBot 的动作集变成平台契约 | 20 条路由，一条动作一个入口 | 同一件事两个入口，而 OneBot 的动作集有一半平台根本不做 |
+| 把 OneBot 的动作集变成平台契约 | 23 条路由，一条动作一个入口 | 同一件事两个入口，而 OneBot 的动作集有一半平台根本不做 |
 
 所以桥接是**发布物可选、位置不可选**：它跑在 agent 那一侧，与 agent 端点同级，不并进 `moonchat-biz`、不进根 Maven 聚合、不在部署单元表里。
 
@@ -485,7 +492,7 @@ V1 只有纯文本、不做结构化 `@`、没有图片与语音。
 
 ### 不变量
 
-- **平台不开 OneBot 协议面**：`/api/*` 仍是 20 条，Biz 不知道 OneBot 存在。桥接是 agent 侧的发布物，不是部署单元。
+- **平台不开 OneBot 协议面**：`/api/*` 仍是 23 条，Biz 不知道 OneBot 存在。桥接是 agent 侧的发布物，不是部署单元。
 - **发言仍只有写入网关一条路**：`send_*` 被翻成写入网关，两级限流与来源标记（`agent`）在网关收口。**桥接自己不做限流**，否则同一件事有两个执行点。
 - **桥接不筛会话**：Turms 推什么它报什么——该账号的全部会话。挑哪条归自己管是应用端的事。
 - **桥接不落业务数据**：没有本地消息库、没有订阅配置、没有队列；重启只剩重连。
