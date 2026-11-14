@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * #19 发言：唯一的写入口。客户端的 Turms 会话只授查询，发不出消息，所以真人客户端与 agent 端点
- * 都打这里（docs/api-contracts.md §7）。
+ * 都打这里（docs/truth/backend/messaging.md）。
  */
 @RestController
 @RequestMapping("/api/conversations")

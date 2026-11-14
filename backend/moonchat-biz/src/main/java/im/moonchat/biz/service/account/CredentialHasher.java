@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * `account_info.credential_hash` 的两种算法，都带方案前缀，所以换算法不需要改表
- * （docs/data-model.md §4.2）。
+ * （docs/truth/backend/persistence.md）。
  *
  * <ul>
  *   <li>真人密码：bcrypt（cost 10 起），加盐慢哈希。

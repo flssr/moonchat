@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
-/** #12 #16 的请求体，校验规则见 docs/api-contracts.md §6。 */
+/** #12 #16 的请求体，校验规则见 docs/truth/backend/room.md。 */
 public final class RoomRequests {
 
     private RoomRequests() {

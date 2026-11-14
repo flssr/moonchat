@@ -24,13 +24,13 @@ mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true
 
-# /v3/api-docs：docs/openapi.json 从它落盘（见 OpenApiDocTest）。
+# /v3/api-docs：运行时从 controller 与 DTO 生成，仓库不保存副本。
 springdoc:
   # 控制器都没写 produces，默认给 */*；这里压成 json，Apifox 才会按 json 展示示例
   default-produces-media-type: application/json
   default-consumes-media-type: application/json
 
-# 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/DDD.md。
+# 自有配置：给 im-facade 与登录凭据用，命名与前缀对应 docs/truth/architecture.md。
 moonchat:
   turms:
     # Turms Admin REST（建用户 / 建群 / 代发）。本地编排固定 turms/turms。
@@ -41,7 +41,7 @@ moonchat:
     gateway-url: ${MOONCHAT_TURMS_GATEWAY_URL:ws://localhost:20510}
     # 与 turms-gateway 共享的 HMAC 密钥文件（Turms 只支持从文件读密钥）。
     jwt-secret-file: ${MOONCHAT_JWT_SECRET_FILE}
-    # 客户端 Turms 凭据时长，界面契约见 docs/api-contracts.md §3.3。
+    # 客户端 Turms 凭据时长，界面契约见 docs/truth/backend/identity.md。
     credential-ttl: 12h
     # 群投影重放器的扫描间隔（未确认：只为了「失败的群最多晚半分钟收敛」）。
     replay-interval: ${MOONCHAT_TURMS_REPLAY_INTERVAL:30s}
@@ -50,9 +50,9 @@ moonchat:
     jwt-secret: ${MOONCHAT_AUTH_JWT_SECRET}
     login-token-ttl: 7d
   agent:
-    # agent 账号密钥的 HMAC pepper（docs/data-model.md §4.2）：部署必须显式给出，不给默认值。
+    # agent 账号密钥的 HMAC pepper（docs/truth/backend/persistence.md）：部署必须显式给出，不给默认值。
     key-pepper: ${MOONCHAT_AGENT_KEY_PEPPER}
   limit:
-    # 只作用于 agent 来源的两级桶（好友申请、发言）；速率暂定，见 docs/DDD.md 的「限流与来源」。
+    # 只作用于 agent 来源的两级桶（好友申请、发言）；速率暂定，见 docs/truth/backend/messaging.md。
     account-per-minute: ${MOONCHAT_LIMIT_ACCOUNT_PER_MINUTE:60}
     conversation-per-minute: ${MOONCHAT_LIMIT_CONVERSATION_PER_MINUTE:20}

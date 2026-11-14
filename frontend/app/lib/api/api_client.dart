@@ -9,7 +9,7 @@ String _formatDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// 接口失败只有两类：契约里的 `code`，与根本没拿到响应（网络）。
-/// 界面一律按 `code` 分流，`message` 只给人看（`api-contracts.md` §1.3）。
+/// 界面一律按 `code` 分流，`message` 只给人看（`docs/truth/backend/README.md`）。
 class ApiException implements Exception {
   ApiException({
     required this.code,
@@ -29,7 +29,7 @@ class ApiException implements Exception {
   bool get isUnauthenticated => code == 'unauthenticated';
   bool get isNotFound => code == 'not_found';
 
-  /// 界面文案。不在界面上出现错误码原文（`DESIGN-SPEC.md` §10）。
+  /// 界面文案。不在界面上出现错误码原文（`docs/truth/frontend/design.md`）。
   String get displayText {
     switch (code) {
       case 'validation_failed':
@@ -67,7 +67,7 @@ class ApiException implements Exception {
   String toString() => 'ApiException($code/$statusCode): $message';
 }
 
-/// 20 条 `/api/*` 的唯一调用点。路径与字段名严格照 `docs/api-contracts.md`。
+/// 23 条 `/api/*` 的唯一调用点。路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),

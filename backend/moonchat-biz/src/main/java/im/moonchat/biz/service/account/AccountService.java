@@ -5,7 +5,7 @@ import im.moonchat.biz.dto.account.AccountRequests;
 import im.moonchat.biz.dto.account.AccountResponses;
 import java.util.Optional;
 
-/** 账号与归属的行为（docs/DDD.md）。 */
+/** 账号与归属的行为（docs/truth/architecture.md）。 */
 public interface AccountService {
 
     /** #1 注册真人账号：同一事务写身份与资料，再用这个 id 建 Turms 用户。 */

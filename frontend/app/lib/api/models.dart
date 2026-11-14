@@ -1,4 +1,4 @@
-/// 与 `docs/api-contracts.md` 一一对应的传输模型。
+/// 与 `docs/truth/backend/README.md` 一一对应的传输模型。
 /// 字段名保持契约里的 snake_case，转换只在这一层做，UI 不碰 Map。
 library;
 

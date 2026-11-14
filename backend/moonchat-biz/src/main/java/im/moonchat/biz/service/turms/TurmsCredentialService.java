@@ -4,7 +4,7 @@ import java.time.Instant;
 
 /**
  * im-facade 的签发那一支手：给客户端签 Turms 能验的 JWT。
- * 用与 turms-gateway 共享的 HMAC 密钥签，payload 见 docs/api-contracts.md §3.3。
+ * 用与 turms-gateway 共享的 HMAC 密钥签，payload 见 docs/truth/backend/identity.md。
  */
 public interface TurmsCredentialService {
 

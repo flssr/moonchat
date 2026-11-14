@@ -5,7 +5,7 @@ import im.moonchat.biz.dto.message.MessageRequests;
 import im.moonchat.biz.dto.message.MessageResponses;
 
 /**
- * 写入网关（docs/api-contracts.md §7）：认证凭据 → 归属 → 会话解析 → 授权事实 → 限流 →
+ * 写入网关（docs/truth/backend/messaging.md）：认证凭据 → 归属 → 会话解析 → 授权事实 → 限流 →
  * 来源标记写日志 → 交给 `im-facade` 代发。顺序不许调换，PG 零写入。
  */
 public interface MessageService {

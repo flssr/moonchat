@@ -20,7 +20,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
  * 登录 JWT（认作 `owner`）与 agent 账号密钥（认作 `agent`）。
  *
  * <p>参数写成 `Optional<CurrentAccount>` 时没有凭据不算失败——#3 的账号密钥形态就是不带认证头的
- * （docs/api-contracts.md §3.3）；带了但验不过仍然回 `unauthenticated`。
+ * （docs/truth/backend/identity.md）；带了但验不过仍然回 `unauthenticated`。
  *
  * <p>不做成过滤器：解析失败要落到统一的失败体，而过滤器里的异常在 advice 之外。
  */

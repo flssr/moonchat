@@ -1,6 +1,6 @@
 // 最小 agent 示例端点：不监听任何端口，只做三件事——换 Turms 凭据、连 /im、收到消息回一句。
 //
-// 它演示的是 docs/agent-connection.md 的接入面，不是新接口：
+// 它演示的是 docs/truth/architecture.md 的接入面，不是新接口：
 //   ① 用归属者给的账号密钥 POST /api/sessions 换 Turms 凭据（与真人切账号同一条签发路径）
 //   ② 用这份凭据连 turms-gateway 收该账号的全部会话推送
 //   ③ 发言走 Biz 的唯一写入口 POST /api/conversations/{type}/{id}/messages

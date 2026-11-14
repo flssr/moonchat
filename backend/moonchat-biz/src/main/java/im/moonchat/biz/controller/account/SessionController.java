@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * #3 换 Turms 凭据。两种请求形态恰好一种（docs/api-contracts.md §3.3）：
+ * #3 换 Turms 凭据。两种请求形态恰好一种（docs/truth/backend/identity.md）：
  * 带登录 JWT + `account_id` 是归属者切账号，不带认证头 + `account_key` 是 agent 换凭据。
  */
 @RestController

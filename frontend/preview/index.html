@@ -553,7 +553,7 @@
       <header class="section__head">
         <p class="kicker"><span>07</span> 接口契约</p>
         <h2>接口只需要这些。</h2>
-        <p class="section__lede">以下直接对齐 <code>docs/api-contracts.md</code>。登录 JWT 只对 Biz 有效；Turms 凭据只授 <code>QUERY</code>，所以客户端读消息不经过 Biz，写消息只有一条路。</p>
+        <p class="section__lede">以下直接对齐 <code>docs/truth/backend/README.md</code>。登录 JWT 只对 Biz 有效；Turms 凭据只授 <code>QUERY</code>，所以客户端读消息不经过 Biz，写消息只有一条路。</p>
       </header>
 
       <div class="tableWrap">
@@ -613,10 +613,10 @@ X-Device-Type: desktop
         <div class="panel">
           <div class="panel__head"><h3>需要确认的界面问题</h3><span>OPEN</span></div>
           <ul class="checks">
-            <li>账号切换后的会话列表是否按账号重建，文档未规定客户端行为。</li>
-            <li>群成员资料页里，“发消息”只在双方是好友时出现；这条规则目前只在 <code>friends.md</code>。</li>
-            <li>登录 JWT 7 天与 Turms 凭据 12 小时的续期提示放在哪里。</li>
-            <li>默认头像按账号 ID 生成，具体形态待定。</li>
+            <li>黑名单后端已完成，客户端列表与资料页操作仍待接入。</li>
+            <li>资料编辑器已收集性别与生日，后端尚未接收这两个字段。</li>
+            <li>浏览器内的 Turms 读取通道已接，但尚未在真实 Turms 上复测。</li>
+            <li>群成员资料页只在双方是好友时显示“发消息”。</li>
           </ul>
         </div>
       </div>
@@ -627,7 +627,7 @@ X-Device-Type: desktop
       <header class="section__head">
         <p class="kicker"><span>08</span> 交付</p>
         <h2>本轮交付与下一轮。</h2>
-        <p class="section__lede">评审只针对这一页：视觉方向、登录流程、会话结构、关系入口、状态定义。通过后再落文档，避免文档跟着稿子一起改。</p>
+        <p class="section__lede">评审页保留为视觉对照源；当前事实、客户端边界与决策原因分别维护在 <code>docs/truth/frontend/</code> 与 <code>docs/history/frontend-doc/</code>。</p>
       </header>
 
       <div class="handoff">
@@ -638,16 +638,16 @@ X-Device-Type: desktop
             <li>登录与注册共表，含三态流程，可重播。</li>
             <li>客户端样机：消息、联系人、账号三个视图。</li>
             <li>资料页、群成员、邀请、退群、创建 agent 与一次性密钥。</li>
-            <li>与 PRD / API 契约对齐的范围和边界。</li>
+            <li>范围与接口行为已与当前代码对齐。</li>
           </ul>
         </div>
         <div class="handoff__col">
-          <h3>评审通过后</h3>
+          <h3>文档入口</h3>
           <ul class="checks">
-            <li><b>DESIGN-SPEC</b>：令牌、栅格、组件尺寸与状态表。</li>
-            <li><b>SCREEN-MAP</b>：登录、消息、联系人、账号、资料页的路由与状态。</li>
-            <li><b>API-MAPPING</b>：每个界面动作对应的接口、错误码与空状态。</li>
-            <li><b>HANDOFF</b>：Flutter Web 还原清单与验收录屏。</li>
+            <li><b>truth/frontend</b>：当前页面、状态、接口边界与已知缺口。</li>
+            <li><b>truth/backend</b>：接口、认证、关系、群和消息的现行行为。</li>
+            <li><b>history/overall</b>：跨模块架构与产品取舍。</li>
+            <li><b>history/frontend-doc</b>：登录、状态、消息与视觉决策沿革。</li>
           </ul>
         </div>
         <div class="handoff__col">
@@ -663,14 +663,14 @@ X-Device-Type: desktop
 
       <div class="closing">
         <p class="kicker">待确认</p>
-        <p class="closing__text">客户端 spec 还没写（docs/README.md 已列为已知缺口）。这一页事实上在补这份空缺。如果评审通过，我会把上面三份文档一起落下来。</p>
+        <p class="closing__text">这一页只负责视觉与交互对照，不再承担接口契约或设计真相。行为以代码、测试与 <code>docs/truth/</code> 为准。</p>
         <a class="btn btn--primary" href="#top">回到顶部 <svg aria-hidden="true"><use href="#i-arrow"/></svg></a>
       </div>
     </section>
 
     <footer class="foot">
       <span>Moonchat · 客户端界面评审稿 v1</span>
-      <span>frontend-spec · 2026.11.11</span>
+      <span>CA docs · 2026.11.14</span>
     </footer>
   </main>
 </div>

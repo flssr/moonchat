@@ -80,7 +80,7 @@ http.Response _json(Object? body, int status) => http.Response(
       headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
     );
 
-/// 假 Biz：只实现客户端会打到的那几条，字段与 `docs/api-contracts.md` 一致。
+/// 假 Biz：只实现客户端会打到的那几条，字段与 `docs/truth/backend/README.md` 一致。
 MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
   return MockClient((http.Request req) async {
     final String path = req.url.path;
@@ -443,7 +443,7 @@ void main() {
   });
 
   testWidgets('窄屏下联系人与账号上下堆叠，不横向溢出', (WidgetTester tester) async {
-    // 正好 620 也要堆叠（DESIGN-SPEC 的 ≤620）；再缩到 390 验窄屏不溢出。
+    // 正好 620 也要堆叠（docs/truth/frontend/design.md 的 ≤620）；再缩到 390 验窄屏不溢出。
     tester.view.physicalSize = const Size(620, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);

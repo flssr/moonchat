@@ -8,7 +8,7 @@ import 'login_quotes.dart';
 import 'login_stage.dart';
 import 'widgets.dart';
 
-/// S1 登录 / 注册 + S2 登舱过渡（`SCREEN-MAP.md` §4）。
+/// S1 登录 / 注册 + S2 登舱过渡（`docs/truth/frontend/README.md`）。
 /// 表单在左，右侧是月面舞台；登录成功后播一次短促离场，再交给外壳换屏。
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.state, this.onArrived});

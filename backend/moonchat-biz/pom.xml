@@ -58,7 +58,7 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
-        <!-- /v3/api-docs 由代码生成，docs/openapi.json 是它的落盘副本（给 Apifox 导入） -->
+        <!-- /v3/api-docs 由代码生成；仓库不提交静态 OpenAPI 副本 -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>

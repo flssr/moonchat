@@ -5,7 +5,7 @@ import im.moonchat.biz.dto.room.RoomRequests;
 import im.moonchat.biz.dto.room.RoomResponses;
 
 /**
- * 群与成员的行为（docs/DDD.md、docs/api-contracts.md §6）：群与成员的真相在 PG，
+ * 群与成员的行为（docs/truth/architecture.md、docs/truth/backend/room.md）：群与成员的真相在 PG，
  * Turms 里的群与成员只是投影。成员操作只有真人能做，`agent` 来源在这四条写接口上一律 403。
  */
 public interface RoomService {

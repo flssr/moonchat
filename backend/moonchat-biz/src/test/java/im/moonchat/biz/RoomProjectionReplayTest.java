@@ -13,7 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 /**
- * 投影失败不回滚业务写，`pending` 被重放收敛（moonchat-biz/SPEC.md「群与投影」）。
+ * 投影失败不回滚业务写，`pending` 被重放收敛（docs/truth/backend/room.md）。
  * 重放器在测试里手动调一次，不靠 30 秒的定时器。
  */
 class RoomProjectionReplayTest extends ApiTestSupport {

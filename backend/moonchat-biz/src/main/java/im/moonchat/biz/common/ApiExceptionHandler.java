@@ -9,7 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-/** 把领域异常与入口校验失败收敛成 docs/api-contracts.md §1.3 的固定失败体。 */
+/** 把领域异常与入口校验失败收敛成 docs/truth/backend/README.md 的固定失败体。 */
 @RestControllerAdvice
 public class ApiExceptionHandler {
 

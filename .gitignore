@@ -2,12 +2,16 @@ target/
 .idea/
 *.iml
 .vscode/
-# ThinkRail 工具目录：spec 索引缓存、临时任务文档（.thinkrail/context/TASK-*.md）
-# 持久设计写在 spec 树与 docs/，这里的内容不进 git
+# ThinkRail 工具目录：索引缓存、临时任务文档（.thinkrail/context/TASK-*.md）
+# 持久结论写进 docs/truth 与 docs/history，这里的内容不进 git
 .thinkrail/
 .env
 .env.*
 *.log
+
+# 已退出的旧文档面与本地整理用的旧副本，不进仓库；持久文档只在 docs/
+/old_docs/
+/CA-docs/
 
 # 本地生成的密钥
 *.key

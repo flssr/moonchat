@@ -30,7 +30,7 @@ public class ConversationRateLimiter {
             redis.expire(key, WINDOW);
         }
         if (hits != null && hits > properties.conversationPerMinute()) {
-            // 命中只打日志：V1 不建审计表（goal-and-requirements.md（已定的简化））
+            // 命中只打日志：V1 不建审计表（docs/truth/product.md）
             log.warn("限流命中：accountId={} 会话级桶 {}:{} {} 次/分钟", accountId, conversationType,
                     conversationId, properties.conversationPerMinute());
             throw ApiException.rateLimited();

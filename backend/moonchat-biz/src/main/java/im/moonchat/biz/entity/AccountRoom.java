@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * `account_room` 表：同一成员关系按账号反向存一份（docs/data-model.md §4.7）。
+ * `account_room` 表：同一成员关系按账号反向存一份（docs/truth/backend/persistence.md）。
  * 只为「我加入的群」按账号查询；不参与 Turms 投影，也不参与授权。
  *
  * <p>主键是 `(account_id, room_id)`，一律用 Wrapper 读写，不用 `selectById` / `updateById`。

@@ -23,7 +23,7 @@ import tools.jackson.databind.JsonNode;
 @Component
 public class TurmsAdminClient {
 
-    /** Turms 默认 GroupType 0：邀请制、成员可见、guest 不可发言（docs/DDD.md）。 */
+    /** Turms 默认 GroupType 0：邀请制、成员可见、guest 不可发言（docs/truth/architecture.md）。 */
     private static final int MEMBER_ONLY_GROUP_TYPE = 0;
 
     /** Admin 单次查询最多回 1000 条（`maxAvailableRecordsPerRequest`），成员集合按页取。 */
@@ -66,7 +66,7 @@ public class TurmsAdminClient {
 
     /**
      * 改名同步：Admin `PUT /users?ids=`（`UpdateUserDTO` 只带 name，别的字段留空即不改）。
-     * 没拿到确认就抛 503，调用方的事务连同名字一起回滚（docs/api-contracts.md §4.3）。
+     * 没拿到确认就抛 503，调用方的事务连同名字一起回滚（docs/truth/backend/identity.md）。
      */
     public void updateUserName(long accountId, String displayName) {
         try {
@@ -84,7 +84,7 @@ public class TurmsAdminClient {
 
     /**
      * 建群：`AddGroupDTO` 不能指定 id，所以 group id 由 Turms 生成并返回，Biz 回填
-     * `room_info.turms_group_id`（docs/DDD.md 的「要核对的 7 条」第 2 条）。
+     * `room_info.turms_group_id`（docs/truth/backend/room.md）。
      */
     public long createGroup(long ownerAccountId, String name) {
         try {

@@ -23,7 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
- * 写入网关。这里的每一行都在 `docs/api-contracts.md` §7 的校验顺序上：认证凭据（解析器已给出）
+ * 写入网关。这里的每一行都在 `docs/truth/backend/messaging.md` 的校验顺序上：认证凭据（解析器已给出）
  * → 归属（发送者只取自凭据）→ 会话解析 → 授权事实（现查 PG）→ 限流（只有 `agent` 来源进桶）
  * → 来源标记写日志 → 交出去。**PG 零写入**：消息只在 Turms，没有副本、没有发送记录表。
  */

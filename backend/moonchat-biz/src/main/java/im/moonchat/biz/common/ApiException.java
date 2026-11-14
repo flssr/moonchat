@@ -4,7 +4,7 @@ import lombok.Getter;
 import org.springframework.http.HttpStatus;
 
 /**
- * 契约里的失败响应（docs/api-contracts.md §1.3）：code 是客户端唯一该分流的东西，
+ * 契约里的失败响应（docs/truth/backend/README.md）：code 是客户端唯一该分流的东西，
  * message 给人看，validation_failed 额外带 field。
  */
 @Getter
@@ -41,7 +41,7 @@ public class ApiException extends RuntimeException {
         return new ApiException("not_found", HttpStatus.NOT_FOUND, message, null);
     }
 
-    /** `dm` 会话的对端不是已成立的好友：好友校验只在写入网关（docs/DDD.md）。 */
+    /** `dm` 会话的对端不是已成立的好友：好友校验只在写入网关（docs/truth/architecture.md）。 */
     public static ApiException notFriend() {
         return new ApiException("not_friend", HttpStatus.FORBIDDEN, "只有好友之间才能私聊", null);
     }

@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * `friendship_reverse` 表：同一好友关系按较大账号 id 反向存一份（docs/data-model.md §4.4）。
+ * `friendship_reverse` 表：同一好友关系按较大账号 id 反向存一份（docs/truth/backend/persistence.md）。
  * 可重建的查询镜像，与主表同事务双写；不参与授权判断。
  *
  * <p>主键是 `(account_id, peer_account_id)`，所以 `accountId` 只是 MyBatis-Plus 需要一个

@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * `/v3/api-docs` 与 `docs/openapi.json` 的来源：路由、字段、错误码都从控制器与 DTO 扫出来，
+ * `/v3/api-docs` 的来源：路由与字段都从控制器与 DTO 扫出来，不提交静态副本。
  * 不在别处再手写一份。
  *
  * <p>认证头两种凭据（登录 JWT / 账号密钥）都走 `Authorization: Bearer`，所以只声明一个

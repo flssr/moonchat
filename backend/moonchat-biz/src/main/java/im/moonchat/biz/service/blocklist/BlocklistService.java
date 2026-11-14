@@ -4,7 +4,7 @@ import im.moonchat.biz.auth.CurrentAccount;
 import im.moonchat.biz.dto.blocklist.BlocklistRequests;
 import im.moonchat.biz.dto.blocklist.BlocklistResponses;
 
-/** 黑名单的行为（docs/DDD.md「黑名单」）：看自己的列表、拉黑、取消拉黑与「这个方向是否被拉黑」。 */
+/** 黑名单的行为（docs/truth/backend/friendship.md）：看自己的列表、拉黑、取消拉黑与「这个方向是否被拉黑」。 */
 public interface BlocklistService {
 
     /** #21 我的黑名单：`created_at` 倒序分页，`page` / `size` / `total` 与群成员列表同构。 */
