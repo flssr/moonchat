@@ -123,7 +123,7 @@ void main() {
     expect(find.text('昵称'), findsOneWidget);
     expect(find.text('生日'), findsOneWidget);
     expect(find.text('星座'), findsOneWidget);
-    expect(find.text('头像由账号 ID 生成，暂不支持修改'), findsOneWidget);
+    expect(find.text('选择默认头像'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).first, '新名字');
     await tester.tap(find.text('女'));

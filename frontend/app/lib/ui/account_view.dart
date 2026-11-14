@@ -109,7 +109,12 @@ class _AccountViewState extends State<AccountView> {
                       color: current ? p.surface2 : Colors.transparent,
                       child: Row(
                         children: <Widget>[
-                          MoonAvatar(name: a.displayName, seed: a.accountId, size: 30),
+                          MoonAvatar(
+                            name: a.displayName,
+                            seed: a.accountId,
+                            avatar: widget.state.avatarOf(a.accountId),
+                            size: 30,
+                          ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -185,7 +190,12 @@ class _AccountViewState extends State<AccountView> {
                     const SizedBox(height: 8),
                     Row(
                       children: <Widget>[
-                        MoonAvatar(name: me?.displayName ?? '', seed: me?.accountId ?? 0, size: 40),
+                        MoonAvatar(
+                          name: me?.displayName ?? '',
+                          seed: me?.accountId ?? 0,
+                          avatar: me == null ? null : widget.state.avatarOf(me.accountId),
+                          size: 40,
+                        ),
                         const SizedBox(width: 12),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,

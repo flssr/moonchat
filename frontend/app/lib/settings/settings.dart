@@ -70,4 +70,9 @@ class MoonSettings {
 abstract interface class SettingsStore {
   MoonSettings load();
   void save(MoonSettings settings);
+
+  /// 头像偏好：账号 id → 默认头像 key（`avatars.dart`）。服务端还没有这一列（issue #10），
+  /// 所以跟着设备走，不跟账号走。
+  Map<int, String> loadAvatars();
+  void saveAvatars(Map<int, String> avatars);
 }

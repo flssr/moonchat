@@ -104,7 +104,12 @@ class _ProfilePanelState extends State<ProfilePanel> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              MoonAvatar(name: profile.displayName, seed: profile.accountId, size: 44),
+              MoonAvatar(
+                name: profile.displayName,
+                seed: profile.accountId,
+                avatar: widget.state.avatarOf(profile.accountId),
+                size: 44,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

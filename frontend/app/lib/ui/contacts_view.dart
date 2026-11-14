@@ -298,7 +298,12 @@ class _ContactsViewState extends State<ContactsView> {
                                   color: _selectedId == f.peerAccountId ? p.surface2 : Colors.transparent,
                                   child: Row(
                                     children: <Widget>[
-                                      MoonAvatar(name: f.displayName, seed: f.peerAccountId, size: 30),
+                                      MoonAvatar(
+                                        name: f.displayName,
+                                        seed: f.peerAccountId,
+                                        avatar: widget.state.avatarOf(f.peerAccountId),
+                                        size: 30,
+                                      ),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
@@ -332,7 +337,12 @@ class _ContactsViewState extends State<ContactsView> {
                                 padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
                                 child: Row(
                                   children: <Widget>[
-                                    MoonAvatar(name: f.displayName, seed: f.peerAccountId, size: 30),
+                                    MoonAvatar(
+                                      name: f.displayName,
+                                      seed: f.peerAccountId,
+                                      avatar: widget.state.avatarOf(f.peerAccountId),
+                                      size: 30,
+                                    ),
                                     const SizedBox(width: 10),
                                     Expanded(
                                       child: Text(

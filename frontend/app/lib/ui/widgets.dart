@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../avatars.dart';
 import '../i18n/context_tr.dart';
 import '../theme.dart';
 
@@ -219,13 +220,23 @@ class _MoonFieldState extends State<MoonField> {
   }
 }
 
-/// 头像平台生成：按账号 id 取色，首字占位，不做上传（PRD §5.3）。
+/// 头像：选过默认头像就显示那张图，否则按账号 id 取色、首字占位；不做上传。详见
+/// `docs/truth/frontend/profile-settings.md`。
 class MoonAvatar extends StatelessWidget {
-  const MoonAvatar({super.key, required this.name, required this.seed, this.size = 34});
+  const MoonAvatar({
+    super.key,
+    required this.name,
+    required this.seed,
+    this.size = 34,
+    this.avatar,
+  });
 
   final String name;
   final int seed;
   final double size;
+
+  /// `avatars.dart` 里的默认头像 key；null 时用生成的首字头像。
+  final String? avatar;
 
   @override
   Widget build(BuildContext context) {
@@ -233,6 +244,7 @@ class MoonAvatar extends StatelessWidget {
     final int tone = (seed % 5);
     final List<Color> tones = <Color>[p.surface2, p.line, p.bubbleThem, p.bg, p.stage];
     final String initial = name.isEmpty ? '?' : name.characters.first;
+    final String? key = avatar;
 
     return Container(
       width: size,
@@ -243,9 +255,13 @@ class MoonAvatar extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: p.lineStrong),
       ),
-      child: Text(
-        initial,
-        style: TextStyle(fontSize: size * 0.4, color: p.ink, fontWeight: FontWeight.w500),
+      child: ClipOval(
+        child: key == null
+            ? Text(
+                initial,
+                style: TextStyle(fontSize: size * 0.4, color: p.ink, fontWeight: FontWeight.w500),
+              )
+            : Image.asset(avatarAsset(key), width: size, height: size, fit: BoxFit.cover),
       ),
     );
   }

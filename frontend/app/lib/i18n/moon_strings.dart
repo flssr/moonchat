@@ -163,8 +163,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '取消': 'Cancel',
     '确定': 'OK',
     '生日': 'Birthday',
-    '头像由账号 ID 生成，暂不支持修改':
-        'Avatar generated from account ID; not editable yet.',
+    '头像': 'Avatar',
+    '选择默认头像': 'Choose a default avatar',
+    '默认': 'Default',
+    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+        'Default avatars come from the platform; uploads are not supported. '
+            'A tap applies it right away and saves it on this device only.',
     '星座': 'Constellation',
     '性别': 'Gender',
     '选择生日': 'Select birthday',
@@ -368,7 +372,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '取消': 'キャンセル',
     '确定': 'OK',
     '生日': '誕生日',
-    '头像由账号 ID 生成，暂不支持修改': 'アバターはアカウントIDから生成。変更は未対応。',
+    '头像': 'アバター',
+    '选择默认头像': 'デフォルトのアバターを選ぶ',
+    '默认': 'デフォルト',
+    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+        'デフォルトのアバターはプラットフォーム提供です。アップロードは未対応で、'
+            '選ぶとすぐ反映され、この端末にのみ保存されます。',
     '星座': '星座',
     '性别': '性別',
     '选择生日': '誕生日を選択',
@@ -569,7 +578,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '取消': 'Abbrechen',
     '确定': 'OK',
     '生日': 'Geburtstag',
-    '头像由账号 ID 生成，暂不支持修改': 'Avatar aus Konto-ID erzeugt; noch nicht änderbar.',
+    '头像': 'Avatar',
+    '选择默认头像': 'Standard-Avatar wählen',
+    '默认': 'Standard',
+    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+        'Standard-Avatare stellt die Plattform bereit; Hochladen ist nicht möglich. '
+            'Die Auswahl wirkt sofort und wird nur auf diesem Gerät gespeichert.',
     '星座': 'Sternzeichen',
     '性别': 'Geschlecht',
     '选择生日': 'Geburtstag wählen',

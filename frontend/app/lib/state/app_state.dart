@@ -4,6 +4,9 @@ import 'package:flutter/foundation.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../avatars.dart';
+import '../settings/settings.dart';
+import '../settings/settings_store.dart';
 import '../turms/realtime.dart';
 
 enum AuthPhase { loggedOut, busy, ready }
@@ -65,14 +68,22 @@ class ChatMessage {
 /// 读（会话列表 / 历史）本该由 Turms 会话给出，见 `realtime.dart`；
 /// 这里只放 REST 能给的东西：身份、账号、好友、群、成员、发送结果。
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? api, RealtimeClient? realtime})
+  AppState({ApiClient? api, RealtimeClient? realtime, SettingsStore? store})
       : api = api ?? ApiClient(),
-        realtime = realtime ?? createRealtime() {
+        realtime = realtime ?? createRealtime(),
+        _store = store ?? createSettingsStore() {
     // 401 一律回登录页（`docs/truth/frontend/README.md`）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
+    avatars = _store.loadAvatars();
   }
 
   final ApiClient api;
+
+  final SettingsStore _store;
+
+  /// 本机头像偏好：账号 id → 默认头像 key。服务端还没有这一列（issue #10），
+  /// 所以换设备不跟随；服务端回了 `avatar` 之后再改成服务端优先。
+  Map<int, String> avatars = const <int, String>{};
 
   /// 读取通道：客户端自己的 Turms 会话。
   final RealtimeClient realtime;
@@ -635,6 +646,26 @@ class AppState extends ChangeNotifier {
     accounts = accounts
         .map((Account a) => a.accountId == current.accountId ? me : a)
         .toList();
+    notifyListeners();
+  }
+
+  // —— 头像（本机偏好，服务端还没有这一列，issue #10）——
+
+  String? avatarOf(int accountId) => avatars[accountId];
+
+  /// 选中即生效、即落本机；`null` 表示回到按账号 id 生成的首字头像。
+  void setAvatar(int accountId, String? key) {
+    if (key != null && !isKnownAvatar(key)) {
+      return;
+    }
+    final Map<int, String> next = Map<int, String>.of(avatars);
+    if (key == null) {
+      next.remove(accountId);
+    } else {
+      next[accountId] = key;
+    }
+    avatars = next;
+    _store.saveAvatars(next);
     notifyListeners();
   }
 
