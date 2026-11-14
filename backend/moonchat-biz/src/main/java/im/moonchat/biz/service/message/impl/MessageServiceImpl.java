@@ -11,6 +11,7 @@ import im.moonchat.biz.entity.RoomMember;
 import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.room.RoomInfoMapper;
 import im.moonchat.biz.mapper.room.RoomMemberMapper;
+import im.moonchat.biz.service.blocklist.BlocklistService;
 import im.moonchat.biz.service.friendship.FriendshipService;
 import im.moonchat.biz.service.limiter.AccountRateLimiter;
 import im.moonchat.biz.service.limiter.ConversationRateLimiter;
@@ -42,6 +43,7 @@ public class MessageServiceImpl implements MessageService {
     private final RoomMemberMapper roomMemberMapper;
     private final AccountInfoMapper accountInfoMapper;
     private final FriendshipService friendshipService;
+    private final BlocklistService blocklistService;
     private final AccountRateLimiter accountRateLimiter;
     private final ConversationRateLimiter conversationRateLimiter;
     private final TurmsAdminClient turmsAdmin;
@@ -77,8 +79,14 @@ public class MessageServiceImpl implements MessageService {
                 throw ApiException.upstreamUnavailable();
             }
             targetId = turmsGroupId;
-        } else if (!friendshipService.areFriends(senderId, conversationId)) {
-            throw ApiException.notFriend();
+        } else {
+            // 拉黑只断「被拉黑方 → 拉黑方」：对端拉黑了我才拒，我拉黑了对方照样能发
+            if (blocklistService.hasBlocked(conversationId, senderId)) {
+                throw ApiException.blocked();
+            }
+            if (!friendshipService.areFriends(senderId, conversationId)) {
+                throw ApiException.notFriend();
+            }
         }
 
         // 限流：只有 agent 来源进桶，两级逐级更小；本人的发言不进任何 agent 桶

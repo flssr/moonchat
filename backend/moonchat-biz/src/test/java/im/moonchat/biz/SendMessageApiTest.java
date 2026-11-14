@@ -46,6 +46,26 @@ class SendMessageApiTest extends ApiTestSupport {
     }
 
     @Test
+    void 对端拉黑我之后私聊回blocked而不是not_friend() throws Exception {
+        Caller me = newCaller();
+        Caller peer = newCaller();
+        befriend(me, peer);
+        mockMvc.perform(post("/api/blocklist")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(peer.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"account_id":%d}
+                                """.formatted(me.accountId())))
+                .andExpect(status().isCreated());
+
+        sendDm(me, peer.accountId(), "在吗")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("blocked"));
+        // 拉黑判断也在代发之前，没有多出一次 Admin 调用
+        assertThat(TestStack.TURMS_ADMIN.lastPath()).isNotEqualTo("/messages");
+    }
+
+    @Test
     void 非好友私聊被拒且根本没碰Turms() throws Exception {
         Caller me = newCaller();
         Caller stranger = newCaller();

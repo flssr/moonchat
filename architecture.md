@@ -51,8 +51,8 @@ moonchat-biz ── im-facade ──> Turms Admin API（建群 / 改成员投影
 | `frontend/` | 账号的 Turms 客户端（`frontend/SPEC.md`；页面与视觉交接稿在 `docs/frontend/`） |
 | `infra/` | Turms 覆盖配置、冒烟脚本与部署单元（`infra/SPEC.md`） |
 | `docs/DDD.md` | 领域模型与模块行为：账号、好友、消息与隧道、agent 接入、OneBot 桥接 |
-| `docs/data-model.md` | PG 的七张表、DDL 与聚合边界 |
-| `docs/api-contracts.md` | 20 条 `/api/*` 路由的契约 |
+| `docs/data-model.md` | PG 的八张表、DDL 与聚合边界 |
+| `docs/api-contracts.md` | 23 条 `/api/*` 路由的契约 |
 
 ## 四条边界硬规矩
 

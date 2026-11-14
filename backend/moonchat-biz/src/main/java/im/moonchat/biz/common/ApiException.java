@@ -46,6 +46,16 @@ public class ApiException extends RuntimeException {
         return new ApiException("not_friend", HttpStatus.FORBIDDEN, "只有好友之间才能私聊", null);
     }
 
+    /** 对方把你拉黑了：私聊发送与好友申请都拿这个码，客户端要能跟 `forbidden` 区分。 */
+    public static ApiException blocked() {
+        return new ApiException("blocked", HttpStatus.FORBIDDEN, "对方已拒收你的消息或申请", null);
+    }
+
+    /** 黑名单已满 100 人：与「已经在黑名单里」同是 409，客户端按 code 区分两种提示。 */
+    public static ApiException blocklistFull() {
+        return new ApiException("blocklist_full", HttpStatus.CONFLICT, "黑名单最多 100 人", null);
+    }
+
     /** 调用者不是该群的有效成员：授权事实现查 `room_member`，不看投影。 */
     public static ApiException notRoomMember() {
         return new ApiException("not_room_member", HttpStatus.FORBIDDEN, "你不是这个群的成员", null);

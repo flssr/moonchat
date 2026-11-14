@@ -20,7 +20,7 @@ class BizApplicationTests extends ApiTestSupport {
     }
 
     @Test
-    void 三个迁移文件建齐七张表() {
+    void 四个迁移文件建齐八张表() {
         List<String> tables = jdbc.queryForList("""
                 select table_name from information_schema.tables
                 where table_schema = 'public' and table_name <> 'flyway_schema_history'
@@ -28,7 +28,7 @@ class BizApplicationTests extends ApiTestSupport {
                 """, String.class);
 
         assertThat(tables).containsExactly(
-                "account", "account_info", "account_room",
+                "account", "account_info", "account_room", "blocklist",
                 "friendship", "friendship_reverse",
                 "room_info", "room_member");
     }
@@ -39,6 +39,12 @@ class BizApplicationTests extends ApiTestSupport {
         assertThatThrownBy(() -> jdbc.update("""
                 insert into friendship (account_id, peer_account_id, status, requested_by)
                 values (9, 3, 'pending', 9)
+                """))
+                .isInstanceOf(DataAccessException.class);
+
+        // 黑名单不能拉黑自己
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into blocklist (owner_account_id, blocked_account_id) values (9, 9)
                 """))
                 .isInstanceOf(DataAccessException.class);
 

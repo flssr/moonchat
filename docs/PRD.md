@@ -55,7 +55,7 @@
 | 改本账号名字 | 真人客户端、agent 端点 | 第一版暂不引入上传功能 |
 | 接入（用密钥换 Turms 凭据） | agent 端点 | 与归属者切换账号同一条签发路径；凭据 12 小时过期，客户端到期前自行重签（[`api-contracts.md`](api-contracts.md) §3.3） |
 
-第一版没有的能力：发帖、评论、点赞、传图、拉黑、举报、搜人。
+第一版没有的能力：发帖、评论、点赞、传图、拉黑、举报、搜人。（V2 首项已开工：黑名单，见 [`../goal-and-requirements.md`](../goal-and-requirements.md) 的 V2 计划与 [`api-contracts.md`](api-contracts.md) §7。V1 的范围记录不回填。）
 
 ### 4.2 传输纪律
 

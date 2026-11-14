@@ -12,6 +12,7 @@ import im.moonchat.biz.entity.FriendshipReverse;
 import im.moonchat.biz.mapper.account.AccountInfoMapper;
 import im.moonchat.biz.mapper.friendship.FriendshipMapper;
 import im.moonchat.biz.mapper.friendship.FriendshipReverseMapper;
+import im.moonchat.biz.service.blocklist.BlocklistService;
 import im.moonchat.biz.service.friendship.FriendshipService;
 import im.moonchat.biz.service.limiter.AccountRateLimiter;
 import java.time.OffsetDateTime;
@@ -40,6 +41,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     private final FriendshipReverseMapper reverseMapper;
     private final AccountInfoMapper accountInfoMapper;
     private final AccountRateLimiter accountRateLimiter;
+    private final BlocklistService blocklistService;
 
     @Override
     public FriendshipResponses.ListResponse list(CurrentAccount me, String status) {
@@ -89,6 +91,10 @@ public class FriendshipServiceImpl implements FriendshipService {
         }
         if (FROZEN.equals(accountInfoMapper.selectById(meId).getStatus()) || FROZEN.equals(peer.getStatus())) {
             throw ApiException.accountFrozen();
+        }
+        // 拉黑只断「被拉黑方 → 拉黑方」：目标拉黑了我才拒；我拉黑了对方照样能申请
+        if (blocklistService.hasBlocked(peerId, meId)) {
+            throw ApiException.blocked();
         }
 
         long lower = Math.min(meId, peerId);

@@ -44,7 +44,8 @@ depends-on:
 - 好友是私聊的充分必要条件，落在 PG 的 `friendship` + `friendship_reverse`（同事务双写）。**不投影进 Turms**，Turms 配成不校验好友（`allowSendMessagesToStranger = true`）。
 - 无向关系用规范序（小 id 在前）+ 唯一键表达；接口只用 `peer_account_id` 寻址。
 - **删除好友写 tombstone**：会话保留、历史只读、不能再发新消息；保留期后 purge，重新加好友复用原行。拒绝申请同样写 `deleted_at`，状态枚举不增加 `rejected`。
-- **agent 只有好友申请一个关系动作**；建群、拉人、移除成员只有真人能触发（`owner` 来源）。
+- **agent 只有好友申请一个关系动作**；建群、拉人、移除成员、拉黑与取消拉黑只有真人能触发（`owner` 来源）。
+- **黑名单是单向关系**：只在 Biz 拦「被拉黑方 → 拉黑方」的私聊与好友申请，反方向与群聊不拦；拉黑不解除好友关系，也不投影 Turms（真相在 PG 的 `blocklist`）。
 - **不做临时会话**：群里的非好友只能看资料页再申请好友；理由是两级桶按 `(账号, 会话)` 计，临时会话会让桶形同虚设。
 
 ## 群与投影（决定）
@@ -73,11 +74,11 @@ depends-on:
 
 ## 数据
 
-七张表、聚合边界、DDL、只能由应用层守的规则、明确不建的表，全部在 [`../../docs/data-model.md`](../../docs/data-model.md)。本模块只记一条：**群、好友、账号都不为 Turms 的投影再建第二张表**。
+八张表、聚合边界、DDL、只能由应用层守的规则、明确不建的表，全部在 [`../../docs/data-model.md`](../../docs/data-model.md)。本模块只记一条：**群、好友、账号都不为 Turms 的投影再建第二张表**。
 
 ## 接口面
 
-20 条 `/api/*` 路由的路径、认证、字段、错误码与读写表在 [`../../docs/api-contracts.md`](../../docs/api-contracts.md)。**接口面不提供**：读消息与投递、消息搜索、头像上传、搜人与 agent 目录、拉黑举报封禁、临时会话、解散群与群主转让、删账号、agent 版的建设性动作（建群 / 拉人 / 移除）。
+23 条 `/api/*` 路由的路径、认证、字段、错误码与读写表在 [`../../docs/api-contracts.md`](../../docs/api-contracts.md)。**接口面不提供**：读消息与投递、消息搜索、头像上传、搜人与 agent 目录、举报封禁、临时会话、解散群与群主转让、删账号、agent 版的建设性动作（建群 / 拉人 / 移除 / 拉黑）。
 
 ## 依赖
 
@@ -85,9 +86,9 @@ pom 只服务四件事：PG、Redis、凭据的签与验、Turms Admin 的 HTTP 
 
 | 依赖 | 用在哪 |
 | --- | --- |
-| `spring-boot-starter-webmvc`、`-validation`、`-actuator` | 20 条路由、入口校验、健康检查 |
-| `spring-boot-starter-flyway` + `flyway-database-postgresql` + `postgresql` | 七张表的迁移与业务真相 |
-| `mybatis-plus-spring-boot4-starter` | 七张表读写、聚合事务、群成员分页 |
+| `spring-boot-starter-webmvc`、`-validation`、`-actuator` | 23 条路由、入口校验、健康检查 |
+| `spring-boot-starter-flyway` + `flyway-database-postgresql` + `postgresql` | 八张表的迁移与业务真相 |
+| `mybatis-plus-spring-boot4-starter` | 八张表读写、聚合事务、群成员分页 |
 | `spring-boot-starter-data-redis` | 两级限流桶（键前缀与 Turms 隔离） |
 | `nimbus-jose-jwt` | 登录 JWT 与 Turms 凭据的签与验 |
 | `spring-security-crypto` | 只取 `BCryptPasswordEncoder`，不引入过滤器链 |
