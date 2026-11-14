@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 设计 token 的唯一出处：数值全部取自 `frontend/docs/DESIGN-SPEC.md` §2–§6。
+/// 设计 token 的唯一出处：数值全部取自 `docs/frontend/DESIGN-SPEC.md` §2–§6。
 /// 组件只引用这里的语义名，不写死十六进制。
 @immutable
 class MoonPalette extends ThemeExtension<MoonPalette> {

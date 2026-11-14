@@ -1,7 +1,7 @@
 # moonchat 客户端（Flutter Web）
 
 V1 只发 Web 构建。界面以 `frontend/preview/index.html` 为唯一视觉源，实现依据是
-`frontend/docs/DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`；接口契约以
+`docs/frontend/DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`；接口契约以
 `docs/api-contracts.md` 为准，本工程不新增路由与字段。
 
 ## 跑起来
@@ -15,7 +15,7 @@ flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8080
 flutter build web --release --dart-define=MOONCHAT_API_BASE=
 ```
 
-`MOONCHAT_API_BASE` 为空表示同源：客户端假定 `/api` 与页面同域，这是 `docs/deployment.md`
+`MOONCHAT_API_BASE` 为空表示同源：客户端假定 `/api` 与页面同域，这是 `infra/SPEC.md`
 里 nginx 的部署形态。
 
 ## 结构
@@ -40,8 +40,8 @@ lib/
   给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻。非 Web 平台走
   `realtime_stub.dart`（官方 Dart 客户端是 TCP 传输，Web 上不可用）。
 - **尚未在真实 Turms 上跑过的是浏览器里的读取通道**：服务端链路、凭据签发、群投影与写入网关已经在真 Turms + 真 Biz 上跑通（`infra/turms/smoke` 的 `identity` / `e2e-biz` / 示例端点），六条验收判据也已用 node 的 Turms 客户端跑通；但 Flutter Web 里的 `js_interop` 这一层只对着假 `TurmsClient` 验过，没有在真 Turms 上驱动过浏览器。
-- 界面规则只从 `docs/friends.md`（私聊入口只有好友列表与资料页）与
-  `docs/account-and-ownership.md`（主页字段）里读；需要新规则时先补 spec。
+- 界面规则只从 `docs/DDD.md`「好友关系」（私聊入口只有好友列表与资料页）与
+  「账号与归属」（主页字段）里读；需要新规则时先补 spec。
 
 ## web/vendor/turms-client.iife.min.js 怎么来的
 
