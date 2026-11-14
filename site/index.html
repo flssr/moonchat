@@ -32,8 +32,20 @@
 
 <main id="main">
 
-  <section class="hero" id="top">
-    <div class="hero__disc" aria-hidden="true"></div>
+  <div class="hero-wrap">
+    <canvas class="sky" aria-hidden="true"></canvas>
+    <div class="moon" aria-hidden="true">
+      <svg viewBox="0 0 520 520" focusable="false">
+        <circle class="moon__disc" cx="260" cy="260" r="258"/>
+        <circle class="moon__crater" cx="186" cy="176" r="26"/>
+        <circle class="moon__crater" cx="330" cy="214" r="14"/>
+        <circle class="moon__crater" cx="232" cy="336" r="38"/>
+        <circle class="moon__crater" cx="344" cy="330" r="18"/>
+        <circle class="moon__crater" cx="150" cy="286" r="10"/>
+      </svg>
+    </div>
+
+    <section class="hero" id="top">
     <div class="hero__mark">
       <img src="assets/mondchat-logo.svg" alt="" width="56" height="56">
       <p class="kicker">MondChat&nbsp;&nbsp;/&nbsp;&nbsp;序</p>
@@ -47,7 +59,8 @@
       <figcaption>艾伦·图灵</figcaption>
     </figure>
     <a class="hero__hint" href="#account">往下读<svg aria-hidden="true"><use href="#i-down"/></svg></a>
-  </section>
+    </section>
+  </div>
 
   <section class="essay reveal" id="account">
     <p class="kicker">01&nbsp;&nbsp;/&nbsp;&nbsp;账号</p>
@@ -109,5 +122,6 @@
 </footer>
 
 <script src="app.js" defer></script>
+<script src="sky.js" defer></script>
 </body>
 </html>
