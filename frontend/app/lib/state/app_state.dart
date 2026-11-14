@@ -45,6 +45,7 @@ class ChatMessage {
     required this.sentAt,
     required this.state,
     required this.mine,
+    required this.senderAccountId,
     this.serverId,
     this.serverIdText,
     this.senderName,
@@ -61,6 +62,9 @@ class ChatMessage {
   int? serverId;
   String? serverIdText;
   String? senderName;
+
+  /// 群聊里用来取发送者的名字与头像；私聊对端就是会话的目标账号。
+  int senderAccountId;
 }
 
 /// 客户端唯一的可变状态源。视图只读它、只调它的动作。
@@ -412,6 +416,7 @@ class AppState extends ChangeNotifier {
       sentAt: incoming.sentAt ?? DateTime.now().toUtc(),
       state: MessageState.sent,
       mine: incoming.senderId == me,
+      senderAccountId: incoming.senderId,
       serverId: int.tryParse(incoming.id),
       serverIdText: incoming.id.isEmpty ? null : incoming.id,
     ));
@@ -756,6 +761,7 @@ class AppState extends ChangeNotifier {
       sentAt: DateTime.now().toUtc(),
       state: MessageState.sending,
       mine: true,
+      senderAccountId: account?.accountId ?? 0,
     );
     _append(local);
     try {

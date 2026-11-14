@@ -45,6 +45,9 @@ class _MessagesViewState extends State<MessagesView> {
   /// 已经为哪个会话拉过历史：防止重建时反复翻页。
   String? _loadedKey;
 
+  /// 已经拉过成员的群：消息区的头像与顶部头像堆叠都要用成员名字。
+  final Set<int> _membersRequested = <int>{};
+
   @override
   void dispose() {
     for (final TextEditingController c in _drafts.values) {
@@ -81,8 +84,13 @@ class _MessagesViewState extends State<MessagesView> {
       return;
     }
     final Conversation? conv = widget.state.conversationOf(key);
-    if (conv != null) {
-      widget.state.loadHistory(conv);
+    if (conv == null) {
+      return;
+    }
+    widget.state.loadHistory(conv);
+    if (conv.isRoom && _membersRequested.add(conv.targetId)) {
+      // 失败就静默：没有成员名字时，消息里退回账号 id，头像退回首字头像。
+      widget.state.loadMembers(conv.targetId).ignore();
     }
   }
 
@@ -216,7 +224,15 @@ class _MessagesViewState extends State<MessagesView> {
                             child: Container(
                               height: 52,
                               padding: const EdgeInsets.symmetric(horizontal: 12),
-                              color: selected ? p.surface2 : Colors.transparent,
+                              decoration: BoxDecoration(
+                                color: selected ? p.surface2 : Colors.transparent,
+                                border: Border(
+                                  left: BorderSide(
+                                    color: selected ? p.ink : Colors.transparent,
+                                    width: 2,
+                                  ),
+                                ),
+                              ),
                               child: Row(
                                 children: <Widget>[
                                   MoonAvatar(
@@ -318,12 +334,7 @@ class _MessagesViewState extends State<MessagesView> {
                               onPressed: widget.onToggleList,
                               icon: Icon(Icons.menu, size: 18, color: p.ink3),
                             ),
-                          MoonAvatar(
-                            name: active.title,
-                            seed: active.targetId,
-                            avatar: active.isRoom ? null : widget.state.avatarOf(active.targetId),
-                            size: 30,
-                          ),
+                          _ConversationMark(state: widget.state, conversation: active),
                           const SizedBox(width: 10),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,7 +505,6 @@ class _MessageListState extends State<_MessageList> {
 
   @override
   Widget build(BuildContext context) {
-    final MoonPalette p = context.moon;
     final List<ChatMessage> messages = widget.state.messagesOf(widget.conversation.key);
     if (messages.isEmpty) {
       return MoonEmpty(
@@ -503,13 +513,19 @@ class _MessageListState extends State<_MessageList> {
       );
     }
     final bool loadingOlder = widget.state.isHistoryLoading(widget.conversation.key);
+    final Map<int, RoomMember> members = <int, RoomMember>{
+      for (final RoomMember m
+          in widget.state.membersOf(widget.conversation.targetId)?.items ?? const <RoomMember>[])
+        m.accountId: m,
+    };
+    final List<Object> rows = _rows(messages);
     return ListView.builder(
       controller: _scroll,
       reverse: true,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      itemCount: messages.length + (loadingOlder ? 1 : 0),
+      itemCount: rows.length + (loadingOlder ? 1 : 0),
       itemBuilder: (BuildContext context, int i) {
-        if (loadingOlder && i == messages.length) {
+        if (loadingOlder && i == rows.length) {
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Center(
@@ -517,53 +533,203 @@ class _MessageListState extends State<_MessageList> {
             ),
           );
         }
-        final ChatMessage m = messages[messages.length - 1 - i];
-        final bool failed = m.state == MessageState.failed;
-        return Semantics(
-          liveRegion: true,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+        final Object row = rows[rows.length - 1 - i];
+        if (row is DateTime) {
+          return _DayDivider(day: row);
+        }
+        return _MessageGroup(
+          group: row as List<ChatMessage>,
+          state: widget.state,
+          conversation: widget.conversation,
+          members: members,
+          onRetry: widget.onRetry,
+        );
+      },
+    );
+  }
+
+  /// 同一人、五分钟内、同一天的消息并成一组；跨天插一行日期。
+  List<Object> _rows(List<ChatMessage> messages) {
+    final List<Object> rows = <Object>[];
+    List<ChatMessage> current = <ChatMessage>[];
+    DateTime? day;
+    ChatMessage? previous;
+
+    void flush() {
+      if (current.isNotEmpty) {
+        rows.add(List<ChatMessage>.unmodifiable(current));
+        current = <ChatMessage>[];
+      }
+    }
+
+    for (final ChatMessage m in messages) {
+      final DateTime d = DateTime(m.sentAt.year, m.sentAt.month, m.sentAt.day);
+      if (day != d) {
+        flush();
+        rows.add(d);
+        day = d;
+      } else if (previous != null &&
+          (previous.senderAccountId != m.senderAccountId ||
+              previous.state != MessageState.sent ||
+              m.state != MessageState.sent ||
+              m.sentAt.difference(previous.sentAt).inMinutes >= 5)) {
+        flush();
+      }
+      current.add(m);
+      previous = m;
+    }
+    flush();
+    return rows;
+  }
+}
+
+/// 跨天的分隔：一条细线夹着本地的日期。
+class _DayDivider extends StatelessWidget {
+  const _DayDivider({required this.day});
+
+  final DateTime day;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    final String label = MaterialLocalizations.of(context).formatMediumDate(day);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 14),
+      child: Row(
+        children: <Widget>[
+          Expanded(child: Container(height: 1, color: p.line)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: MonoText(label),
+          ),
+          Expanded(child: Container(height: 1, color: p.line)),
+        ],
+      ),
+    );
+  }
+}
+
+/// 一组消息：头像只在第一条出现，时间/状态只挂在最后一条。
+class _MessageGroup extends StatelessWidget {
+  const _MessageGroup({
+    required this.group,
+    required this.state,
+    required this.conversation,
+    required this.members,
+    required this.onRetry,
+  });
+
+  final List<ChatMessage> group;
+  final AppState state;
+  final Conversation conversation;
+  final Map<int, RoomMember> members;
+  final ValueChanged<ChatMessage> onRetry;
+
+  String _name() {
+    final ChatMessage first = group.first;
+    if (first.mine) {
+      return state.account?.displayName ?? '';
+    }
+    if (conversation.isRoom) {
+      return members[first.senderAccountId]?.displayName ?? '#${first.senderAccountId}';
+    }
+    return conversation.title;
+  }
+
+  String? _avatar() {
+    final ChatMessage first = group.first;
+    if (conversation.isRoom) {
+      return state.avatarOf(first.senderAccountId);
+    }
+    return state.avatarOf(first.mine ? first.senderAccountId : conversation.targetId);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ChatMessage first = group.first;
+    final ChatMessage last = group.last;
+    final bool mine = first.mine;
+    final String name = _name();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        children: <Widget>[
+          if (!mine) ...<Widget>[
+            MoonAvatar(
+              name: name,
+              seed: first.senderAccountId,
+              avatar: _avatar(),
+              size: 26,
+            ),
+            const SizedBox(width: 10),
+          ],
+          Flexible(
             child: Column(
-              crossAxisAlignment: m.mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Container(
-                  constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.72),
-                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: m.mine ? p.bubbleMe : p.bubbleThem,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(12),
-                      topRight: const Radius.circular(12),
-                      bottomLeft: Radius.circular(m.mine ? 12 : 4),
-                      bottomRight: Radius.circular(m.mine ? 4 : 12),
-                    ),
-                    border: Border.all(color: failed ? p.accent : p.line),
+                if (!mine && name.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 2, bottom: 3),
+                    child: MonoText(name),
                   ),
-                  child: Text(m.text, style: TextStyle(fontSize: 13.5, height: 1.6, color: p.ink)),
-                ),
-                const SizedBox(height: 3),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    MonoText(switch (m.state) {
-                      MessageState.sending => context.tr('发送中…'),
-                      MessageState.sent => formatClock(m.sentAt),
-                      MessageState.failed => context.tr('未发出'),
-                    }),
-                    if (failed) ...<Widget>[
-                      const SizedBox(width: 8),
-                      GestureDetector(
-                        onTap: () => widget.onRetry(m),
-                        child: Text(context.tr('重试'), style: TextStyle(fontSize: 10.5, color: p.accent)),
-                      ),
-                    ],
-                  ],
-                ),
+                for (int i = 0; i < group.length; i++)
+                  Padding(
+                    padding: EdgeInsets.only(top: i == 0 ? 0 : 3),
+                    child: _bubble(context, group[i], i == group.length - 1),
+                  ),
+                const SizedBox(height: 4),
+                _meta(context, last),
               ],
             ),
           ),
-        );
-      },
+        ],
+      ),
+    );
+  }
+
+  Widget _bubble(BuildContext context, ChatMessage m, bool isLast) {
+    final MoonPalette p = context.moon;
+    final bool failed = m.state == MessageState.failed;
+    return Container(
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.66),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+      decoration: BoxDecoration(
+        color: m.mine ? p.bubbleMe : p.bubbleThem,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(14),
+          topRight: const Radius.circular(14),
+          bottomLeft: Radius.circular(m.mine ? 14 : (isLast ? 4 : 14)),
+          bottomRight: Radius.circular(m.mine ? (isLast ? 4 : 14) : 14),
+        ),
+        border: Border.all(color: failed ? p.accent : p.line),
+      ),
+      child: Text(m.text, style: TextStyle(fontSize: 13.5, height: 1.6, color: p.ink)),
+    );
+  }
+
+  Widget _meta(BuildContext context, ChatMessage last) {
+    final MoonPalette p = context.moon;
+    final bool failed = last.state == MessageState.failed;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        MonoText(switch (last.state) {
+          MessageState.sending => context.tr('发送中…'),
+          MessageState.sent => formatClock(last.sentAt),
+          MessageState.failed => context.tr('未发出'),
+        }),
+        if (failed) ...<Widget>[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => onRetry(last),
+            child: Text(context.tr('重试'), style: TextStyle(fontSize: 10.5, color: p.accent)),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -804,6 +970,67 @@ class _RoomInfoState extends State<_RoomInfo> {
           isOwner ? context.tr('群主不能退群（V1 没有转让）。') : context.tr('邀请即入群，不需要对方同意。'),
           style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
         ),
+      ],
+    );
+  }
+}
+
+
+/// 会话标题旁的头像：私聊是对方；群聊是前三位成员叠在一起，超出用 +N。
+class _ConversationMark extends StatelessWidget {
+  const _ConversationMark({required this.state, required this.conversation});
+
+  final AppState state;
+  final Conversation conversation;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    if (!conversation.isRoom) {
+      return MoonAvatar(
+        name: conversation.title,
+        seed: conversation.targetId,
+        avatar: state.avatarOf(conversation.targetId),
+        size: 30,
+      );
+    }
+    final Paged<RoomMember>? page = state.membersOf(conversation.targetId);
+    final List<RoomMember> items = page?.items ?? const <RoomMember>[];
+    if (items.isEmpty) {
+      return MoonAvatar(name: conversation.title, seed: conversation.targetId, size: 30);
+    }
+    final List<RoomMember> shown = items.take(3).toList(growable: false);
+    final int extra = (page?.total ?? 0) - shown.length;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        SizedBox(
+          width: 22 + (shown.length - 1) * 13,
+          height: 30,
+          child: Stack(
+            children: <Widget>[
+              for (int i = 0; i < shown.length; i++)
+                Positioned(
+                  left: i * 13,
+                  top: 4,
+                  child: Container(
+                    padding: const EdgeInsets.all(1),
+                    decoration: BoxDecoration(shape: BoxShape.circle, color: p.surface),
+                    child: MoonAvatar(
+                      name: shown[i].displayName,
+                      seed: shown[i].accountId,
+                      avatar: state.avatarOf(shown[i].accountId),
+                      size: 20,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (extra > 0) ...<Widget>[
+          const SizedBox(width: 6),
+          MonoText('+$extra'),
+        ],
       ],
     );
   }
