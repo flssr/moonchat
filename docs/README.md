@@ -5,7 +5,7 @@
 - [`truth/`](./truth/README.md)：项目现在是什么样，只写当前生效的结论。
 - [`history/`](./history/README.md)：项目为什么这样设计，只记决策与变动。
 
-旧的 PRD / DDD / data-model / api-contracts 四份文档、根目录 spec 与模块旁 `SPEC.md` 不再承担设计要求，也不再提交到仓库。代码、迁移、测试和 OpenAPI 运行时输出是可执行事实；`truth/` 用简洁表述解释这些事实。
+旧的 PRD / DDD / data-model / api-contracts 四份文档、根目录 spec 与模块旁 `SPEC.md` 不再承担设计要求，也不再提交到仓库。代码、迁移、测试与 [`openapi.json`](./openapi.json)（运行时 `/v3/api-docs` 的落盘副本，由测试生成并校验）是可执行事实；`truth/` 用简洁表述解释这些事实。
 
 ## 写入规则
 
