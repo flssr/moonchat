@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import java.util.Locale;
 
 /**
- * #1 #2 #3 #5 #6 的请求体，校验规则见 docs/api-contracts.md §3、§4。
+ * #1 #2 #3 #5 #6 的请求体，校验规则见 docs/truth/backend/identity.md。
  * 入口校验只在这里做一次，之后靠类型系统流转。
  */
 public final class AccountRequests {

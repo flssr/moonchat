@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * `room_info` 表：群与群主（docs/data-model.md §4.5）。`id` 就是对外的 `room_id`，
+ * `room_info` 表：群与群主（docs/truth/backend/persistence.md）。`id` 就是对外的 `room_id`，
  * `turms_group_id` 只是投递句柄，永不出现在响应里。
  */
 @Data

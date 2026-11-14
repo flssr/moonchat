@@ -10,7 +10,7 @@ enum AuthPhase { loggedOut, busy, ready }
 
 enum MessageState { sending, sent, failed }
 
-/// 会话坐标：私聊是对端账号 id，群聊是 `room_id`（`SCREEN-MAP.md` §2）。
+/// 会话坐标：私聊是对端账号 id，群聊是 `room_id`（`docs/truth/frontend/README.md`）。
 class Conversation {
   Conversation({
     required this.type,
@@ -68,7 +68,7 @@ class AppState extends ChangeNotifier {
   AppState({ApiClient? api, RealtimeClient? realtime})
       : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime() {
-    // 401 一律回登录页（`docs/frontend/API-MAPPING.md` §4）：凭据没了就别再让界面假装还在线。
+    // 401 一律回登录页（`docs/truth/frontend/README.md`）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
   }
 
@@ -108,7 +108,7 @@ class AppState extends ChangeNotifier {
   Timer? _turmsTimer;
 
   // —— 导航状态：唯一一份，登出与切账号都会复位 ——
-  /// 当前视图：`messages` / `contacts` / `account`（`SCREEN-MAP.md` §2）。
+  /// 当前视图：`messages` / `contacts` / `account`（`docs/truth/frontend/README.md`）。
   String view = 'messages';
   String? activeConversationKey;
   String filter = 'all'; // all | dm | room
@@ -279,7 +279,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`HANDOFF.md` §4）。
+  /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`docs/truth/frontend/README.md`）。
   Future<void> _openSession(int accountId) async {
     // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
     final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);

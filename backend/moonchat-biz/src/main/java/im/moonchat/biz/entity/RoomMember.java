@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * `room_member` 表：群成员关系的唯一业务真相（docs/data-model.md §4.6）。
+ * `room_member` 表：群成员关系的唯一业务真相（docs/truth/backend/persistence.md）。
  * 成员列表与发送授权都读本表，`account_room` 不能用于授权。
  *
  * <p>主键是 `(room_id, account_id)`，所以 `roomId` 只是 MyBatis-Plus 需要的 `@TableId` 占位——

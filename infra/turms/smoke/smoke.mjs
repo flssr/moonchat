@@ -1,6 +1,6 @@
 // Turms 端到端冒烟：一次性验证脚本。
 //
-// 验证的是 docs/DDD.md「要核对的 7 条」中的运行时结论：
+// 验证 docs/truth/backend/messaging.md 描述的 Turms 运行时结论：
 //   1. Admin API 能用指定 id 建用户（AddUserDTO.id）
 //   2. Biz 用共享 HMAC 密钥签的 JWT 能登录 turms-gateway（gateway 的 type = jwt）
 //   3. 只授 QUERY 的 JWT 发不出消息（CREATE_MESSAGE_REQUEST → UNAUTHORIZED_REQUEST，1106）

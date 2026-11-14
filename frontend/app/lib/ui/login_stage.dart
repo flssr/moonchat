@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// 登录舞台：发射平台的夜空（`docs/frontend/DESIGN-SPEC.md` §6.1）。
+/// 登录舞台：发射平台的夜空（`docs/truth/frontend/design.md`）。
 ///
 /// 画的是「观测窗」：夜空渐变、银河带、星点、月相与发射台都在这里用
 /// CustomPaint 画出来，只引用 `MoonPalette` 的三枚插画色；不加载任何图片

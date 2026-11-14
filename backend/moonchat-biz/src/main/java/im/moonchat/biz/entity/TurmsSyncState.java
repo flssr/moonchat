@@ -6,7 +6,7 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * `account.turms_sync_state` 与 `room_info.turms_sync_state` 的两个取值
- * （docs/data-model.md §4.1、§4.5）：只标记「PG 这一行有没有同步进 Turms」，不是业务状态。
+ * （docs/truth/backend/persistence.md）：只标记「PG 这一行有没有同步进 Turms」，不是业务状态。
  */
 @Getter
 @RequiredArgsConstructor

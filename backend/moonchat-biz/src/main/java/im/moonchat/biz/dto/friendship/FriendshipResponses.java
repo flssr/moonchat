@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * #8 #9 #10 的响应体。`requested_by` 不出现，对外只有 `incoming`；
- * `friendship.id` 也不出现——客户端没有理由保存一个不透明 id（docs/api-contracts.md §5）。
+ * `friendship.id` 也不出现——客户端没有理由保存一个不透明 id（docs/truth/backend/friendship.md）。
  * `Item` / `ListResponse` 与群那边同名，文档里靠 `@Schema(name)` 区分。
  */
 public final class FriendshipResponses {

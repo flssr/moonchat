@@ -33,7 +33,7 @@ class _ContactsViewState extends State<ContactsView> {
   bool _showRoomForm = false;
   bool _busy = false;
 
-  /// 页签与选中项都在状态层（`SCREEN-MAP.md` §2 的 `friendsTab` / `selectedContact`）。
+  /// 页签与选中项都在状态层（`docs/truth/frontend/README.md` 的 `friendsTab` / `selectedContact`）。
   String get _tab => widget.state.contactsTab;
   int? get _selectedId => widget.state.selectedContactId;
 

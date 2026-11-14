@@ -14,9 +14,9 @@
 
 ## 依据
 
-- 行为：`goal-and-requirements.md`、`docs\api-contracts.md`
+- 行为：`docs/truth/product.md`、`docs/truth/backend/README.md`
 - 视觉基线：`Moonchat-UI.zip` 的登录与聊天页，火箭三态插画沿用原资产
 - 本页只是前端样机，不连后端，所有数据都在页面内存里；刷新即复位。
-- 交付文档：`docs\frontend\DESIGN-SPEC.md`、`SCREEN-MAP.md`、`API-MAPPING.md`、`HANDOFF.md`
+- 当前界面事实：`docs/truth/frontend/`
 
-评审已通过；后续改动先改本目录，再同步 docs。
+评审已通过；后续改动先改本目录，再同步 `docs/truth/frontend/`。

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// 设计 token 的唯一出处：数值全部取自 `docs/frontend/DESIGN-SPEC.md` §2–§6。
+/// 设计 token 的唯一代码出处；设计结论见 `docs/truth/frontend/design.md`。
 /// 组件只引用这里的语义名，不写死十六进制。
 @immutable
 class MoonPalette extends ThemeExtension<MoonPalette> {
@@ -42,7 +42,7 @@ class MoonPalette extends ThemeExtension<MoonPalette> {
   final Color flash;
 
   /// 登录舞台（发射平台夜景）专用的三枚插画色：只给 `LoginStage` 用，
-  /// 不参与任何界面组件。见 `DESIGN-SPEC.md` §6.1。
+  /// 不参与任何界面组件。见 `docs/truth/frontend/design.md`。
   final Color skyTop;
   final Color skyBottom;
   final Color moon;
@@ -167,7 +167,7 @@ extension MoonColorsX on BuildContext {
       (Theme.of(this).brightness == Brightness.dark ? MoonPalette.dark : MoonPalette.light);
 }
 
-/// 字体：系统字体栈，不加载网络字体（DESIGN-SPEC §3）。
+/// 字体：系统字体栈，不加载网络字体（docs/truth/frontend/design.md）。
 const List<String> kSansFallback = <String>[
   'Segoe UI Variable Text',
   'Segoe UI',
@@ -185,7 +185,7 @@ const List<String> kMonoFallback = <String>[
   'monospace',
 ];
 
-/// 容器断点：单点定义，代码与 `DESIGN-SPEC.md` §5 对齐。
+/// 容器断点：单点定义，代码与 `docs/truth/frontend/design.md` 对齐。
 class MoonBreakpoints {
   const MoonBreakpoints._();
 

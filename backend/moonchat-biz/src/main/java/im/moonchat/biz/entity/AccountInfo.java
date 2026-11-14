@@ -11,7 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 /**
- * `account_info` 表：一个账号的名字、状态与唯一认证哈希（docs/data-model.md §4.2）。
+ * `account_info` 表：一个账号的名字、状态与唯一认证哈希（docs/truth/backend/persistence.md）。
  * `credentialHash` 与 `email` 只在本层与持久层之间流转，任何响应都要走 dto 里的白名单字段；
  * `@Data` 生成的 toString 会把哈希带出去，所以在那一列上单独排掉。
  */

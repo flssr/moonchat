@@ -16,7 +16,7 @@ import org.springframework.http.MediaType;
 
 /**
  * #21–#23 黑名单：一条单向关系——只断「被拉黑方 → 拉黑方」，
- * 拉黑不解除好友关系、群聊不拦、只有真人能做（docs/api-contracts.md §7）。
+ * 拉黑不解除好友关系、群聊不拦、只有真人能做（docs/truth/backend/friendship.md）。
  */
 class BlocklistApiTest extends ApiTestSupport {
 

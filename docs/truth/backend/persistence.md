@@ -1,0 +1,27 @@
+# 持久层与数据
+
+PostgreSQL 当前有八张表，Flyway 四个迁移文件，持久层统一使用 MyBatis-Plus。
+
+| 迁移 | 表 |
+| --- | --- |
+| `V1__biz_account.sql` | `account`、`account_info` |
+| `V2__biz_friendship.sql` | `friendship`、`friendship_reverse` |
+| `V3__biz_room.sql` | `room_info`、`room_member`、`account_room` |
+| `V4__biz_blocklist.sql` | `blocklist` |
+
+## 共同约定
+
+- 表名与列名使用单数 snake_case；id 统一 `bigint`。
+- 时间列为 `timestamptz`，由应用写入，不建更新时间触发器。
+- 枚举用 `text + check`。
+- 外键是逻辑外键，DDL 不写 `references` 或级联删除。
+- 账号、群和认证信息不建第二套 Turms 映射表。
+- 消息、会话、限流桶、来源日志都不进 PG。
+
+`friendship_reverse` 与 `account_room` 是可重建查询镜像，主表才是授权真相。好友与成员删除写 tombstone，物理 purge 的保留期和频率尚未确定。
+
+## 只能由应用守的规则
+
+主从镜像同事务、群主始终是有效成员、真人账号必须属于真人归属者、软删查询排除、私聊好友授权与群成员授权，都必须由 Biz 事务和领域逻辑保证。数据库唯一键作为并发重复写的最后守卫。
+
+黑名单每人最多 100 条：插入前按 `owner_account_id` 计数，达到上限回 409 `blocklist_full`。并发下 99→100 时最多多进 1 条，可容忍，不加锁、不加数据库约束。

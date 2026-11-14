@@ -19,7 +19,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 
 /**
- * 黑名单的读写。这是一条**单向**关系：只断「被拉黑方 → 拉黑方」（docs/DDD.md「黑名单」），
+ * 黑名单的读写。这是一条**单向**关系：只断「被拉黑方 → 拉黑方」（docs/truth/backend/friendship.md），
  * 拉黑不解除好友关系，也不进 Turms。两条只能由应用层守的规则：不能拉黑自己、只有真人能做。
  */
 @Service
@@ -74,7 +74,7 @@ public class BlocklistServiceImpl implements BlocklistService {
         if (target == null) {
             throw ApiException.notFound("账号不存在");
         }
-        // 每人最多拉黑 100 人：并发下 99→100 时可能多进一条，可容忍（docs/data-model.md §5）
+        // 每人最多拉黑 100 人：并发下 99→100 时可能多进一条，可容忍（docs/truth/backend/persistence.md）
         if (blocklistMapper.selectCount(new LambdaQueryWrapper<Blocklist>()
                 .eq(Blocklist::getOwnerAccountId, ownerId)) >= BLOCKLIST_LIMIT) {
             throw ApiException.blocklistFull();

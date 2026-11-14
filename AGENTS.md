@@ -1,205 +1,59 @@
 # AGENTS.md
 
-给在本仓库工作的 AI agent 的入口文档。人看的项目概览在 `README.md`，文档索引在 `docs/README.md`。
+给在本仓库工作的 AI agent 的入口。项目概览在 `README.md`；当前事实与决策历史在 `docs/`。
 
-**这份文件只写约束与规矩，不写设计。** 设计内容一律在 5 份 spec 里（根目录 2 份 + 模块旁 3 份）；本文与 spec 冲突时以 spec 为准，并把冲突报告给用户。
+## 施工逻辑
 
----
+1. 不为几乎不会发生的边界或并发问题提前膨胀代码；概率与代价不清楚时先停下确认。
+2. 外部数据只在入口校验一次，内部靠类型系统与已验证状态流转。
+3. 单次使用的逻辑就近内联，不提前抽无意义 helper。
+4. 能由一个清晰函数完成的事不要拆层；非必要不引入 `try/catch`。
 
-## important. 施工逻辑
+## 文档
 
-1.防过度防御：几乎不会发生的边界/并发问题，讲清概率并经过用户确认后再加，严禁为"理论上更稳"，私自膨胀代码
+- **`docs/truth/` 是当前事实**：只写现在生效的结论和关键依据，不写待办、备选或沿革。
+- **`docs/history/` 是决策历史**：每次决策新增记录，带本地时间与 UTC，新记录在上。
+- 文档按总体、后端、前端和功能模块分层；跨模块事实在总体文档只写一次，模块文档链接引用。
+- 代码、迁移、测试和运行时 `/v3/api-docs` 是可执行事实。旧 spec、模块 `SPEC.md` 与 `docs/openapi.json` 均已退出仓库，不恢复。
+- 施工中的临时计划与草稿不进入 `docs`，也不在仓库新增临时 markdown。
+- 当前入口：[真相索引](docs/truth/README.md)；[历史索引](docs/history/README.md)。
 
-2.入口单词校验：外部数据只在边界校验一次，内部靠类型系统流转，禁止层层重复判断
+## 硬边界
 
-3.拒绝提前抽象：单次使用的逻辑就近内联，不随意提前拆分无意义的helper
-
-4.控制复杂度：非必要不用try/catch，能但函数清晰搞定的别乱拆
-
-
----
-
-## 0. 先认清这个仓库的状态
-
-- **设计是唯一真相，代码按 V1 开始落地**：spec 只有 5 份——根目录 `goal-and-requirements.md`（产品决策）与 `architecture.md`（架构总览），加上 `backend/moonchat-biz/SPEC.md`、`frontend/SPEC.md`、`infra/SPEC.md`。`docs/` 下是四份施工文档（`PRD.md`、`DDD.md`、`data-model.md`、`api-contracts.md`），写需求明细、领域行为、DDL 与路由契约；它们**没有 frontmatter，不是 spec**。设计上只有 **`moonchat-biz` 一个业务进程**，根 Maven 工程只聚合它一个模块（上一版的 `moonchat-connector` 已删除，不要再重建）。**当前进度：S0（风险前置）、S1（身份底座）、S2（关系）、S3（群与投影）、S4（写入网关）与 S5（客户端与验收）都已完成并合入 `main`**——V1 交付时的七张表迁移已建齐、接口 20 条（身份 #1/#2/#3/#4/#20、关系 #5–#11、群 #12–#18、发言 #19），群的三张表、`turms` 投影与 30 秒重放器、两级限流桶、Flutter Web 客户端（`frontend/app`）与 agent 示例端点都已落地，六条验收判据已在真 Turms + 真 Biz 上跑通（工作项在 `.thinkrail/context/TASK-v1-construction.md`，不进 git）。
-- **V2 已开工：黑名单**（issue #6）。第八张表 `blocklist` 与接口 #21/#22/#23，契约在 `docs/api-contracts.md` §7、DDL 在 `docs/data-model.md` §4.8，合计八张表 / 23 条路由。**§4/§6 里「V1 不含拉黑」的记录不回填**——它们描述的是 V1 的范围，仍然成立。
-- 验证构建在 `backend/` 里跑：`./mvnw test`（Windows 为 `.\\backend\\mvnw.cmd -f backend\\pom.xml test`）；Turms 是固定提交的外部子模块，容器编排入口见根 `README.md`。不要凭空增加其他构建工具或部署命令。
-- 不要为了「让仓库看起来完整」而新增无对应 V1 行为的模块、CI 配置、lint 规则或接口。
-- 当前最有价值的产出仍是**文档与实现的一致性**：一份自相矛盾的 spec 比没有 spec 更糟。
-- 用户明确要求「开始实现」时，先确认落在哪个切片（见 [§6](#6-范围纪律按切片推进)），再动手。
-
----
-
-## 1. 按任务决定读哪几份
-
-| 你要做的事 | 必读 |
+| 边界 | 含义 |
 | --- | --- |
-| 任何改动之前 | `goal-and-requirements.md`（定位、范围判据、已定简化、Non-Goals、V2）+ `docs/PRD.md`（需求明细） |
-| 判断某能力该不该做、属于哪一片 | `goal-and-requirements.md` + `architecture.md` |
-| 动手改架构、跨模块行为、数据归属 | `architecture.md`（硬规矩、数据归属表、一条消息的旅程、跨模块不变量） |
-| 消息 / 群 / 成员 / 私聊 / 写入网关 / 代发 | `docs/DDD.md`（消息与隧道、好友关系）+ `backend/moonchat-biz/SPEC.md`（边界与决定） |
-| 好友、加好友、删好友、私聊授权 | `docs/DDD.md`「好友关系」 |
-| 账号、主页、归属、切换账号、来源标记 | `docs/DDD.md`「账号与归属」 |
-| agent 怎么接入、凭据、限流、收全部会话 | `docs/DDD.md`「agent 接入面」 |
-| 建表、改列、写迁移、争议「这张表该不该有」 | `docs/data-model.md`（聚合边界、DDL、只能由应用层守的规则、不建表清单）+ `backend/moonchat-biz/SPEC.md` |
-| 写 Controller / DTO / 错误码、争议「这个动作走哪条路由」 | `docs/api-contracts.md`（路由总表、认证与错误码、字段与表的对应、明确不提供的接口） |
-| 改 pom、加依赖、升级版本 | `backend/moonchat-biz/SPEC.md`「依赖」（已装什么、版本从哪来、明确不加什么、加依赖的判断顺序） |
-| 部署单元、运行时、扩容 | `infra/SPEC.md` |
-| 决定先做哪一片、一片什么时候算结束、片内不许做什么 | `.thinkrail/context/TASK-v1-construction.md`（临时任务文档，不进 git；S0–S5 的边界、片末判据、跨片约定） |
+| 消息唯一写入者是 Turms | 服务端只经 Biz 写入网关与 `im-facade` 的 Admin `POST /messages` 代发；任何服务不得直写 Mongo |
+| 客户端无 Turms 写权限 | 客户端 JWT 只授 `QUERY`；发言与建群都不能绕过 Biz |
+| 业务真相在 PG | 账号、好友、群、成员与黑名单以 PG 为准；Turms 群成员是可重建投影 |
+| 身份只有一处 | `account.id` 就是 Turms 用户 id；归属关系即授权，没有第二映射或授权表 |
+| Biz 只校验不投递 | 不订阅消息事件，不做计数、通知或审计投递 |
+| agent 与真人同构 | agent 用同一套 `/api`、同一签发路径和同一个 Turms `/im`，没有专用转发层 |
 
-依赖方向看各 spec 的 `depends-on`（`spec_get` 可查）：**先读依赖，再读自己**。
+私聊授权只在写入网关检查 PG 好友关系；Turms 配置为不校验好友，且 `allowSendMessagesToStranger = true` 是部署前提。黑名单只单向拦截被拉黑方对拉黑方的私聊与好友申请，不投影 Turms。
 
----
+## 当前范围
 
-## 2. spec 是唯一真相
+V1 已完成：身份、好友、私聊、群聊、agent 接入、Flutter Web 与六条验收。V2 只开始了黑名单后端，客户端入口仍待接入。
 
-spec 文件靠 frontmatter 里的 `id` / `type` 被 spec-graph 索引，因此：
+明确不做：内容流、评论点赞、图片附件、搜人、agent 目录、消息搜索、临时会话、公开群与邀请链接、音视频、多端同步、无响应提示、账号转让、平台托管 agent 记忆、agent 市场和应用商店上架。
 
-- **frontmatter 不许删、不许改名**。schema 固定为 `id` / `type` / `status` / `title` / `parent` / `depends-on`。
-- **`id` 一旦发布不改**（形如 `moonchat-product`、`moonchat-biz`），改 id 等于断开所有引用。
-- `parent` / `depends-on` 只能指向**已存在的 id**。
-- 每份 spec 的正文以一行 `**一句话**：…` 开头，这是它的定位句；改模块职责时这句必须同步改。
+## 代码形状
 
-改动纪律：
-
-- **改行为 = 改 spec**。任何影响边界、契约、不变量的改动，必须先落到对应 spec，再谈实现。反过来，实现暴露了 spec 没定的东西，先补 spec。
-- **新增、删除或移动 spec 文件，必须同步 `docs/README.md` 的「spec 树在哪」表**，否则索引立刻开始骗人。
-- **根目录的持久 markdown 只有四个**：`README.md`、`AGENTS.md` 与两份 spec 入口（`goal-and-requirements.md`、`architecture.md`）；模块 spec 贴在模块旁（`backend/moonchat-biz/SPEC.md` 等）。设计内容不回到根目录平铺。
-- **ThinkRail 专用目录不进 git**：`.thinkrail/` 已写进 `.gitignore`。它放工具状态与临时任务文档（`.thinkrail/context/TASK-*.md`），**持久内容必须落到 spec 树或 `docs/`**；不要把 spec、决策或交付文档留在那里。
-- **不要在仓库里新建临时 markdown**（`NOTES.md`、`TODO.md`、`plan.md`、`草稿.md`、`new_docs/` 之类）。计划写进对话内 TODO 或 `.thinkrail/context/`，草稿留在对话里。`docs/` 只放四张表里登记的四份施工文档。
-- 已经写在 spec 里的「已定的简化」不是待办事项，是决定（见 §4）。
-
----
-
-## 3. 硬边界：违反即错，不要「顺手」放松
-
-这六条是整套设计成立的支点，代码里任何一处绕开它们，架构都不再是它描述的样子。
-
-| 边界 | 含意 | 常见误犯 |
-| --- | --- | --- |
-| **消息的唯一写入者是 Turms** | 服务端只有一个写入口：Biz 的写入网关经 `im-facade` 调 Turms Admin API 的 `POST /messages`。客户端**不握写入权限**：它的 Turms JWT 只授 `QUERY`，`CREATE_MESSAGE_REQUEST` 会被 Turms 拒 | 在别处新开一条发送通道，或让某个模块直写 Mongo；或把客户端凭据改成 `ALLOW *` |
-| **`im-facade` 只有一支发送的手** | 它能建群、改成员投影、签发凭据、同步资料、代发消息；但这支手只对写入网关开放，且必须带 Biz 已认证的 `senderId`，不能代任意账号发言 | 为了「少一次往返」在业务代码里直接调 Admin API，或让 `im-facade` 自己判归属 |
-| **Biz 在写入进路上同步校验，不做投递** | 校验归属、授权、限流、来源就交出去；不参与投递，不订阅消息事件 | 让 Biz 订阅消息事件做计数 / 通知 / 审计 |
-| **身份只有一处真相** | `account.id` 就是 Turms 用户 id；归属关系本身就是授权，没有授权表、没有临时凭据、没有第二套映射 | 给 agent 单独建 `agent_user_mapping` 表 |
-| **业务真相只在 PG** | 群、群成员、好友、账号都以 PG 为准；Turms 里的 group / member 是可重建投影，好友根本不投影 | 拿 Turms 的群成员或会话列表当业务真相；或把消息也搬进 PG |
-| **客户端只有一类** | 账号的 Turms 客户端：真人的 Flutter 与 agent 端点用同一套凭据签发路径、同一个 `/im` 入口、同一个 `/api` 写入网关 | 给 agent 造一个专用的转发层、专用端点或「推送档位」 |
-
-另外四条容易踩的语义边界：
-
-- **私聊的授权是 PG 的好友关系**，执行点在写入网关，不在 Turms——它会配置成不校验好友（`allowSendMessagesToStranger = true`，Turms 默认值）。客户端入口规则（只从好友列表与资料页进）是体验层，不承担授权；非好友私聊只能落到网关被拒，因为客户端没有 Turms 写权限。
-- **来源标记（`agent` / `owner`）由写入网关入口的凭据决定**，只进结构化日志与限流，不作权限判定。Turms 的消息模型里**没有自定义属性字段**，所以来源不可能写进消息。
-- **平台不替 agent 筛消息**：agent 收到它账号的全部会话，自己判断哪条归它管。没有工作区、没有投递档位、没有 webhook。
-- **限流只在写入网关一处**（账号 → 会话两级，在 Biz 的 Redis 里），且只对 `agent` 来源生效；本人的发言不进任何 agent 桶。
-
-还有两条时间维度上的不变量：
-
-- **没有历史回填**：新人进群、新加好友都只看到加入之后的消息——Turms 对群成员只推新消息，客户端能查的历史就是它在 Turms 里可见的那一段。
-- **权限由好友关系与群成员关系决定**，与来源、限流、客户端实现都无关。
-
----
-
-## 4. 「已定的简化」不是待办，别私自升级
-
-下面每一条都是**有意不做**，判据在各自 spec 里，本节只是索引。除非用户明确要求**且**你先改了对应 spec，否则一律保持现状：
-
-| 简化 | 依据 |
+| 层 | 约定 |
 | --- | --- |
-| 群只有一种可见性（成员可见），邀请即入群、不设审批 | `docs/DDD.md`「群与投影」 |
-| 不做公开群与邀请链接（等 Turms 只读能力实测） | `docs/DDD.md`「群与投影」 |
-| 不做搜人、不做 agent 目录：加好友靠账号 id 与主页链接 | `goal-and-requirements.md`（已定的简化） |
-| 不做 QQ 式临时会话：群里的非好友只能看资料页、再申请好友（限流理由） | `docs/DDD.md`「好友关系」 |
-| 头像平台生成，不做上传 | `docs/DDD.md`「账号与归属」 |
-| 第一版没有无响应提示 | `goal-and-requirements.md`（V2 计划）、`docs/PRD.md` §5.2 |
-| 不做消息搜索 | `docs/DDD.md`「消息与隧道」 |
-| agent 只有好友申请一个关系动作：建群、移除成员、拉黑都只有真人能做 | `docs/DDD.md`「好友关系」 |
-| agent 收它账号的全部会话，自己筛：没有工作区、没有投递档位、没有 webhook | `docs/DDD.md`「agent 接入面」 |
-| OneBot 11 只在 agent 侧桥接，平台不开协议面 | `docs/DDD.md`「OneBot 11 桥接」 |
-| 业务只有一个进程（`moonchat-biz`） | `infra/SPEC.md` |
-| 不引入消息队列、不建投递队列：写入是同步 REST 调用 | `infra/SPEC.md` |
-| 客户端写入由 Turms 的 JWT `statements` 关闭（只授 `QUERY`）：不需要 Turms 插件 | `docs/DDD.md`「凭据与客户端权限」 |
-| 不做结构化 mentions：`@` 只在渲染层按正文识别 | `docs/DDD.md`「消息与隧道」 |
-| 不建审计表：来源、限流命中只打结构化日志 | `goal-and-requirements.md`（已定的简化） |
-| 不做邮箱验证与找回密码：忘密码只能重建账号 | `goal-and-requirements.md`（已定的简化） |
-| 不做全局限流桶，只做「账号 → 会话」两级桶 | `docs/DDD.md`「agent 接入面」、`docs/PRD.md` §7.1 |
+| 分包 | `controller/<module>`、`service/<module>` + `impl`、`mapper/<module>`、`dto/<module>` |
+| 持久层 | MyBatis-Plus：`@TableName` 实体 + `BaseMapper` + Wrapper |
+| 实体 | `@Data @Builder @NoArgsConstructor @AllArgsConstructor`；凭据哈希不得进入日志 |
+| 响应 | 只使用 DTO 白名单 record，实体不直接出接口 |
+| 认证 | `HandlerMethodArgumentResolver` 解析当前账号；一个请求头按形状识别 JWT 或账号密钥 |
+| 日志 | SLF4J + Logback，根级别 `info`；不得开启 MyBatis 参数明文日志 |
+| 配置 | 自有配置使用 `moonchat.*`；密钥无默认值 |
+| 测试 | 后端 Testcontainers 真 PG/Redis + 假 Turms Admin；Turms 运行时由真实 smoke 断言 |
 
-`infra/SPEC.md` 里另有「什么时候才需要第二个业务进程」的**触发条件**（负载形态分叉 / 独立发布窗口 / 独立故障域）——没满足就不要提议拆分。
+## 提交与自检
 
----
-
-## 5. 已知缺口：动到相关代码前必须处理
-
-1. **客户端写入靠 Turms 的 JWT 权限关闭，靠的是三条部署前提**（`docs/DDD.md` 的「凭据与客户端权限」）：`identity-access-management.type = jwt`、Turms 用户的密码是平台不保存也不分发的随机值、客户端凭据只能从 `POST /api/sessions` 拿。三者任一被改（例如把 type 改成 `noop`），「客户端绕过写入网关直接发消息」就重新成立——所以它是部署约束，代码里不得假定它天然成立，也不得为了“更保险”再加一层中间校验。
-2. **Turms 被配置成不校验好友关系**：`allowSendMessagesToStranger = true` 是这套设计成立的前提，不是可选项——好友从不投影进 Turms，设成 false 会拒掉所有私聊。好友校验只在写入网关。
-3. **无响应提示整条被推迟**：旧判据依赖投递与档位，已不成立；它不在第一版。做它之前先按 `goal-and-requirements.md` 的 V2 计划重写判据。
-4. **若干数字没有依据**：P95 300ms 沿用上一版且未经实测，两级限流桶的具体速率尚未确定。凭空引入一个阈值比留白更糟。
-5. ~~**代发路径需端到端跑通**~~：**S0 已实测**（`infra/turms/smoke` 10 条硬断言）——Admin 带 `senderId` 代发能落库、能推到在线端，被移出群的账号代发回 `403` / `5009`。结论已回写 `docs/DDD.md`，余下的只对 S4 有约束的面已写在那份文档的「已知缺口」里。
-6. **公开群的 Turms 只读能力未实测**：因此公开群与邀请链接被推迟，不要在 Turms 实测前把它们当可用能力去实现。
-7. **Turms 里可能有残留的游离 group**：客户端已经建不了新群（JWT 不授 `GROUP` 的 CREATE），但历史上可能有。平台不认它们（无授权、不进列表、不投递），Turms 的群列表也因此不等于 PG 的 `room_info` 表。任何代码不得把 Turms 的群列表当业务列表。
-8. **客户端 spec 只写到边界**（`frontend/SPEC.md`）：导航、会话列表、切账号入口、成员资料页仍未描述；界面级规则（非好友只见资料页、私聊入口只在好友列表）的详细出处是 `docs/DDD.md`「好友关系」与「账号与归属」。实现客户端前先回读它们，不要自己发明入口。
-
----
-
-## 6. 范围纪律：按切片推进
-
-产品按 V1 / V2 两片推进，**每一片结束时都是可验证状态**，不按「做完一半」推进（`docs/PRD.md` §5、§6）。
-
-- 接到实现请求，先回答两个问题：它属于哪一片？该片的验收判据是什么？施工顺序与片末判据在 `.thinkrail/context/TASK-v1-construction.md`（临时任务文档，不进 git）：V1 是它 S1–S5 的并集，不是一次做完。
-- **V1 不包含**：内容层（发帖、评论、点赞、图片）、朋友圈、拉黑、举报与封禁、消息搜索、多端同步、无响应提示、公开群与邀请链接、图片上传、音视频、agent 目录与搜索、应用商店上架。V1 里遇到这些需求 = 范围越界，报告给用户，不要「先做个简单的版本」。
-- **Non-Goals 一律不动**：语音与视频通话、平台托管 agent 的记忆与上下文、账号转让与共同归属、agent 市场 / 付费订阅 / 平台代收模型费、应用商店上架（第一版只发 Flutter Web 构建）、推荐与打分排序。这些不是延期项，是产品选择。
-- **V2 是计划，不是待办**：内容层、拉黑举报、无响应提示、公开群都在 `goal-and-requirements.md` 的 V2 计划，没人要求做之前不启动、不预留接口、不在别处引用它作为依据。
-- 只做了「能跑」的一半功能而没满足该片验收判据，比没做更糟——它会让人误判命题成立。
-
----
-
-## 7. 写文档的约定
-
-- **语言**：中文，陈述式。术语表固定：**账号**（human / agent 同构）、**归属者**、**主页**、**好友**、**私聊**、**群**（会话类型 `room`）、**写入网关**（Biz 里接受发言、校验并代发的那一处）、**Turms 客户端**（用账号凭据连 `/im` 的进程：真人客户端或 agent 端点）、**隧道**（Turms 侧）、**业务层**（`moonchat-biz`）、**端点**（用户自己的 agent 服务）、**能力**（账号可被调用的动作清单）。**不要再使用“工作区 / 档位 / connector / 接入层”**——那四个概念已从设计里删除。
-- **不发明同义词**：不要写「机器人 / bot / 助理」代指 agent，不要写「群组 / 频道 / 房间」代指群，不要写「权限表」代指归属关系。
-- **一句定位句**：每份 spec 开头保留 `**一句话**：…`。
-- **数字必须带依据**：任何阈值（300ms、5 秒、两级桶、3 分钟）要么给出理由，要么明确标「（未确认）」。
-- **表格优先**：边界、基数、判据、取舍对比一律用表格，别写成散文。
-- **不写营销词**：不出现「无缝」「极致」「赋能」。这里的读者是下一个要改这段设计的人。
-
----
-
-## 8. 实现约定（代码形状）
-
-这一节不是设计（设计在 spec 与 `docs/`），是 S1 落地时定下的代码形状。它决定下一个改这块代码的人怎么找文件，改之前先跟用户确认。
-
-| 约定 | 内容 | 为什么 |
-| --- | --- | --- |
-| 分包 | 层 + 模块二级包：`controller/account`、`service/account` + `impl`、`mapper/account`、`dto/account`，好友与待加限流同构（`friendship`）；不按接口拆包的组件放 `service/limiter`；`entity`、`client/turms`、`config`、`common`、`auth` 平铺 | 经典 Spring 分层，看类名就知道去哪找 |
-| service | 接口 + `impl` 两个文件 | 与团队习惯一致 |
-| 持久层 | MyBatis-Plus：`@TableName` 实体 + `extends BaseMapper`，条件用 Wrapper；不写裸 `JdbcClient`，不上 JPA | `backend/moonchat-biz/SPEC.md`「依赖」 |
-| 实体 | `@Data @Builder @NoArgsConstructor @AllArgsConstructor`；`account_info.credential_hash` 标 `@ToString.Exclude` | builder 给业务代码用，无参构造给 MyBatis 回填；哈希不能进日志 |
-| 响应 | 只走 `dto/*` 里的白名单 record，实体绝不出现在响应里 | 否则 `email`、`credential_hash` 会漏出去 |
-| 日志 | SLF4J 门面（`@Slf4j`）+ Logback，配置在 `logback-spring.xml`，根级别 `info` | 调到 `debug` 会让 MyBatis 把 SQL 参数（含哈希）打成明文 |
-| 配置 | 库与 Redis 用 Spring 原生键（yml 不落默认值）；自有配置按模块前缀：`moonchat.turms.*`（含重放间隔）、`moonchat.auth.*`、`moonchat.agent.*`（密钥与 pepper 不给默认值）、`moonchat.limit.*`（暂定速率可有默认值）；密钥一律不给默认值 | 部署必须显式给出 |
-| 认证 | 当前账号由 `HandlerMethodArgumentResolver` 解析，不写成过滤器；一个头装两种凭据（登录 JWT → `owner`、agent 账号密钥 → `agent`），靠形状分流；#3 用 `Optional<CurrentAccount>` 接不带认证头的密钥形态 | 过滤器里的异常到不了 `@RestControllerAdvice`，401 会变 500 |
-| 测试 | 接口测试用 Testcontainers（PG/Redis 真容器）+ JDK `HttpServer` 假 Turms Admin；Turms 侧结论由 `infra/turms/smoke` 的脚本断言 | 片末判据必须可重跑 |
-
----
-
-## 9. 提交规范
-
-跟随仓库现有风格（`git log` 只有几条中文陈述句）：
-
-- **中文、陈述式主题句**，说清「做了什么决定 / 改了什么」，例如：`按社交骨架重写 8 份 spec：好友归 Turms、私聊进 V1、内容层撤出`。
-- **不加 Conventional Commits 前缀**（`feat:` / `docs:`），不加 emoji，不加工具署名。
-- **一次提交一件事**：改 spec 与改受它约束的代码放在同一次提交里；无关的措辞润色单独提。
-- 提交信息里不出现 TODO 编号、计划步骤名。
-
----
-
-## 10. 交付前自检
-
-- [ ] 改动是否触犯 §3 的任何一条硬边界（尤其：有没有给群或好友建表）？
-- [ ] 是否把 §4 的某条「已定的简化」顺手升级了？
-- [ ] 是否落进了 §6 里 V1 不包含的范围，或撞上 Non-Goals？
-- [ ] 改了行为有没有同步改 spec？改了 spec 有没有同步改 `docs/README.md` 的索引？
-- [ ] frontmatter 完整、`id` 未改、`parent` / `depends-on` 指向存在的 id？
-- [ ] 新引入的数字有没有依据或「（未确认）」标记？
-- [ ] 有没有新建临时 markdown，或在根目录多出不承担构建/仓库配置职责的 markdown 文件？
-- [ ] 代码形状是否仍符合 §8（分包、实体注解、DTO 白名单、日志级别、配置命名）？
-
-无法自行判断时，**停下来问用户**，不要用「先做一个合理版本」代替决定。
+- 提交主题用中文陈述句，一次提交只做一件事。
+- 改动前确认是否触碰硬边界、当前范围或已定简化。
+- 行为变化同步覆盖 `docs/truth` 对应章节，并向 `docs/history` 追加原因。
+- 所有 Markdown 相对链接必须可解析；不得重新引入旧 spec、旧四份施工文档或提交 OpenAPI 文件。
+- 后端至少跑相关测试；改动跨模块时跑 `.\backend\mvnw.cmd -f backend\pom.xml test`。客户端改动跑 analyze、test 与 Web build。

@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * #12–#18 的响应体。`turms_sync_state` 一概不出门：对外的群标识是 `room_id`；唯一例外是
  * `turms_group_id`——它只在 #13 作为投递句柄出现（字符串，避免 JS 精度丢失），写接口只认
- * `room_id`（docs/api-contracts.md §9）。成员列表也没有 `role`——群主就是 `owner_account_id`，
+ * `room_id`（docs/truth/backend/room.md）。成员列表也没有 `role`——群主就是 `owner_account_id`，
  * 是不是群主由客户端比较这两个 id 得出。
  * `Item` / `ListResponse` 与好友那边同名，文档里靠 `@Schema(name)` 区分。
  */

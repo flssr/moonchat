@@ -7,7 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'widgets.dart';
 
-/// S6 资料页的内容：只有名字、账号 ID、关系状态（`SCREEN-MAP.md` §4）。
+/// S6 资料页的内容：只有名字、账号 ID、关系状态（`docs/truth/frontend/README.md`）。
 /// 非好友只有「加好友」，好友才有「发消息」「删除好友」。
 ///
 /// 数据从 `AppState` 读（`profileOf` / `loadProfile`），不再自己请求；

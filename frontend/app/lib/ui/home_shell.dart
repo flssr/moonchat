@@ -58,7 +58,7 @@ class _HomeShellState extends State<HomeShell> {
       body: SafeArea(
         child: LayoutBuilder(
           builder: (BuildContext context, BoxConstraints c) {
-            // 断点按整个客户端宽度判定（`DESIGN-SPEC.md` §5 的容器查询对象是 .app），
+            // 断点按整个客户端宽度判定（`docs/truth/frontend/design.md` 的容器查询对象是 .app），
             // 联系人与账号页也复用同一个 narrow，避免各自再按「扣掉导航栏后的宽度」量一次。
             final bool narrow = c.maxWidth <= MoonBreakpoints.hideList;
             final bool showInfo = c.maxWidth > MoonBreakpoints.hideInfo;
@@ -108,7 +108,7 @@ class _HomeShellState extends State<HomeShell> {
                     Expanded(child: body),
                   ],
                 ),
-                // 资料页是覆盖层，不改变左侧选中项（`SCREEN-MAP.md` §2）。
+                // 资料页是覆盖层，不改变左侧选中项（`docs/truth/frontend/README.md`）。
                 if (state.profileAccountId != null)
                   ProfileOverlay(state: state),
               ],

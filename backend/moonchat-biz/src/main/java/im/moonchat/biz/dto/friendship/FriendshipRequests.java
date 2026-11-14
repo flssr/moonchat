@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 
-/** #9 #10 的请求体，校验规则见 docs/api-contracts.md §5。接口面只用对端账号 id 寻址。 */
+/** #9 #10 的请求体，校验规则见 docs/truth/backend/friendship.md。接口面只用对端账号 id 寻址。 */
 public final class FriendshipRequests {
 
     private FriendshipRequests() {

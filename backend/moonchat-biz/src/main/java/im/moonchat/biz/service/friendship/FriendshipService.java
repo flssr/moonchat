@@ -4,7 +4,7 @@ import im.moonchat.biz.auth.CurrentAccount;
 import im.moonchat.biz.dto.friendship.FriendshipRequests;
 import im.moonchat.biz.dto.friendship.FriendshipResponses;
 
-/** 好友关系的行为（docs/DDD.md）：申请、应答、删除与「是不是好友」这一个授权事实。 */
+/** 好友关系的行为（docs/truth/architecture.md）：申请、应答、删除与「是不是好友」这一个授权事实。 */
 public interface FriendshipService {
 
     /** #8 好友列表 / 发给我的待处理申请。 */

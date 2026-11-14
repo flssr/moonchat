@@ -9,7 +9,7 @@ import '../theme.dart';
 import 'profile_panel.dart';
 import 'widgets.dart';
 
-/// S3 消息：会话列表 + 消息区 + 信息栏（`SCREEN-MAP.md` §4）。
+/// S3 消息：会话列表 + 消息区 + 信息栏（`docs/truth/frontend/README.md`）。
 /// 当前会话、筛选、跳转都在 `AppState` 里，这里只读状态、只调动作。
 class MessagesView extends StatefulWidget {
   const MessagesView({

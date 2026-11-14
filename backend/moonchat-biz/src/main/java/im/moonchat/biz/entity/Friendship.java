@@ -10,7 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * `friendship` 表：好友关系的唯一业务真相（docs/data-model.md §4.3）。
+ * `friendship` 表：好友关系的唯一业务真相（docs/truth/backend/persistence.md）。
  * `accountId` 恒为规范序里较小的 id，`peerAccountId` 恒为较大的；授权判定只读本表。
  */
 @Data

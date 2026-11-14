@@ -50,7 +50,7 @@ public class AccountServiceImpl implements AccountService {
 
     /**
      * 同一事务写 `account` 与 `account_info`，并在事务内用这个 id 建 Turms 用户；
-     * 建用户失败就回滚整笔——不留孤儿账号（docs/DDD.md「创建顺序」）。
+     * 建用户失败就回滚整笔——不留孤儿账号（docs/truth/backend/identity.md）。
      */
     @Override
     @Transactional
@@ -66,7 +66,7 @@ public class AccountServiceImpl implements AccountService {
     }
 
     /**
-     * agent 账号与真人账号同构，只多一个不可转移的归属者（docs/DDD.md）；
+     * agent 账号与真人账号同构，只多一个不可转移的归属者（docs/truth/architecture.md）；
      * 明文密钥只在这个响应里出现一次，库里只有它的确定性哈希。
      */
     @Override

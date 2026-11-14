@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../i18n/context_tr.dart';
 import '../theme.dart';
 
-/// 主按钮只有一种形状：40 高、8 圆角、0 18 内边距（DESIGN-SPEC §6）。
+/// 主按钮只有一种形状：40 高、8 圆角、0 18 内边距（docs/truth/frontend/design.md）。
 enum MoonButtonKind { primary, secondary, text, danger }
 
 class MoonButton extends StatelessWidget {
@@ -330,7 +330,7 @@ class MoonTag extends StatelessWidget {
   }
 }
 
-/// 空状态：左对齐、最大 38ch、不画插画（DESIGN-SPEC §6）。
+/// 空状态：左对齐、最大 38ch、不画插画（docs/truth/frontend/design.md）。
 class MoonEmpty extends StatelessWidget {
   const MoonEmpty({super.key, required this.title, this.hint, this.action});
 
@@ -417,7 +417,7 @@ String formatClock(DateTime? utc) {
   return '$hh:$mm';
 }
 
-/// 列表 + 详情：宽屏并排，容器 ≤620 时上下两段（`DESIGN-SPEC.md` §5）。
+/// 列表 + 详情：宽屏并排，容器 ≤620 时上下两段（`docs/truth/frontend/design.md`）。
 /// 断点由外壳统一给出，联系人页与账号页不再各自按父容器宽度算一次。
 class MoonSplitLayout extends StatelessWidget {
   const MoonSplitLayout({

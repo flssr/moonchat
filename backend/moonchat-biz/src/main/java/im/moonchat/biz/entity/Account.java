@@ -9,7 +9,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** `account` 表：身份与归属（docs/data-model.md §4.1）。不存资料，也不参与授权判定。 */
+/** `account` 表：身份与归属（docs/truth/backend/persistence.md）。不存资料，也不参与授权判定。 */
 @Data
 @Builder
 @NoArgsConstructor
