@@ -1,4 +1,4 @@
-/* 首屏的星空与流星：只用 ink 色的低透明度点与细线，动效放慢，减少动态时只留一张静止星图。 */
+/* 夜空只在暗色主题出现：稀疏星点、缓慢明灭与偶尔一颗流星；白天只留月亮。 */
 (() => {
   const stage = document.querySelector('.hero-wrap');
   const canvas = document.querySelector('.sky');
@@ -7,6 +7,7 @@
 
   const ctx = canvas.getContext('2d');
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const isNight = () => document.documentElement.dataset.theme === 'dark';
 
   let width = 0;
   let height = 0;
@@ -51,16 +52,22 @@
   }
 
   function spawnMeteor(now) {
-    const angle = rand(0.34, 0.5); // 与水平线的夹角：往下、往左
-    const speed = rand(620, 960);
+    const angle = rand(0.3, 0.46); // 与水平线的夹角：往下、往左
+    const speed = rand(680, 960);
+    const vx = -Math.cos(angle) * speed;
+    const vy = Math.sin(angle) * speed;
+    const x = rand(width * 0.55, width * 1.05);
+    const y = rand(-20, height * 0.24);
+    // 只在上方那片空天里划完，不落到标题上。
+    const maxLife = ((height * 0.3 - y) / vy) * 1000;
     meteor = {
-      x: rand(width * 0.42, width * 1.04),
-      y: rand(-12, height * 0.4),
-      vx: -Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed,
-      length: rand(110, 190),
+      x,
+      y,
+      vx,
+      vy,
+      length: rand(90, 160),
       age: 0,
-      life: rand(780, 1200),
+      life: Math.max(260, Math.min(rand(650, 1000), maxLife)),
       alpha: rand(0.42, 0.58),
     };
     nextMeteorAt = now + rand(9000, 18000);
@@ -94,6 +101,10 @@
   function loop(now) {
     frame = 0;
     if (document.hidden || !visible) return;
+    if (!isNight()) {
+      ctx.clearRect(0, 0, width, height);
+      return;
+    }
 
     const dt = Math.min(now - last, 50);
     last = now;
@@ -134,7 +145,7 @@
 
   function start() {
     if (frame) return;
-    if (document.hidden || !visible) return;
+    if (!isNight() || document.hidden || !visible) return;
     last = performance.now();
     if (!meteor && performance.now() > nextMeteorAt) nextMeteorAt = last + rand(3000, 7000);
     frame = requestAnimationFrame(loop);
@@ -180,6 +191,16 @@
   window.addEventListener('scroll', () => {
     if (!scrollFrame) scrollFrame = requestAnimationFrame(updateMoon);
   }, { passive: true });
+
+  new MutationObserver(() => {
+    if (isNight()) {
+      resize();
+      start();
+    } else {
+      stop();
+      ctx.clearRect(0, 0, width, height);
+    }
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   reduceMotion.addEventListener('change', () => {
     stop();
