@@ -94,7 +94,11 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   display: flex; align-items: center; justify-content: space-between;
 }
 .brand { display: flex; align-items: center; gap: 9px; width: fit-content; }
-.brand__mark { width: 21px; height: 21px; stroke-width: 1.4; }
+.brand__mark {
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px var(--line);
+}
 .brand__name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 
 .themeBtn {
@@ -136,6 +140,14 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   position: absolute; inset: 24%;
   border: 1px solid var(--line);
   border-radius: 50%;
+}
+.hero__mark {
+  display: flex; align-items: center; gap: 16px;
+}
+.hero__mark img {
+  width: 56px; height: 56px;
+  border-radius: 14px;
+  box-shadow: 0 0 0 1px var(--line), 0 6px 18px color-mix(in srgb, var(--ink) 7%, transparent);
 }
 .hero h1 {
   margin-top: 22px;
@@ -270,6 +282,7 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 /* ---------- responsive ---------- */
 @media (max-width: 760px) {
   .hero { padding: 72px 22px 56px; min-height: auto; }
+  .hero__mark img { width: 44px; height: 44px; border-radius: 11px; }
   .hero__disc { width: 340px; height: 340px; right: -190px; margin-top: -110px; }
   .hero__hint { margin-top: 48px; }
   .essay { padding: 88px 22px; }
