@@ -1,0 +1,118 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:moonchat/api/api_client.dart';
+import 'package:moonchat/api/models.dart';
+import 'package:moonchat/avatars.dart';
+import 'package:moonchat/settings/settings.dart';
+import 'package:moonchat/state/app_state.dart';
+import 'package:moonchat/theme.dart';
+import 'package:moonchat/ui/home_shell.dart';
+
+class _MemoryStore implements SettingsStore {
+  MoonSettings settings = MoonSettings.defaults;
+  Map<int, String> avatars = <int, String>{};
+
+  @override
+  MoonSettings load() => settings;
+
+  @override
+  void save(MoonSettings next) => settings = next;
+
+  @override
+  Map<int, String> loadAvatars() => avatars;
+
+  @override
+  void saveAvatars(Map<int, String> next) => avatars = next;
+}
+
+AppState _state(_MemoryStore store) {
+  final Account account = Account(accountId: 1, type: 'human', displayName: '阿月');
+  return AppState(
+    api: ApiClient(
+      baseUrl: 'http://mock.local',
+      client: MockClient((http.Request req) async => http.Response('{}', 404)),
+    ),
+    store: store,
+  )
+    ..loginToken = 'login-jwt'
+    ..identityToken = 'login-jwt'
+    ..phase = AuthPhase.ready
+    ..account = account
+    ..accounts = <Account>[account];
+}
+
+Future<void> _pumpShell(WidgetTester tester, AppState state) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: buildMoonTheme(Brightness.light),
+      locale: const Locale('zh', 'CN'),
+      supportedLocales: const <Locale>[Locale('zh', 'CN')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
+      home: HomeShell(
+        state: state,
+        onToggleTheme: (_) {},
+        brightness: Brightness.light,
+        textScale: 1.0,
+        onLanguageChanged: (_) {},
+        onTextScaleChanged: (_) {},
+      ),
+    ),
+  );
+  await tester.pump();
+}
+
+void main() {
+  test('默认头像集：真人 6 张、agent 3 张，且图都在资源目录里', () {
+    expect(kHumanAvatars.length, 6);
+    expect(kAgentAvatars.length, 3);
+    expect(avatarsFor('human'), kHumanAvatars);
+    expect(avatarsFor('agent'), kAgentAvatars);
+    for (final String key in <String>[...kHumanAvatars, ...kAgentAvatars]) {
+      expect(File(avatarAsset(key)).existsSync(), isTrue, reason: '$key 缺图');
+    }
+  });
+
+  test('头像 key 只认这一套', () {
+    expect(isKnownAvatar('female_01'), isTrue);
+    expect(isKnownAvatar('agent_gold'), isTrue);
+    expect(isKnownAvatar('uploaded.png'), isFalse);
+  });
+
+  test('选头像按账号落本机偏好，清掉回默认', () {
+    final _MemoryStore store = _MemoryStore();
+    final AppState state = _state(store);
+    addTearDown(state.dispose);
+
+    state.setAvatar(7, 'agent_gold');
+    expect(state.avatarOf(7), 'agent_gold');
+    expect(store.avatars[7], 'agent_gold');
+
+    state.setAvatar(7, 'not_a_key');
+    expect(state.avatarOf(7), 'agent_gold');
+
+    state.setAvatar(7, null);
+    expect(state.avatarOf(7), isNull);
+    expect(store.avatars.containsKey(7), isFalse);
+  });
+
+  testWidgets('资料编辑里点一张默认头像就按账号存下', (WidgetTester tester) async {
+    final _MemoryStore store = _MemoryStore();
+    final AppState state = _state(store);
+    addTearDown(state.dispose);
+    await _pumpShell(tester, state);
+
+    await tester.tap(find.byTooltip('个人资料'));
+    await tester.pumpAndSettle();
+    expect(find.text('选择默认头像'), findsOneWidget);
+
+    await tester.tap(find.bySemanticsLabel('头像 2'));
+    await tester.pump();
+    expect(state.avatarOf(1), 'female_02');
+    expect(store.avatars[1], 'female_02');
+  });
+}

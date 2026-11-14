@@ -46,12 +46,19 @@ AppState _stateOn(_Recorder recorder) =>
 
 class _RecordingSettingsStore implements SettingsStore {
   MoonSettings? saved;
+  Map<int, String> avatars = <int, String>{};
 
   @override
   MoonSettings load() => MoonSettings.defaults;
 
   @override
   void save(MoonSettings settings) => saved = settings;
+
+  @override
+  Map<int, String> loadAvatars() => avatars;
+
+  @override
+  void saveAvatars(Map<int, String> next) => avatars = next;
 }
 
 void main() {

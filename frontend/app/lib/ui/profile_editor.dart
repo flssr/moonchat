@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../api/models.dart';
+import '../avatars.dart';
 import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'constellation.dart';
 import 'widgets.dart';
 
-/// 左下角头像打开的资料编辑；头像仍由账号 id 生成，不在这里改。
+/// 左下角头像打开的资料编辑。头像从平台默认的几千里选，选中即存本机（服务端还没有这一列）。
 Future<void> showProfileEditor(BuildContext context, AppState state) async {
   if (state.account == null) {
     return;
@@ -33,6 +34,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   late final TextEditingController _name;
   late String _gender;
   DateTime? _birthday;
+  String? _avatar;
 
   String? _nameError;
   String? _error;
@@ -58,6 +60,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       });
     _gender = _account.gender ?? 'private';
     _birthday = _account.birthday;
+    _avatar = widget.state.avatarOf(_account.accountId);
   }
 
   Account _resolveAccount(AppState state) {
@@ -108,6 +111,12 @@ class _ProfileEditorState extends State<_ProfileEditor> {
         () => _birthday = DateTime(picked.year, picked.month, picked.day),
       );
     }
+  }
+
+  /// 头像不进 PATCH：选中即落本机偏好，服务端列还没有（issue #10）。
+  void _pickAvatar(String? key) {
+    setState(() => _avatar = key);
+    widget.state.setAvatar(_account.accountId, key);
   }
 
   Future<void> _save() async {
@@ -199,6 +208,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                     MoonAvatar(
                       name: _account.displayName,
                       seed: _account.accountId,
+                      avatar: _avatar,
                       size: 56,
                     ),
                     const SizedBox(width: 12),
@@ -217,7 +227,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                           MonoText('#${_account.accountId}', selectable: true),
                           const SizedBox(height: 4),
                           Text(
-                            context.tr('头像由账号 ID 生成，暂不支持修改'),
+                            context.tr('默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。'),
                             style: TextStyle(
                               fontSize: 11,
                               height: 1.5,
@@ -227,6 +237,31 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                         ],
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(context.tr('选择默认头像'), style: _labelStyle(p)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    _AvatarOption(
+                      label: context.tr('默认'),
+                      name: _account.displayName,
+                      seed: _account.accountId,
+                      selected: _avatar == null,
+                      onTap: _busy ? null : () => _pickAvatar(null),
+                    ),
+                    for (final (int i, String key) in avatarsFor(_account.type).indexed)
+                      _AvatarOption(
+                        label: '${context.tr('头像')} ${i + 1}',
+                        name: _account.displayName,
+                        seed: _account.accountId,
+                        avatar: key,
+                        selected: _avatar == key,
+                        onTap: _busy ? null : () => _pickAvatar(key),
+                      ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -371,5 +406,51 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       default:
         return '${d.year}年${d.month}月${d.day}日';
     }
+  }
+}
+
+/// 头像候选：外圈只表示选中，别把「默认」那张排除在外——它就是生成的首字头像。
+class _AvatarOption extends StatelessWidget {
+  const _AvatarOption({
+    required this.label,
+    required this.name,
+    required this.seed,
+    required this.selected,
+    required this.onTap,
+    this.avatar,
+  });
+
+  final String label;
+  final String name;
+  final int seed;
+  final String? avatar;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      onTap: onTap,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              width: 1.5,
+              color: selected ? p.ink : Colors.transparent,
+            ),
+          ),
+          child: MoonAvatar(name: name, seed: seed, avatar: avatar, size: 36),
+        ),
+      ),
+    );
   }
 }

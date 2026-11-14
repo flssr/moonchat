@@ -92,6 +92,7 @@ class _HomeShellState extends State<HomeShell> {
                     _NavRail(
                       view: state.view,
                       account: state.account,
+                      avatar: state.account == null ? null : state.avatarOf(state.account!.accountId),
                       onOpenProfile: () => showProfileEditor(context, state),
                       onOpenSettings: () => showSettingsDialog(
                         context,
@@ -124,6 +125,7 @@ class _NavRail extends StatelessWidget {
   const _NavRail({
     required this.view,
     required this.account,
+    required this.avatar,
     required this.onOpenProfile,
     required this.onOpenSettings,
     required this.onSelect,
@@ -135,6 +137,7 @@ class _NavRail extends StatelessWidget {
 
   final String view;
   final Account? account;
+  final String? avatar;
   final VoidCallback onOpenProfile;
   final VoidCallback onOpenSettings;
   final ValueChanged<String> onSelect;
@@ -166,6 +169,7 @@ class _NavRail extends StatelessWidget {
                   child: MoonAvatar(
                     name: account?.displayName ?? '',
                     seed: account?.accountId ?? 0,
+                    avatar: avatar,
                     size: 28,
                   ),
                 ),

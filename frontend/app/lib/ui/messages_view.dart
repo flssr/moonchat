@@ -219,7 +219,12 @@ class _MessagesViewState extends State<MessagesView> {
                               color: selected ? p.surface2 : Colors.transparent,
                               child: Row(
                                 children: <Widget>[
-                                  MoonAvatar(name: c.title, seed: c.targetId, size: 34),
+                                  MoonAvatar(
+                                    name: c.title,
+                                    seed: c.targetId,
+                                    avatar: c.isRoom ? null : widget.state.avatarOf(c.targetId),
+                                    size: 34,
+                                  ),
                                   const SizedBox(width: 10),
                                   Expanded(
                                     child: Column(
@@ -263,6 +268,9 @@ class _MessagesViewState extends State<MessagesView> {
                     MoonAvatar(
                       name: widget.state.account?.displayName ?? '',
                       seed: widget.state.account?.accountId ?? 0,
+                      avatar: widget.state.account == null
+                          ? null
+                          : widget.state.avatarOf(widget.state.account!.accountId),
                       size: 28,
                     ),
                     const SizedBox(width: 10),
@@ -310,7 +318,12 @@ class _MessagesViewState extends State<MessagesView> {
                               onPressed: widget.onToggleList,
                               icon: Icon(Icons.menu, size: 18, color: p.ink3),
                             ),
-                          MoonAvatar(name: active.title, seed: active.targetId, size: 30),
+                          MoonAvatar(
+                            name: active.title,
+                            seed: active.targetId,
+                            avatar: active.isRoom ? null : widget.state.avatarOf(active.targetId),
+                            size: 30,
+                          ),
                           const SizedBox(width: 10),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -670,7 +683,12 @@ class _RoomInfoState extends State<_RoomInfo> {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: <Widget>[
-                  MoonAvatar(name: m.displayName, seed: m.accountId, size: 24),
+                  MoonAvatar(
+                    name: m.displayName,
+                    seed: m.accountId,
+                    avatar: widget.state.avatarOf(m.accountId),
+                    size: 24,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
