@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7F7FC"/>
+      <stop offset="1" stop-color="#ECECF7"/>
+    </linearGradient>
+    <linearGradient id="botBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5146C9"/>
+      <stop offset="1" stop-color="#302FAD"/>
+    </linearGradient>
+    <linearGradient id="moonBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#172B68"/>
+      <stop offset="1" stop-color="#243D83"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App tile -->
+  <rect x="5" y="5" width="502" height="502" rx="86" fill="url(#bg)"/>
+
+  <!-- Crescent moon -->
+  <path d="M327 92
+           C238 77 149 129 112 211
+           C72 300 109 399 196 438
+           C247 461 304 451 344 421
+           C283 441 220 422 181 378
+           C137 329 130 255 165 199
+           C199 144 261 111 327 92Z"
+        fill="url(#moonBlue)"/>
+
+  <!-- Small star -->
+  <path d="M393 94
+           C399 119 408 128 433 134
+           C408 140 399 149 393 174
+           C387 149 378 140 353 134
+           C378 128 387 119 393 94Z"
+        fill="#24377C"/>
+
+  <!-- Human chat bubble -->
+  <path d="M105 257
+           C105 202 151 164 211 164
+           C271 164 313 202 313 257
+           C313 313 271 351 211 351
+           C193 351 177 347 163 340
+           L132 361 L139 326
+           C117 309 105 285 105 257Z"
+        fill="#FFFFFF" stroke="#172D70" stroke-width="9" stroke-linejoin="round"/>
+
+  <!-- Human avatar -->
+  <circle cx="211" cy="238" r="29" fill="#172D70"/>
+  <path d="M171 313
+           C174 284 189 267 211 267
+           C233 267 248 284 251 313
+           Q251 321 243 321 H179
+           Q171 321 171 313Z"
+        fill="#172D70"/>
+
+  <!-- Bot chat bubble -->
+  <path d="M260 255
+           C260 201 304 164 364 164
+           C423 164 466 201 466 255
+           C466 294 445 324 411 339
+           L415 373 L380 350
+           C374 351 369 352 364 352
+           C304 352 260 313 260 255Z"
+        fill="#FFFFFF" stroke="url(#botBlue)" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- Robot antenna -->
+  <path d="M364 223 V203" fill="none" stroke="#5146C9" stroke-width="9" stroke-linecap="round"/>
+  <circle cx="364" cy="194" r="11" fill="#5146C9"/>
+
+  <!-- Robot head -->
+  <rect x="306" y="224" width="116" height="82" rx="34" fill="url(#botBlue)"/>
+  <rect x="298" y="244" width="16" height="40" rx="8" fill="#5146C9"/>
+  <rect x="414" y="244" width="16" height="40" rx="8" fill="#5146C9"/>
+  <circle cx="338" cy="265" r="10" fill="#FFFFFF"/>
+  <circle cx="390" cy="265" r="10" fill="#FFFFFF"/>
+</svg>
