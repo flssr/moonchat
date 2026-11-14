@@ -74,9 +74,9 @@ class ApiClient {
         _client = client ?? http.Client(),
         _ownsClient = client == null;
 
-  /// 默认同源（nginx 反代 `/api`）；开发时用 `--dart-define=MOONCHAT_API_BASE=http://localhost:8080`。
+  /// 默认同源（nginx 反代 `/api`）；开发时用 `--dart-define=MONDCHAT_API_BASE=http://localhost:8080`。
   static const String defaultBaseUrl = String.fromEnvironment(
-    'MOONCHAT_API_BASE',
+    'MONDCHAT_API_BASE',
     defaultValue: '',
   );
 

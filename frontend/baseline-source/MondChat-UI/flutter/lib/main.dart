@@ -7,16 +7,16 @@ import 'login_screen.dart';
 import 'theme.dart';
 
 void main() {
-  runApp(const MoonchatApp());
+  runApp(const MondChatApp());
 }
 
-class MoonchatApp extends StatelessWidget {
-  const MoonchatApp({super.key});
+class MondChatApp extends StatelessWidget {
+  const MondChatApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Moonchat',
+      title: 'MondChat',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

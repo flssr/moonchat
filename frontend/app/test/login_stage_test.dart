@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/theme.dart';
-import 'package:moonchat/ui/login_stage.dart';
+import 'package:mondchat/theme.dart';
+import 'package:mondchat/ui/login_stage.dart';
 
 void main() {
   testWidgets('登舱飞离：机身朝月亮倾斜并缩小', (WidgetTester tester) async {

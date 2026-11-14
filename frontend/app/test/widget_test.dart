@@ -5,14 +5,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:moonchat/api/api_client.dart';
-import 'package:moonchat/main.dart';
-import 'package:moonchat/settings/settings.dart';
-import 'package:moonchat/state/app_state.dart';
-import 'package:moonchat/theme.dart';
-import 'package:moonchat/ui/home_shell.dart';
-import 'package:moonchat/ui/login_quotes.dart';
-import 'package:moonchat/ui/login_screen.dart';
+import 'package:mondchat/api/api_client.dart';
+import 'package:mondchat/main.dart';
+import 'package:mondchat/settings/settings.dart';
+import 'package:mondchat/state/app_state.dart';
+import 'package:mondchat/theme.dart';
+import 'package:mondchat/ui/home_shell.dart';
+import 'package:mondchat/ui/login_quotes.dart';
+import 'package:mondchat/ui/login_screen.dart';
 
 /// 记录调用次数的假 Biz：用来断言「校验没过就一个请求都不发」。
 class _Recorder {
@@ -70,7 +70,7 @@ void main() {
 
     await tester.pumpWidget(_page(state));
 
-    expect(find.text('MoonChat'), findsOneWidget);
+    expect(find.text('MondChat'), findsOneWidget);
     expect(find.text('邮箱'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
@@ -176,7 +176,7 @@ void main() {
       api: ApiClient(baseUrl: 'http://mock.local', client: _loginBiz()),
     );
     addTearDown(state.dispose);
-    await tester.pumpWidget(MoonChatApp(state: state));
+    await tester.pumpWidget(MondChatApp(state: state));
     await tester.pump();
 
     await tester.enterText(find.byType(TextField).at(0), 'a@b.c');
@@ -189,7 +189,7 @@ void main() {
     }
     expect(state.isReady, isTrue);
     expect(find.byType(HomeShell), findsNothing, reason: '登录成功不能同帧换屏，否则登舱过渡永远看不到');
-    expect(find.text('MoonChat'), findsOneWidget);
+    expect(find.text('MondChat'), findsOneWidget);
 
     await tester.pumpAndSettle();
     expect(find.byType(HomeShell), findsOneWidget);
@@ -205,7 +205,7 @@ void main() {
     );
     final _RecordingSettingsStore store = _RecordingSettingsStore();
     addTearDown(state.dispose);
-    await tester.pumpWidget(MoonChatApp(state: state, store: store));
+    await tester.pumpWidget(MondChatApp(state: state, store: store));
     await tester.pump();
 
     await tester.enterText(find.byType(TextField).at(0), 'a@b.c');

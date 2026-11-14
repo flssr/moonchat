@@ -1,4 +1,4 @@
-# Moonchat 客户端界面评审稿 v1
+# MondChat 客户端界面评审稿 v1
 
 评审已通过，这一版作为正式开发的视觉基准。直接双击 `index.html` 打开，无需构建、无外部依赖。建议 1440 宽或以上；移动端布局也做了。
 
@@ -15,7 +15,7 @@
 ## 依据
 
 - 行为：`docs/truth/product.md`、`docs/truth/backend/README.md`
-- 视觉基线：`Moonchat-UI.zip` 的登录与聊天页，火箭三态插画沿用原资产
+- 视觉基线：`MondChat-UI.zip` 的登录与聊天页，火箭三态插画沿用原资产
 - 本页只是前端样机，不连后端，所有数据都在页面内存里；刷新即复位。
 - 当前界面事实：`docs/truth/frontend/`
 

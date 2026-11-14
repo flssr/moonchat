@@ -1,4 +1,4 @@
-# moonchat 客户端（Flutter Web）
+# MondChat 客户端（Flutter Web）
 
 V1 只发 Web 构建。界面以 `frontend/preview/index.html` 为唯一视觉源，设计依据是
 `docs/truth/frontend/design.md`；接口以运行时 `/v3/api-docs` 与代码为准，本工程不新增路由与字段。
@@ -8,13 +8,13 @@ V1 只发 Web 构建。界面以 `frontend/preview/index.html` 为唯一视觉�
 ```powershell
 # 后端默认同源（nginx 反代 /api）。本地直连 Biz 时用 dart-define 指过去：
 flutter pub get
-flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8080
+flutter run -d chrome --dart-define=MONDCHAT_API_BASE=http://localhost:8080
 
 # 产物
-flutter build web --release --dart-define=MOONCHAT_API_BASE=
+flutter build web --release --dart-define=MONDCHAT_API_BASE=
 ```
 
-`MOONCHAT_API_BASE` 为空表示同源：客户端假定 `/api` 与页面同域，这是 `docs/truth/deployment.md`
+`MONDCHAT_API_BASE` 为空表示同源：客户端假定 `/api` 与页面同域，这是 `docs/truth/deployment.md`
 里 nginx 的部署形态。
 
 ## 结构

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/ui/constellation.dart';
+import 'package:mondchat/ui/constellation.dart';
 
 void main() {
   test('生日边界落在正确的星座', () {

@@ -1,9 +1,9 @@
-# Moonchat · Flutter
+# MondChat · Flutter
 
 把网页版的「月面登陆」整段体验搬到了 Flutter：星空、舱门、登录、点火、飞进月球、聊天主页。
 纯 Flutter SDK，没有任何第三方包，也没有音频/字体等外部资源依赖。
 
-> 三张火箭图与 logo 都来自 `../moonchat-web`（logo 是用户提供的 SVG，已转成 PNG）。
+> 三张火箭图与 logo 都来自 `../mondchat-web`（logo 是用户提供的 SVG，已转成 PNG）。
 > 门板是用两张互补的 alpha 遮罩预先切好的：`rocket_body.png`（去掉门板的机体）+ `rocket_leaf.png`（单独的门板），
 > 这样门板可以在 Flutter 里独立做 3D 旋转，而不会把机身裁掉一条。
 
@@ -14,7 +14,7 @@
 需要 Flutter 3.16+（Dart 3.2+）：
 
 ```bash
-cd moonchat_flutter
+cd mondchat_flutter
 flutter pub get
 flutter run -d windows      # 或 chrome / macos / android
 ```
@@ -32,7 +32,7 @@ flutter build web --release
 ### 开场（LoginScreen）
 
 1. **登录页**：Canvas 星空（230 颗星，缓慢闪烁）+ 月亮 + 立着的火箭（门开着）。
-   左侧是 `WELCOME TO MOONCHAT` + **欢迎来到月读世界** + 玻璃质感的邮箱/密码框。
+   左侧是 `WELCOME TO MONDCHAT` + **欢迎来到月读世界** + 玻璃质感的邮箱/密码框。
 2. **提交**：两个输入框带着旋转、缩小、位移飞向舱门（用 `Transform` 驱动，两个框错开 120ms）。
    同时卡片和标题淡出，舱门里透出蓝光。
 3. **关门**：
@@ -56,7 +56,7 @@ flutter build web --release
 ## 文件
 
 ```
-moonchat_flutter/
+mondchat_flutter/
 ├── pubspec.yaml
 ├── lib/
 │   ├── main.dart           # App、根组件、圆形揭幕裁剪

@@ -1,7 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/ui/login_quotes.dart';
+import 'package:mondchat/ui/login_quotes.dart';
 
 /// 每次都返回区间里的最后一个值，用来钉住“首次抽取也能命中最后一条”。
 class _LastIntRandom implements Random {

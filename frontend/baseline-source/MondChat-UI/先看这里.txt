@@ -1,4 +1,4 @@
-﻿Moonchat · 月读世界 —— UI 预览包
+﻿MondChat · 月读世界 —— UI 预览包
 ====================================
 
 【最快看法】不用装任何东西
@@ -33,4 +33,4 @@
       flutter build apk --release
   产物：build/app/outputs/flutter-apk/app-release.apk
 
-—— Moonchat UI v1
+—— MondChat UI v1

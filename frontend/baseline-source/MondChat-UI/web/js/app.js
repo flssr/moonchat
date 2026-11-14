@@ -1,5 +1,5 @@
 ﻿/* ============================================================
-   Moonchat · 月面登陆
+   MondChat · 月面登陆
    No dependencies. Vanilla JS, Web Animations + Canvas + WebAudio.
    ============================================================ */
 (() => {
@@ -1193,7 +1193,7 @@
   });
 
   bootSequence();
-  window.__moonchat = { Sfx, sky, conversations, selectConv, launch };
+  window.__mondchat = { Sfx, sky, conversations, selectConv, launch };
 })();
 
 
