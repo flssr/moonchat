@@ -13,6 +13,7 @@
 | Turms 读取 | `lib/turms/` |
 | 多语言 | `lib/i18n/` |
 | 本地设置 | `lib/settings/` |
+| 产品官网 | `site/`（见 [site.md](./site.md)） |
 
 `AppState` 是客户端数据与导航状态的单一写入点。页面只渲染状态并发起动作，不各自保存一份业务真相。
 
