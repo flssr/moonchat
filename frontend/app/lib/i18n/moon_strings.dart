@@ -188,6 +188,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '账号已冻结，暂时不能写入': 'Account frozen; cannot write now.',
     '这个动作当前账号没有权限': "This account can't do that.",
     '只有好友之间才能私聊': 'Only friends can DM.',
+    '对方已拒收你的消息或申请': "They're not accepting your messages or requests.",
+    '黑名单最多 100 人': 'The blocklist is limited to 100 people.',
     '状态已经变了，刷新后再试': 'State changed; refresh and retry.',
     // 星座
     '白羊座': 'Aries',
@@ -396,6 +398,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '账号已冻结，暂时不能写入': 'アカウントが凍結されています。書き込み不可。',
     '这个动作当前账号没有权限': 'このアカウントには権限がありません',
     '只有好友之间才能私聊': '友達同士のみDM可能',
+    '对方已拒收你的消息或申请': '相手はあなたのメッセージや申請を受け付けていません',
+    '黑名单最多 100 人': 'ブロックリストは最大100人です',
     '状态已经变了，刷新后再试': '状態が変わりました。更新して再試行。',
     // 星座
     '白羊座': '牡羊座',
@@ -603,6 +607,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '账号已冻结，暂时不能写入': 'Konto eingefroren; Schreiben nicht möglich.',
     '这个动作当前账号没有权限': 'Dieses Konto hat keine Berechtigung.',
     '只有好友之间才能私聊': 'Nur Freunde können DMs senden.',
+    '对方已拒收你的消息或申请': 'Die Person nimmt deine Nachrichten oder Anfragen nicht an.',
+    '黑名单最多 100 人': 'Die Sperrliste ist auf 100 Personen begrenzt.',
     '状态已经变了，刷新后再试': 'Status geändert; aktualisieren und erneut versuchen.',
     // Sternzeichen
     '白羊座': 'Widder',

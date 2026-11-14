@@ -43,6 +43,10 @@ class ApiException implements Exception {
         return '账号已冻结，暂时不能写入';
       case 'not_friend':
         return '只有好友之间才能私聊';
+      case 'blocked':
+        return '对方已拒收你的消息或申请';
+      case 'blocklist_full':
+        return '黑名单最多 100 人';
       case 'not_room_member':
         return '你已不在这个群里';
       case 'not_found':
