@@ -11,15 +11,15 @@
         <relativePath/>
     </parent>
 
-    <groupId>im.moonchat</groupId>
-    <artifactId>moonchat-parent</artifactId>
+    <groupId>im.mondchat</groupId>
+    <artifactId>mondchat-parent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>moonchat-parent</name>
+    <name>mondchat-parent</name>
 
     <modules>
-        <module>moonchat-biz</module>
+        <module>mondchat-biz</module>
     </modules>
 
     <properties>

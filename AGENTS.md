@@ -47,7 +47,7 @@ V1 已完成：身份、好友、私聊、群聊、agent 接入、Flutter Web �
 | 响应 | 只使用 DTO 白名单 record，实体不直接出接口 |
 | 认证 | `HandlerMethodArgumentResolver` 解析当前账号；一个请求头按形状识别 JWT 或账号密钥 |
 | 日志 | SLF4J + Logback，根级别 `info`；不得开启 MyBatis 参数明文日志 |
-| 配置 | 自有配置使用 `moonchat.*`；密钥无默认值 |
+| 配置 | 自有配置使用 `mondchat.*`；密钥无默认值 |
 | 测试 | 后端 Testcontainers 真 PG/Redis + 假 Turms Admin；Turms 运行时由真实 smoke 断言 |
 
 ## 提交与自检

@@ -18,7 +18,7 @@
 //   3) cd infra/turms/smoke && npm i && npm run smoke
 //
 // 可用环境变量覆盖：TURMS_ADMIN_URL / TURMS_WS_URL / TURMS_ADMIN_USER /
-// TURMS_ADMIN_PASSWORD / MOONCHAT_JWT_SECRET_FILE
+// TURMS_ADMIN_PASSWORD / MONDCHAT_JWT_SECRET_FILE
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,7 +32,7 @@ const WS_URL = process.env.TURMS_WS_URL ?? 'ws://localhost:20510';
 const ADMIN_USER = process.env.TURMS_ADMIN_USER ?? 'turms';
 const ADMIN_PASSWORD = process.env.TURMS_ADMIN_PASSWORD ?? 'turms';
 // 密钥文件与 Turms 挂载的是同一份：infra/turms/secrets/jwt-hmac256.key
-const SECRET_FILE = process.env.MOONCHAT_JWT_SECRET_FILE
+const SECRET_FILE = process.env.MONDCHAT_JWT_SECRET_FILE
     ?? path.join(import.meta.dirname, '..', 'secrets', 'jwt-hmac256.key');
 // 每次跑用一对全新的账号：复用上次的 userId 会撞上上一个会话在 Redis 里残留的在线记录，
 // 结果就是消息落库了但推送打到一个已经死掉的会话上（实测复现过）。

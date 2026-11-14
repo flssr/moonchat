@@ -6,16 +6,16 @@
 //
 // 前置：
 //   1) Turms 按 README 的冒烟步骤起来（含 jwt-identity 覆盖与共享密钥文件）
-//   2) Biz 跑起来，并且与 Turms 用同一份 MOONCHAT_JWT_SECRET_FILE（还要给 PG 与登录密钥）：
-//        $env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/moonchat'
-//        $env:SPRING_DATASOURCE_USERNAME = 'moonchat'
-//        $env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
-//        $env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
-//        $env:MOONCHAT_AUTH_JWT_SECRET  = '<32 字节以上的任意字符串>'
-//        .\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz spring-boot:run
+//   2) Biz 跑起来，并且与 Turms 用同一份 MONDCHAT_JWT_SECRET_FILE（还要给 PG 与登录密钥）：
+//        $env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/mondchat'
+//        $env:SPRING_DATASOURCE_USERNAME = 'mondchat'
+//        $env:SPRING_DATASOURCE_PASSWORD = 'mondchat'
+//        $env:MONDCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
+//        $env:MONDCHAT_AUTH_JWT_SECRET  = '<32 字节以上的任意字符串>'
+//        .\backend\mvnw.cmd -f backend\pom.xml -pl mondchat-biz spring-boot:run
 //   3) cd infra/turms/smoke; npm run identity
 //
-// 可用环境变量覆盖：MOONCHAT_BIZ_URL / TURMS_ADMIN_URL / TURMS_ADMIN_USER /
+// 可用环境变量覆盖：MONDCHAT_BIZ_URL / TURMS_ADMIN_URL / TURMS_ADMIN_USER /
 // TURMS_ADMIN_PASSWORD / TURMS_WS_URL
 //
 // 脚本不清理它建的东西：V1 没有删账号的能力，所以每次运行会留下一个账号行与一个 Turms 用户。
@@ -26,7 +26,7 @@
 import crypto from 'node:crypto';
 import TurmsClient from 'turms-client-js';
 
-const BIZ_URL = process.env.MOONCHAT_BIZ_URL ?? 'http://localhost:8080';
+const BIZ_URL = process.env.MONDCHAT_BIZ_URL ?? 'http://localhost:8080';
 const ADMIN_URL = process.env.TURMS_ADMIN_URL ?? 'http://localhost:8510';
 const ADMIN_USER = process.env.TURMS_ADMIN_USER ?? 'turms';
 const ADMIN_PASSWORD = process.env.TURMS_ADMIN_PASSWORD ?? 'turms';

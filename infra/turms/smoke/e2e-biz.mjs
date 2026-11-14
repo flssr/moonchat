@@ -4,11 +4,11 @@
 //   → 建群 → 拉人 → 群消息推送 → 资料页字段
 //
 // 跑法：cd infra/turms/smoke && npm i && node e2e-biz.mjs
-// 环境变量：MOONCHAT_API_BASE（默认 http://localhost:8080）
+// 环境变量：MONDCHAT_API_BASE（默认 http://localhost:8080）
 import crypto from 'node:crypto';
 import TurmsClient from 'turms-client-js';
 
-const API = (process.env.MOONCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
+const API = (process.env.MONDCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
 // 随机而不是截取时间戳：`Date.now()` 后 6 位每 ~16 分钟就重复，重跑会撞 `email_taken`。
 const run = crypto.randomBytes(6).toString('hex');
 

@@ -10,23 +10,23 @@
 // 前置：Biz 与 Turms 都在跑，且归属者已经建好 agent 账号、拿到一次性密钥。
 // 跑法：
 //   cd infra/turms/smoke && npm i
-//   $env:MOONCHAT_ACCOUNT_KEY='<一次性密钥>'; $env:MOONCHAT_API_BASE='http://localhost:8080'
+//   $env:MONDCHAT_ACCOUNT_KEY='<一次性密钥>'; $env:MONDCHAT_API_BASE='http://localhost:8080'
 //   node agent-example.mjs
 //
-// 可用环境变量：MOONCHAT_API_BASE（默认 http://localhost:8080）、MOONCHAT_ACCOUNT_KEY（必填）、
-//              MOONCHAT_REPLY_PREFIX（默认「收到：」）、MOONCHAT_DEVICE_TYPE（默认 browser，小写；
+// 可用环境变量：MONDCHAT_API_BASE（默认 http://localhost:8080）、MONDCHAT_ACCOUNT_KEY（必填）、
+//              MONDCHAT_REPLY_PREFIX（默认「收到：」）、MONDCHAT_DEVICE_TYPE（默认 browser，小写；
 //              连 Turms 时转成大写，例如 browser → BROWSER、others → OTHERS）。
 
 import TurmsClient from 'turms-client-js';
 
-const API_BASE = (process.env.MOONCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
-const ACCOUNT_KEY = process.env.MOONCHAT_ACCOUNT_KEY;
-const REPLY_PREFIX = process.env.MOONCHAT_REPLY_PREFIX ?? '收到：';
+const API_BASE = (process.env.MONDCHAT_API_BASE ?? 'http://localhost:8080').replace(/\/+$/, '');
+const ACCOUNT_KEY = process.env.MONDCHAT_ACCOUNT_KEY;
+const REPLY_PREFIX = process.env.MONDCHAT_REPLY_PREFIX ?? '收到：';
 // X-Device-Type 只认小写（desktop/browser/ios/android/others）；Turms 的 DeviceType 是它的大写形式。
-const DEVICE_TYPE = process.env.MOONCHAT_DEVICE_TYPE ?? 'browser';
+const DEVICE_TYPE = process.env.MONDCHAT_DEVICE_TYPE ?? 'browser';
 
 if (!ACCOUNT_KEY) {
-    console.error('缺少 MOONCHAT_ACCOUNT_KEY：归属者创建 agent 时那串一次性密钥');
+    console.error('缺少 MONDCHAT_ACCOUNT_KEY：归属者创建 agent 时那串一次性密钥');
     process.exit(2);
 }
 
