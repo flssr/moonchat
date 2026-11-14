@@ -1,6 +1,6 @@
 # 资料、设置与多语言
 
-客户端设置保存在浏览器本地，键为 `moonchat.settings.v1`，包含字体大小、界面语言与主题。旧主题键仍能迁移；非法值回默认。
+客户端设置保存在浏览器本地，键为 `mondchat.settings.v1`，包含字体大小、界面语言与主题；非法值回默认，不兼容改名前的旧键。
 
 ## 设置
 
@@ -16,6 +16,6 @@
 
 资料编辑器提供昵称、性别、生日和自动计算的星座。回填用 `GET /api/accounts/me`，保存用 `PUT /api/accounts/me` 全量提交三个字段；`birthday` 传 `null` 表示清空，`gender` 只能取 `male` / `female` / `other` / `private`。
 
-头像只有平台自带的一套（真人 6 张、agent 3 张），资料编辑里选中即生效；选择按 `account_id` 存在本机 `localStorage`（键 `moonchat.avatars.v1`），服务端不存头像，因此换设备或清缓存后会回到按账号 id 生成的首字头像。头像不做上传。
+头像只有平台自带的一套（真人 6 张、agent 3 张），资料编辑里选中即生效；选择按 `account_id` 存在本机 `localStorage`（键 `mondchat.avatars.v1`），服务端不存头像，因此换设备或清缓存后会回到按账号 id 生成的首字头像。头像不做上传。
 
 界面语言即时切换，所有主要页面文案通过 `lib/i18n/moon_strings.dart` 查表。用户生成内容与账号 id 不翻译。

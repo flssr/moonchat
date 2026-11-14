@@ -2,10 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/main.dart';
-import 'package:moonchat/settings/settings.dart';
-import 'package:moonchat/settings/settings_store.dart';
-import 'package:moonchat/state/app_state.dart';
+import 'package:mondchat/main.dart';
+import 'package:mondchat/settings/settings.dart';
+import 'package:mondchat/settings/settings_store.dart';
+import 'package:mondchat/state/app_state.dart';
 
 void main() {
   test('设置 JSON 往返', () {
@@ -46,7 +46,7 @@ void main() {
 
   testWidgets('启动时恢复上次语言与字号', (WidgetTester tester) async {
     final AppState state = AppState();
-    await tester.pumpWidget(MoonChatApp(
+    await tester.pumpWidget(MondChatApp(
       state: state,
       settings: const MoonSettings(languageCode: 'en', textScale: 1.12),
     ));
@@ -63,7 +63,7 @@ void main() {
 
   testWidgets('启动时恢复上次主题', (WidgetTester tester) async {
     final AppState state = AppState();
-    await tester.pumpWidget(MoonChatApp(
+    await tester.pumpWidget(MondChatApp(
       state: state,
       settings: const MoonSettings(themeMode: ThemeMode.dark),
     ));

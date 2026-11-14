@@ -1,6 +1,6 @@
 {
-    "name": "MoonChat",
-    "short_name": "MoonChat",
+    "name": "MondChat",
+    "short_name": "MondChat",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#f3f1ec",

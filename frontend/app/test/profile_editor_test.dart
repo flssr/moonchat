@@ -5,11 +5,11 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
-import 'package:moonchat/api/api_client.dart';
-import 'package:moonchat/api/models.dart';
-import 'package:moonchat/state/app_state.dart';
-import 'package:moonchat/theme.dart';
-import 'package:moonchat/ui/home_shell.dart';
+import 'package:mondchat/api/api_client.dart';
+import 'package:mondchat/api/models.dart';
+import 'package:mondchat/state/app_state.dart';
+import 'package:mondchat/theme.dart';
+import 'package:mondchat/ui/home_shell.dart';
 
 http.Response _json(Object? body) => http.Response(
   jsonEncode(body),

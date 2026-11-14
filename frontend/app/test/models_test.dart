@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/api/models.dart';
+import 'package:mondchat/api/models.dart';
 
 void main() {
   test('资料回显缺 gender 或类型不对不算成功', () {

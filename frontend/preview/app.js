@@ -18,7 +18,7 @@
     }
     if (themeLabel) themeLabel.textContent = dark ? "白天" : "夜间";
     if (persist) {
-      try { localStorage.setItem("moonchat-theme", theme); } catch (e) { /* file:// may deny */ }
+      try { localStorage.setItem("mondchat-theme", theme); } catch (e) { /* file:// may deny */ }
     }
   }
 
@@ -29,7 +29,7 @@
       return;
     }
     let saved = null;
-    try { saved = localStorage.getItem("moonchat-theme"); } catch (e) { /* ignore */ }
+    try { saved = localStorage.getItem("mondchat-theme"); } catch (e) { /* ignore */ }
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     applyTheme(saved || (prefersDark ? "dark" : "light"), false);
   }

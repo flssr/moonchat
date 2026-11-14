@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:moonchat/i18n/moon_strings.dart';
+import 'package:mondchat/i18n/moon_strings.dart';
 
 void main() {
   final List<String> translated = kMoonLanguages

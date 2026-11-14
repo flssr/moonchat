@@ -211,13 +211,13 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          // 品牌锁排：标与字标并排一次，不再重复小字 MOONCHAT。
+          // 品牌锁排：标与字标并排一次，不再重复小字 MONDCHAT。
           Row(
             children: <Widget>[
               ClipRRect(
                 borderRadius: BorderRadius.circular(7),
                 child: Image.asset(
-                  'assets/moonchat-logo.png',
+                  'assets/mondchat-logo.png',
                   width: 30,
                   height: 30,
                   filterQuality: FilterQuality.high,
@@ -229,7 +229,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'MoonChat',
+                    'MondChat',
                     style: TextStyle(
                       fontSize: 30,
                       fontWeight: FontWeight.w400,

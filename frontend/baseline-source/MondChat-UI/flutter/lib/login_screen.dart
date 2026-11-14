@@ -308,7 +308,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ),
           const SizedBox(width: 12),
           const Text(
-            'Moonchat',
+            'MondChat',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -656,7 +656,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
         ),
         const SizedBox(width: 10),
         const Text(
-          'WELCOME TO MOONCHAT',
+          'WELCOME TO MONDCHAT',
           style: TextStyle(
             fontSize: 11,
             letterSpacing: 3.2,

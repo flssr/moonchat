@@ -11,22 +11,22 @@ import 'ui/login_screen.dart';
 
 void main() {
   final SettingsStore store = createSettingsStore();
-  runApp(MoonChatApp(settings: store.load(), store: store));
+  runApp(MondChatApp(settings: store.load(), store: store));
 }
 
-class MoonChatApp extends StatefulWidget {
+class MondChatApp extends StatefulWidget {
   /// [state] 只给测试注入；生产入口不传，由外壳自己持有并负责释放。
-  const MoonChatApp({super.key, this.state, this.settings, this.store});
+  const MondChatApp({super.key, this.state, this.settings, this.store});
 
   final AppState? state;
   final MoonSettings? settings;
   final SettingsStore? store;
 
   @override
-  State<MoonChatApp> createState() => _MoonChatAppState();
+  State<MondChatApp> createState() => _MondChatAppState();
 }
 
-class _MoonChatAppState extends State<MoonChatApp> {
+class _MondChatAppState extends State<MondChatApp> {
   late final AppState _state = widget.state ?? AppState();
   late final bool _ownsState = widget.state == null;
   late final SettingsStore _store = widget.store ?? createSettingsStore();
@@ -110,7 +110,7 @@ class _MoonChatAppState extends State<MoonChatApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MoonChat',
+      title: 'MondChat',
       debugShowCheckedModeBanner: false,
       theme: buildMoonTheme(Brightness.light),
       darkTheme: buildMoonTheme(Brightness.dark),

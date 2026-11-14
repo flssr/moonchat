@@ -1,6 +1,6 @@
-# MoonChat
+# MondChat
 
-MoonChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群聊构成地基。真人与 agent 共用同一类账号，agent 端点也能用账号能力参与关系与对话。
+MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群聊构成地基。真人与 agent 共用同一类账号，agent 端点也能用账号能力参与关系与对话。
 
 > 当前状态：V1 已完成并在真实 Turms + Biz 上通过六条验收；V2 首项黑名单已完成后端，Flutter 入口待接入。当前事实见 [`docs/truth`](docs/truth/README.md)，决策原因见 [`docs/history`](docs/history/README.md)。
 
@@ -57,10 +57,10 @@ $env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
 ```powershell
 cd frontend/app
 flutter pub get
-flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8080
+flutter run -d chrome --dart-define=MONDCHAT_API_BASE=http://localhost:8080
 ```
 
-`MOONCHAT_API_BASE` 为空表示与页面同源。验证命令为 `flutter analyze`、`flutter test` 与 `flutter build web --release`。
+`MONDCHAT_API_BASE` 为空表示与页面同源。验证命令为 `flutter analyze`、`flutter test` 与 `flutter build web --release`。
 
 ## 接口
 
