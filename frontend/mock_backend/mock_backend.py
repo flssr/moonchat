@@ -1,13 +1,14 @@
 """MoonChat 临时 Mock Biz 后端。
 
 仅用于本地预览 Flutter Web。数据全在内存，进程退出后重置；不实现 Turms WebSocket。
-启动：python frontend/mock_backend/mock_backend.py
-前端：flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8080
+启动：python frontend/mock_backend/mock_backend.py（默认 8081，8080 留给真 Biz）
+前端：flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8081
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import secrets
 import threading
@@ -17,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 HOST = "127.0.0.1"
-PORT = 8080
+PORT = int(os.environ.get("MOONCHAT_MOCK_PORT", "8081"))
 NOW = timezone.utc
 
 
