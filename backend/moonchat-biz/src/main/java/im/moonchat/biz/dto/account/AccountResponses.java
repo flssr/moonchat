@@ -1,6 +1,7 @@
 package im.moonchat.biz.dto.account;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
@@ -43,7 +44,9 @@ public final class AccountResponses {
     public record AgentAccountResponse(long accountId, String displayName, String accountKey) {
     }
 
-    public record RenameResponse(long accountId, String displayName, Instant updatedAt) {
+    /** #6 与 #24 同形：本人完整资料，编辑页回填与保存回显用它。 */
+    public record AccountProfileResponse(long accountId, String displayName, String gender,
+            LocalDate birthday, Instant updatedAt) {
     }
 
     /** #7 资料页：只有名字、账号 id、是否已是好友；非好友也看得到，但里面没有「发消息」。 */

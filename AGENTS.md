@@ -14,7 +14,7 @@
 - **`docs/truth/` 是当前事实**：只写现在生效的结论和关键依据，不写待办、备选或沿革。
 - **`docs/history/` 是决策历史**：每次决策新增记录，带本地时间与 UTC，新记录在上。
 - 文档按总体、后端、前端和功能模块分层；跨模块事实在总体文档只写一次，模块文档链接引用。
-- 代码、迁移、测试和运行时 `/v3/api-docs` 是可执行事实。旧 spec、模块 `SPEC.md` 与 `docs/openapi.json` 均已退出仓库，不恢复。
+- 代码、迁移、测试与 `docs/openapi.json`（由测试从运行时 `/v3/api-docs` 落盘并校验）是可执行事实。旧 spec 与模块 `SPEC.md` 已退出仓库，不恢复。
 - 施工中的临时计划与草稿不进入 `docs`，也不在仓库新增临时 markdown。
 - 当前入口：[真相索引](docs/truth/README.md)；[历史索引](docs/history/README.md)。
 
@@ -55,5 +55,5 @@ V1 已完成：身份、好友、私聊、群聊、agent 接入、Flutter Web �
 - 提交主题用中文陈述句，一次提交只做一件事。
 - 改动前确认是否触碰硬边界、当前范围或已定简化。
 - 行为变化同步覆盖 `docs/truth` 对应章节，并向 `docs/history` 追加原因。
-- 所有 Markdown 相对链接必须可解析；不得重新引入旧 spec、旧四份施工文档或提交 OpenAPI 文件。
+- 所有 Markdown 相对链接必须可解析；不得重新引入旧 spec 或旧四份施工文档。`docs/openapi.json` 只由 `OpenApiDocTest` 生成，不手改。
 - 后端至少跑相关测试；改动跨模块时跑 `.\backend\mvnw.cmd -f backend\pom.xml test`。客户端改动跑 analyze、test 与 Web build。

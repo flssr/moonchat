@@ -22,6 +22,12 @@ Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 
 
 ## 资料
 
-当前后端保存名字、状态与认证哈希。头像不落库。资料页只向其他账号返回名字、账号 id 与是否好友，不返回邮箱、类型或归属者。
+后端保存名字、状态、性别、生日与认证哈希。头像不落库。资料页只向其他账号返回名字、账号 id 与是否好友，不返回邮箱、类型、归属者、性别或生日。
 
-后端尚未接收性别与生日；前端资料编辑器已准备这两个输入，但在后端补齐前保存会失败。这是当前已知的前后端缺口。
+- `GET /api/accounts/me` 返回本人完整资料：`account_id`、`display_name`、`gender`、`birthday`、`updated_at`。登录、切账号与 `GET /api/accounts/mine` 都只回鉴权与列表字段，不回资料；前端编辑页用这个接口回填。
+- `PUT /api/accounts/me` 是**全量提交**：`display_name`、`gender`、`birthday` 三个字段都必传，不是部分更新。响应与 `GET` 同形。
+- `gender` 取 `male` / `female` / `other` / `private`，默认 `private`。默认值由 `account_info.gender not null default 'private'` 提供，建号路径不写这一列；`private` 同时表示“没选”与“选了保密”，这是有意的，不另设标记。
+- `birthday` 可空，`YYYY-MM-DD`；`null` 就是未设置，默认值也是 `null`，不捏造日期。传 `null` 会把已设置的生日清空。
+- 名字未变时不同步 Turms；变了才调 Admin 改名并写 `turms_sync_state = 'synced'`，未确认整笔回滚回 503。
+- 校验失败一律 400 且带 `field`：名字空白或超过 20、枚举外性别、生日格式不对、日历上不存在或晚于今天。多个字段同时违规时只报其中一条，顺序不保证。
+

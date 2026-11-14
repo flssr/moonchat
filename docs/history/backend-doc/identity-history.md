@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 资料字段与接口方法
+
+2026-11-14 20:40 CST   [2026-11-14 12:40 UTC]
+
+决策：`account_info` 增加 `gender`（`text not null default 'private'`，枚举 male/female/other/private）与 `birthday`（`date` 可空，null 即未设置）；资料写入改为 `PUT /api/accounts/me`，三字段全量提交；另加 `GET /api/accounts/me` 供前端回填。
+
+原因：前端资料编辑器已经上线，需要后端有对应字段与读接口；三字段一起提交本来就是幂等的替换语义，用 `PATCH` 名不副实，也避免出现部分更新与“缺省 vs null”的三态判定。`gender` 默认 `private` 让老行在加列时自动回填，建号路径零改动；生日没有合理默认值，只能留 null。
+
 ### 前端资料字段
 
 2026-11-12 21:43 CET   [2026-11-12 20:43 UTC]

@@ -64,7 +64,7 @@ flutter run -d chrome --dart-define=MOONCHAT_API_BASE=http://localhost:8080
 
 ## 接口
 
-`springdoc` 在运行时生成 `/v3/api-docs`。仓库不提交 OpenAPI 文件，也不维护手写接口副本；路径、DTO 与错误行为以代码、测试和运行时输出为准。
+`springdoc` 在运行时生成 `/v3/api-docs`；`docs/openapi.json` 是它的落盘副本，由 `OpenApiDocTest` 生成并逐字节校验。改了控制器或 DTO 后要重新生成并一起提交，不要手改。
 
 ## 协作
 
