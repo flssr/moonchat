@@ -596,13 +596,20 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 改当前账号资料。响应必须回显 gender/birthday（后端 issue #5）；缺字段就当失败，
-  /// 不让当前后端把性别/生日静默丢掉。
+  /// 本人完整资料：编辑页回填用。登录、切账号与 `mine` 都只有列表字段。
+  Future<MyProfile> myProfile() async {
+    final String? token = loginToken;
+    if (token == null) {
+      throw ApiException(code: 'unauthenticated', message: 'signed out');
+    }
+    return api.myProfile(token);
+  }
+
+  /// 改当前账号资料：`PUT` 全量提交三个字段，响应与 `GET /api/accounts/me` 同形。
   Future<void> updateProfile({
     required String displayName,
     required String gender,
     DateTime? birthday,
-    bool clearBirthday = false,
   }) async {
     final Account? current = account;
     final String? token = loginToken;
@@ -610,14 +617,14 @@ class AppState extends ChangeNotifier {
       // 已经登出：让编辑器停在弹窗里报错，别把关闭弹窗当成保存成功。
       throw ApiException(code: 'unauthenticated', message: 'signed out');
     }
-    final UpdatedProfile updated = await api.updateProfile(
+    final MyProfile updated = await api.updateProfile(
       token: token,
       displayName: displayName,
       gender: gender,
       birthday: birthday,
-      clearBirthday: clearBirthday,
     );
-    if (!updated.hasProfileFields || updated.displayName.isEmpty) {
+    // 契约保证 gender 一定有值；缺了就说明后端版本不对，别把保存当成功。
+    if (updated.displayName.isEmpty || updated.gender == null) {
       throw ApiException(code: 'upstream_unavailable', message: 'profile fields missing');
     }
     // 等待期间可能已被 401 / 续期失败登出，或用户切了账号。

@@ -71,39 +71,26 @@ class Account {
   bool get isAgent => type == 'agent';
 }
 
-/// #6 改资料的回显。`hasProfileFields` 用来确认后端真的回了新字段；
-/// 缺字段时不能把保存当成功，否则当前后端会静默丢掉性别/生日。
-class UpdatedProfile {
-  const UpdatedProfile({
+/// #6 / #24 本人完整资料：`GET /api/accounts/me` 与 `PUT /api/accounts/me` 同形。
+class MyProfile {
+  const MyProfile({
     required this.accountId,
     required this.displayName,
     required this.gender,
     required this.birthday,
-    required this.hasProfileFields,
   });
 
-  factory UpdatedProfile.fromJson(Map<String, dynamic> j) {
-    // 先按类型解析一次，坏类型只让 hasProfileFields 为 false，不在 _str 的 cast 里炸掉。
-    final Object? rawName = j['display_name'];
-    final Object? rawGender = j['gender'];
-    return UpdatedProfile(
-      accountId: j.containsKey('account_id') ? _int(j['account_id']) : 0,
-      displayName: rawName is String ? rawName : '',
-      gender: rawGender is String ? rawGender : null,
-      birthday: _dateOnly(j['birthday']),
-      // gender 总是非空发送，回显它就能证明后端认识新字段；
-      // birthday 可能在 `NON_NULL` 序列化下被省略（null 表示清除），不能要求 key 存在。
-      hasProfileFields: j.containsKey('account_id') &&
-          rawGender is String &&
-          rawName is String,
-    );
-  }
+  factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
+        accountId: j.containsKey('account_id') ? _int(j['account_id']) : 0,
+        displayName: j['display_name'] is String ? j['display_name'] as String : '',
+        gender: j['gender'] is String ? j['gender'] as String : null,
+        birthday: _dateOnly(j['birthday']),
+      );
 
   final int accountId;
   final String displayName;
   final String? gender;
   final DateTime? birthday;
-  final bool hasProfileFields;
 }
 
 /// #2 登录 / #20 续期：登录 JWT 与它归属的账号。

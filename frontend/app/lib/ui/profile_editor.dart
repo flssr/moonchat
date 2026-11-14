@@ -9,7 +9,8 @@ import '../theme.dart';
 import 'constellation.dart';
 import 'widgets.dart';
 
-/// 左下角头像打开的资料编辑。头像从平台默认的几千里选，选中即存本机（服务端还没有这一列）。
+/// 左下角头像打开的资料编辑。回填与保存都走 `GET` / `PUT /api/accounts/me`；
+/// 登录与会话响应只带列表字段，所以打开时先拉一次完整资料。
 Future<void> showProfileEditor(BuildContext context, AppState state) async {
   if (state.account == null) {
     return;
@@ -32,10 +33,12 @@ class _ProfileEditor extends StatefulWidget {
 class _ProfileEditorState extends State<_ProfileEditor> {
   late final Account _account;
   late final TextEditingController _name;
-  late String _gender;
+  String _gender = 'private';
   DateTime? _birthday;
   String? _avatar;
 
+  bool _loading = true;
+  String? _loadError;
   String? _nameError;
   String? _error;
   bool _busy = false;
@@ -50,35 +53,53 @@ class _ProfileEditorState extends State<_ProfileEditor> {
   @override
   void initState() {
     super.initState();
-    // 登录 / 会话响应可能只带最小字段；`mine` 里同一账号的那份才是完整资料。
-    _account = _resolveAccount(widget.state);
+    _account = widget.state.account!;
     _name = TextEditingController(text: _account.displayName)
       ..addListener(() {
         if (_nameError != null) {
           setState(() => _nameError = null);
         }
       });
-    _gender = _account.gender ?? 'private';
-    _birthday = _account.birthday;
     _avatar = widget.state.avatarOf(_account.accountId);
+    _loadProfile();
   }
 
-  Account _resolveAccount(AppState state) {
-    final Account current = state.account!;
-    for (final Account account in state.accounts) {
-      if (account.accountId == current.accountId) {
-        // mine 只保证 id/type/name；资料字段以会话里的当前账号优先，缺的再用 mine 补。
-        return Account(
-          accountId: current.accountId,
-          type: current.type,
-          displayName:
-              current.displayName.isEmpty ? account.displayName : current.displayName,
-          gender: current.gender ?? account.gender,
-          birthday: current.birthday ?? account.birthday,
-        );
+  /// 头像不进 `PUT`：选中即落本机偏好，服务端还没有这一列。
+  void _pickAvatar(String? key) {
+    setState(() => _avatar = key);
+    widget.state.setAvatar(_account.accountId, key);
+  }
+
+  /// 回填的唯一来源：`GET /api/accounts/me`。
+  Future<void> _loadProfile() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final MyProfile profile = await widget.state.myProfile();
+      if (!mounted) {
+        return;
       }
+      setState(() {
+        _name.text = profile.displayName;
+        _gender = profile.gender ?? 'private';
+        _birthday = profile.birthday;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) {
+        return;
+      }
+      if (e.isUnauthenticated) {
+        Navigator.of(context).pop();
+        return;
+      }
+      setState(() {
+        _loading = false;
+        _loadError = e.displayText;
+      });
     }
-    return current;
   }
 
   @override
@@ -113,12 +134,6 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     }
   }
 
-  /// 头像不进 PATCH：选中即落本机偏好，服务端列还没有（issue #10）。
-  void _pickAvatar(String? key) {
-    setState(() => _avatar = key);
-    widget.state.setAvatar(_account.accountId, key);
-  }
-
   Future<void> _save() async {
     if (_busy) {
       return;
@@ -134,11 +149,11 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       _nameError = null;
     });
     try {
+      // `PUT` 是全量提交：三个字段都发，生日为 null 就是清空。
       await widget.state.updateProfile(
         displayName: name,
         gender: _gender,
         birthday: _birthday,
-        clearBirthday: _birthday == null && _account.birthday != null,
       );
       if (mounted) {
         Navigator.of(context).pop();
@@ -181,206 +196,241 @@ class _ProfileEditorState extends State<_ProfileEditor> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text(
-                      context.tr('个人资料'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: p.ink,
-                      ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: context.tr('关闭'),
-                      visualDensity: VisualDensity.compact,
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                      icon: Icon(Icons.close, size: 16, color: p.ink3),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: <Widget>[
-                    MoonAvatar(
-                      name: _account.displayName,
-                      seed: _account.accountId,
-                      avatar: _avatar,
-                      size: 56,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: <Widget>[
-                          Text(
-                            _account.displayName,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                              color: p.ink,
-                            ),
-                          ),
-                          MonoText('#${_account.accountId}', selectable: true),
-                          const SizedBox(height: 4),
-                          Text(
-                            context.tr('默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。'),
-                            style: TextStyle(
-                              fontSize: 11,
-                              height: 1.5,
-                              color: p.ink3,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(context.tr('选择默认头像'), style: _labelStyle(p)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    _AvatarOption(
-                      label: context.tr('默认'),
-                      name: _account.displayName,
-                      seed: _account.accountId,
-                      selected: _avatar == null,
-                      onTap: _busy ? null : () => _pickAvatar(null),
-                    ),
-                    for (final (int i, String key) in avatarsFor(_account.type).indexed)
-                      _AvatarOption(
-                        label: '${context.tr('头像')} ${i + 1}',
-                        name: _account.displayName,
-                        seed: _account.accountId,
-                        avatar: key,
-                        selected: _avatar == key,
-                        onTap: _busy ? null : () => _pickAvatar(key),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-                MoonField(
-                  label: context.tr('昵称'),
-                  controller: _name,
-                  enabled: !_busy,
-                  errorText: _nameError == null ? null : context.tr(_nameError!),
-                  hint: context.tr('1–20 字'),
-                  onSubmitted: (_) {
-                    if (!_busy) {
-                      _save();
-                    }
-                  },
-                ),
-                const SizedBox(height: 18),
-                Text(context.tr('性别'), style: _labelStyle(p)),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: <Widget>[
-                    for (final (String key, String label) in _genders)
-                      MoonChoicePill(
-                        label: context.tr(label),
-                        selected: _gender == key,
-                        onTap: _busy
-                            ? null
-                            : () => setState(() => _gender = key),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Text(context.tr('生日'), style: _labelStyle(p)),
-                const SizedBox(height: 4),
-                InkWell(
-                  onTap: _busy ? null : _pickBirthday,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    height: 40,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: p.line),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      children: <Widget>[
-                        Text(
-                          _birthday == null
-                              ? context.tr('选择生日')
-                              : _formatBirthday(context, _birthday!),
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: _birthday == null ? p.ink3 : p.ink,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (_birthday != null)
-                          GestureDetector(
-                            onTap: _busy
-                                ? null
-                                : () => setState(() => _birthday = null),
-                            child: Text(
-                              context.tr('清除'),
-                              style: TextStyle(fontSize: 11, color: p.ink3),
-                            ),
-                          ),
-                        const SizedBox(width: 8),
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 16,
-                          color: p.ink3,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: <Widget>[
-                    Text(context.tr('星座'), style: _labelStyle(p)),
-                    const SizedBox(width: 12),
-                    Text(
-                      _birthday == null
-                          ? context.tr('选择生日后自动计算')
-                          : context.tr(constellationOf(_birthday!)),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: _birthday == null ? p.ink3 : p.ink,
-                      ),
-                    ),
-                  ],
-                ),
-                if (_error != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  Text(
-                    context.tr(_error!),
-                    style: TextStyle(fontSize: 11.5, color: p.accent),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                Row(
-                  children: <Widget>[
-                    MoonButton(label: context.tr('保存'), busy: _busy, onPressed: _save),
-                    const SizedBox(width: 8),
-                    MoonButton(
-                      label: context.tr('取消'),
-                      kind: MoonButtonKind.text,
-                      onPressed: _busy
-                          ? null
-                          : () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
+                _header(context, p),
+                if (_loading)
+                  _loadingBody(context, p)
+                else if (_loadError != null)
+                  _errorBody(context, p, _loadError!)
+                else
+                  _form(context, p),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _header(BuildContext context, MoonPalette p) {
+    return Row(
+      children: <Widget>[
+        Text(
+          context.tr('个人资料'),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink),
+        ),
+        const Spacer(),
+        IconButton(
+          tooltip: context.tr('关闭'),
+          visualDensity: VisualDensity.compact,
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          icon: Icon(Icons.close, size: 16, color: p.ink3),
+        ),
+      ],
+    );
+  }
+
+  Widget _loadingBody(BuildContext context, MoonPalette p) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 32),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: p.ink3),
+          ),
+          const SizedBox(width: 10),
+          Text(context.tr('加载中'), style: TextStyle(fontSize: 12, color: p.ink3)),
+        ],
+      ),
+    );
+  }
+
+  Widget _errorBody(BuildContext context, MoonPalette p, String error) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const SizedBox(height: 16),
+        Text(context.tr(error), style: TextStyle(fontSize: 11.5, color: p.accent)),
+        const SizedBox(height: 20),
+        Row(
+          children: <Widget>[
+            MoonButton(label: context.tr('重试'), onPressed: _loadProfile),
+            const SizedBox(width: 8),
+            MoonButton(
+              label: context.tr('取消'),
+              kind: MoonButtonKind.text,
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _form(BuildContext context, MoonPalette p) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const SizedBox(height: 4),
+        Row(
+          children: <Widget>[
+            MoonAvatar(
+              name: _account.displayName,
+              seed: _account.accountId,
+              avatar: _avatar,
+              size: 56,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    _account.displayName,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: p.ink,
+                    ),
+                  ),
+                  MonoText('#${_account.accountId}', selectable: true),
+                  const SizedBox(height: 4),
+                  Text(
+                    context.tr('默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。'),
+                    style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(context.tr('选择默认头像'), style: _labelStyle(p)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            _AvatarOption(
+              label: context.tr('默认'),
+              name: _account.displayName,
+              seed: _account.accountId,
+              selected: _avatar == null,
+              onTap: _busy ? null : () => _pickAvatar(null),
+            ),
+            for (final (int i, String key) in avatarsFor(_account.type).indexed)
+              _AvatarOption(
+                label: '${context.tr('头像')} ${i + 1}',
+                name: _account.displayName,
+                seed: _account.accountId,
+                avatar: key,
+                selected: _avatar == key,
+                onTap: _busy ? null : () => _pickAvatar(key),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        MoonField(
+          label: context.tr('昵称'),
+          controller: _name,
+          enabled: !_busy,
+          errorText: _nameError == null ? null : context.tr(_nameError!),
+          hint: context.tr('1–20 字'),
+          onSubmitted: (_) {
+            if (!_busy) {
+              _save();
+            }
+          },
+        ),
+        const SizedBox(height: 18),
+        Text(context.tr('性别'), style: _labelStyle(p)),
+        const SizedBox(height: 6),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: <Widget>[
+            for (final (String key, String label) in _genders)
+              MoonChoicePill(
+                label: context.tr(label),
+                selected: _gender == key,
+                onTap: _busy ? null : () => setState(() => _gender = key),
+              ),
+          ],
+        ),
+        const SizedBox(height: 18),
+        Text(context.tr('生日'), style: _labelStyle(p)),
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: _busy ? null : _pickBirthday,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: p.line),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: <Widget>[
+                Text(
+                  _birthday == null
+                      ? context.tr('选择生日')
+                      : _formatBirthday(context, _birthday!),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _birthday == null ? p.ink3 : p.ink,
+                  ),
+                ),
+                const Spacer(),
+                if (_birthday != null)
+                  GestureDetector(
+                    onTap: _busy ? null : () => setState(() => _birthday = null),
+                    child: Text(
+                      context.tr('清除'),
+                      style: TextStyle(fontSize: 11, color: p.ink3),
+                    ),
+                  ),
+                const SizedBox(width: 8),
+                Icon(Icons.calendar_today_outlined, size: 16, color: p.ink3),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: <Widget>[
+            Text(context.tr('星座'), style: _labelStyle(p)),
+            const SizedBox(width: 12),
+            Text(
+              _birthday == null
+                  ? context.tr('选择生日后自动计算')
+                  : context.tr(constellationOf(_birthday!)),
+              style: TextStyle(
+                fontSize: 13,
+                color: _birthday == null ? p.ink3 : p.ink,
+              ),
+            ),
+          ],
+        ),
+        if (_error != null) ...<Widget>[
+          const SizedBox(height: 16),
+          Text(context.tr(_error!), style: TextStyle(fontSize: 11.5, color: p.accent)),
+        ],
+        const SizedBox(height: 24),
+        Row(
+          children: <Widget>[
+            MoonButton(label: context.tr('保存'), busy: _busy, onPressed: _save),
+            const SizedBox(width: 8),
+            MoonButton(
+              label: context.tr('取消'),
+              kind: MoonButtonKind.text,
+              onPressed: _busy ? null : () => Navigator.of(context).pop(),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
