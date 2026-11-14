@@ -9,8 +9,6 @@
 
   const apply = (theme) => {
     root.dataset.theme = theme;
-    btn?.setAttribute('aria-pressed', String(theme === 'dark'));
-    btn?.setAttribute('aria-label', theme === 'dark' ? '切换到日间主题' : '切换到夜间主题');
   };
 
   apply(store.get() || (prefersDark ? 'dark' : 'light'));
@@ -61,12 +59,17 @@
   };
   const start = () => {
     stop();
+    // 减少动态时不轮换，只留当前这一条。
+    if (reduced) return;
     timer = window.setInterval(swap, 8000);
   };
 
   if (figure) {
+    // 悬停、键盘聚焦都暂停；读屏用户把焦点放上去就不会被换内容。
     figure.addEventListener('mouseenter', () => { paused = true; });
     figure.addEventListener('mouseleave', () => { paused = false; });
+    figure.addEventListener('focusin', () => { paused = true; });
+    figure.addEventListener('focusout', () => { paused = false; });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) stop();
       else start();

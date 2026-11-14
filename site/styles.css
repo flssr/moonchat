@@ -284,9 +284,12 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 
 /* ---------- motion ---------- */
 .reveal {
+  transition: opacity 720ms var(--ease-out), transform 720ms var(--ease-out);
+}
+/* 只有带 JS 时才先藏起来等淡入；没有 JS 就直接显示正文。 */
+html.js .reveal {
   opacity: 0;
   transform: translateY(16px);
-  transition: opacity 720ms var(--ease-out), transform 720ms var(--ease-out);
 }
 .reveal.is-in { opacity: 1; transform: none; }
 

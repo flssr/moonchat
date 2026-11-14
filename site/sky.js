@@ -9,6 +9,14 @@
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const isNight = () => document.documentElement.dataset.theme === 'dark';
 
+  // 这是锦上添花的一层：拿不到观察器就整层跳过，月亮仍在。
+  if (!('IntersectionObserver' in window) || !('MutationObserver' in window)) return;
+
+  const onReducedChange = (handler) => {
+    if (typeof reduceMotion.addEventListener === 'function') reduceMotion.addEventListener('change', handler);
+    else if (typeof reduceMotion.addListener === 'function') reduceMotion.addListener(handler);
+  };
+
   let width = 0;
   let height = 0;
   let stars = [];
@@ -60,6 +68,10 @@
     const y = rand(-20, height * 0.24);
     // 只在上方那片空天里划完，不落到标题上。
     const maxLife = ((height * 0.3 - y) / vy) * 1000;
+    if (maxLife < 120) {
+      nextMeteorAt = now + 4000;
+      return;
+    }
     meteor = {
       x,
       y,
@@ -67,7 +79,7 @@
       vy,
       length: rand(90, 160),
       age: 0,
-      life: Math.max(260, Math.min(rand(650, 1000), maxLife)),
+      life: Math.min(rand(650, 1000), maxLife),
       alpha: rand(0.42, 0.58),
     };
     nextMeteorAt = now + rand(9000, 18000);
@@ -202,7 +214,7 @@
     }
   }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-  reduceMotion.addEventListener('change', () => {
+  onReducedChange(() => {
     stop();
     if (reduceMotion.matches && moon) moon.style.transform = '';
     else updateMoon();
