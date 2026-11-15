@@ -17,6 +17,8 @@
 
 发送调用 `POST /api/conversations/{type}/{id}/messages`，本地先出现“发送中”气泡，成功改时间，失败保留正文并允许重试。发送请求声明 `X-Device-Type`。
 
+输入框里 Enter 直接发送，Shift+Enter 换行；输入法还在组词时的 Enter 交给候选上屏，不发出去。
+
 `not_friend`、`not_room_member` 与 `blocked` 会禁用输入或提示关系失效；`rate_limited` 保留草稿；`upstream_unavailable` 标记失败，但界面不声称消息一定没有发出。
 
 没有已读回执、正在输入、消息搜索、附件、音视频或结构化 mentions。

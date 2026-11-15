@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -56,6 +58,8 @@ class _MondChatAppState extends State<MondChatApp> {
     };
     _textScale = _initial.textScale;
     _locale = _localeFor(_initial.languageCode);
+    // 刷新页面时先试本机凭据：有就恢复会话，没有就留在登录页（issue #24）。
+    unawaited(_state.restore());
   }
 
   @override
@@ -103,6 +107,7 @@ class _MondChatAppState extends State<MondChatApp> {
   /// 否则每次 notifyListeners 都会把整棵树重建一遍（并触发 didUpdateWidget）。
   Widget? _gate;
   bool? _gateHome;
+  bool? _gateRestoring;
   Brightness? _gateBrightness;
   double? _gateTextScale;
   Locale? _gateLocale;
@@ -136,14 +141,19 @@ class _MondChatAppState extends State<MondChatApp> {
           if (!ready) {
             _arrived = false;
           }
-          final bool showHome = ready && _arrived;
+          // 恢复会话期间不渲染登录表单：否则刷新会先闪一下「要登录」，再跳进主界面。
+          final bool restoring = _state.restoring;
+          // 从本机凭据恢复的会话没有登舱过渡可播，`_arrived` 永远不会置位，得单独放行。
+          final bool showHome = ready && (_arrived || _state.restored);
           final Brightness brightness = Theme.of(context).brightness;
           if (_gate == null ||
               showHome != _gateHome ||
+              restoring != _gateRestoring ||
               brightness != _gateBrightness ||
               _textScale != _gateTextScale ||
               _locale != _gateLocale) {
             _gateHome = showHome;
+            _gateRestoring = restoring;
             _gateBrightness = brightness;
             _gateTextScale = _textScale;
             _gateLocale = _locale;
@@ -156,7 +166,9 @@ class _MondChatAppState extends State<MondChatApp> {
                     onLanguageChanged: _setLanguage,
                     onTextScaleChanged: _setTextScale,
                   )
-                : LoginScreen(state: _state, onArrived: _onArrived);
+                : restoring
+                    ? const _StartupSplash()
+                    : LoginScreen(state: _state, onArrived: _onArrived);
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
           return AnimatedSwitcher(
@@ -166,6 +178,27 @@ class _MondChatAppState extends State<MondChatApp> {
             child: KeyedSubtree(key: ValueKey<bool>(showHome), child: _gate!),
           );
         },
+      ),
+    );
+  }
+}
+
+/// 恢复会话时的启动页：只放标，不放表单。
+class _StartupSplash extends StatelessWidget {
+  const _StartupSplash();
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: Center(
+        child: Image.asset(
+          'assets/mondchat-logo.png',
+          width: 44,
+          height: 44,
+          filterQuality: FilterQuality.high,
+        ),
       ),
     );
   }

@@ -1,12 +1,15 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:mondchat/api/api_client.dart';
 import 'package:mondchat/api/models.dart';
+import 'package:mondchat/main.dart';
+import 'package:mondchat/session/session_store.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
 import 'package:mondchat/turms/realtime.dart';
@@ -691,6 +694,113 @@ void main() {
     expect(rt.connectedAccountId, 2, reason: '要用新账号的凭据重连');
     expect(state.messagesOf('dm:2'), isEmpty, reason: '上一个账号的缓存不能留');
   });
+
+  test('登录后记住本机凭据，刷新用同一份凭据直接恢复会话', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final _MemorySessionStore session = _MemorySessionStore();
+    final AppState first = _stateOn(biz, session: session);
+    await first.login(email: 'a@b.c', password: 'password1');
+    expect(session.session?.token, 'login-jwt');
+    expect(session.session?.accountId, 1);
+    first.dispose();
+
+    // 新实例 = 刷新页面：手里只有本机那串令牌，没有密码。
+    final AppState restored = _stateOn(_FakeBiz(), session: session);
+    addTearDown(restored.dispose);
+    await restored.restore();
+
+    expect(restored.isReady, isTrue);
+    expect(restored.account?.accountId, 1);
+  });
+
+  testWidgets('刷新后恢复会话直接进主界面，不再闪登录表单', (WidgetTester tester) async {
+    final _MemorySessionStore session = _MemorySessionStore()
+      ..session = const StoredSession(token: 'login-jwt', accountId: 1);
+    final AppState state = _stateOn(_FakeBiz(), session: session);
+    addTearDown(state.dispose);
+
+    // 外壳自己在 initState 里调 restore()：没有登舱过渡可播，恢复完就得直接交棒。
+    await tester.pumpWidget(MondChatApp(state: state));
+    for (int i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(find.text('登录'), findsNothing, reason: '恢复会话期间不能闪登录表单');
+    }
+    await tester.pumpAndSettle();
+
+    expect(state.isReady, isTrue);
+    expect(find.byType(HomeShell), findsOneWidget);
+    state.dispose();
+  });
+
+  test('本机记住的令牌失效：清掉副本并回登录页', () async {    final _MemorySessionStore session = _MemorySessionStore()
+      ..session = const StoredSession(token: 'stale', accountId: 1);
+    final AppState state = _stateOn(_FakeBiz()..unauthorized = true, session: session);
+    addTearDown(state.dispose);
+
+    await state.restore();
+
+    expect(state.isReady, isFalse);
+    expect(session.session, isNull, reason: '失效凭据不能一直留在本机');
+  });
+
+  test('关系列表靠轮询更新：别人发来的申请与别的群会出现', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    int notified = 0;
+    state.addListener(() => notified++);
+    await state.refreshRelations();
+    expect(notified, 0, reason: '没变化就不要通知，避免整棵树每轮重建');
+
+    // 别人那边改出来的数据：没有推送，只有重拉才看得见。
+    biz.pending.add(<String, Object?>{
+      'peer_account_id': 3,
+      'display_name': '阿星',
+      'status': 'pending',
+      'incoming': true,
+      'requested_at': '2026-11-10T09:00:00Z',
+    });
+    biz.rooms.add(<String, Object?>{
+      'room_id': 9,
+      'name': '别人的群',
+      'owner_account_id': 4,
+      'joined_at': '2026-11-10T10:00:00Z',
+      'turms_group_id': '7000000000000000009',
+    });
+    await state.refreshRelations();
+
+    expect(notified, 1);
+    expect(state.pending.single.peerAccountId, 3);
+    expect(state.conversations.map((Conversation c) => c.key), contains('room:9'));
+  });
+
+  testWidgets('Enter 发送，Shift+Enter 只换行', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    state.selectConversation('dm:2');
+    await tester.pumpAndSettle();
+
+    final Finder composer = find.byType(TextField).last;
+    await tester.enterText(composer, '晚安');
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.pumpAndSettle();
+
+    expect(state.messagesOf('dm:2').single.text, '晚安');
+    expect(tester.widget<TextField>(composer).controller?.text, isEmpty);
+
+    await tester.enterText(composer, '第二行');
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+
+    expect(state.messagesOf('dm:2').length, 1, reason: 'Shift+Enter 是换行，不能发出去');
+    state.dispose();
+  });
 }
 
 /// 登录后的状态，供 widget 测试用。
@@ -716,10 +826,25 @@ Widget _shell(AppState state) => MaterialApp(
     );
 
 
-AppState _stateOn(_FakeBiz biz, {_FakeRealtime? realtime}) => AppState(
+AppState _stateOn(_FakeBiz biz, {_FakeRealtime? realtime, SessionStore? session}) => AppState(
       api: ApiClient(baseUrl: 'http://mock.local', client: biz.client),
       realtime: realtime ?? _FakeRealtime(),
+      session: session,
     );
+
+/// 假的会话存储：只在本测试进程里记住一份。
+class _MemorySessionStore implements SessionStore {
+  StoredSession? session;
+
+  @override
+  StoredSession? load() => session;
+
+  @override
+  void save(StoredSession value) => session = value;
+
+  @override
+  void clear() => session = null;
+}
 
 /// 有状态的假 Biz：好友与群会真的增删，用来验「动作 → 重新拉取」这条链。
 class _FakeBiz {
@@ -776,6 +901,12 @@ class _FakeBiz {
             <String, Object?>{'code': 'validation_failed', 'message': 'device', 'field': 'x-device-type'},
             400);
       }
+      final List<String> parts = path.split('/');
+      return _json(<String, Object?>{
+        'message_id': 9001,
+        'conversation': <String, Object?>{'type': parts[3], 'id': int.parse(parts[4])},
+        'sent_at': '2026-11-10T12:00:00Z',
+      }, 201);
     }
 
     if (method == 'POST' && path == '/api/auth/register') {
