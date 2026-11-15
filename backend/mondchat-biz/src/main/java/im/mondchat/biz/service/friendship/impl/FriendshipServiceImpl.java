@@ -197,6 +197,36 @@ public class FriendshipServiceImpl implements FriendshipService {
                 .isNull(Friendship::getDeletedAt)) > 0;
     }
 
+    /**
+     * 建 agent 就在同一事务里建好友：主表按规范序插 `(lower, higher)`，拿到 id 后镜像写 `(higher, lower)`。
+     * 新 agent 的 id 是新的，这对关系必然不存在，所以不做唯一键兜底（docs/truth/backend/friendship.md）。
+     */
+    @Override
+    public void createAccepted(long ownerId, long agentId) {
+        long lower = Math.min(ownerId, agentId);
+        long higher = Math.max(ownerId, agentId);
+        OffsetDateTime now = OffsetDateTime.now();
+
+        Friendship row = Friendship.builder()
+                .accountId(lower)
+                .peerAccountId(higher)
+                .status(ACCEPTED)
+                .requestedBy(ownerId)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        friendshipMapper.insert(row);
+        reverseMapper.insert(FriendshipReverse.builder()
+                .accountId(higher)
+                .peerAccountId(lower)
+                .friendshipId(row.getId())
+                .status(ACCEPTED)
+                .requestedBy(ownerId)
+                .createdAt(now)
+                .updatedAt(now)
+                .build());
+    }
+
     /** 应答前要过三关：有这条有效申请、不是我发出去的、它还在 `pending`。 */
     private Friendship pendingRowForAnswer(CurrentAccount me, long peerAccountId) {
         ensureNotFrozen(me.accountId());

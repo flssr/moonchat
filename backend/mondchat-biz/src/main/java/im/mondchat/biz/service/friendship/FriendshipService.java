@@ -24,4 +24,10 @@ public interface FriendshipService {
 
     /** 授权事实：`accepted` 且未写 tombstone。一律规范序后读主表 `friendship`，不看反向表。 */
     boolean areFriends(long one, long another);
+
+    /**
+     * 建 agent 时直接建立 `accepted` 好友关系（docs/truth/backend/friendship.md）：
+     * 在同一事务里写主表与镜像，`requested_by` 是归属者。只建一次，被删后不会自动重连。
+     */
+    void createAccepted(long ownerId, long agentId);
 }

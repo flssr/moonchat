@@ -83,6 +83,8 @@ public class AccountServiceImpl implements AccountService {
         String accountKey = UUID.randomUUID().toString();
         Account account = createAccount(AGENT, me.accountId(), null, request.displayName(),
                 hasher.hashAccountKey(accountKey));
+        // 归属者与这个 agent 创建即好友：同一事务，Turms 建用户失败就连好友两行一起回滚
+        friendships.createAccepted(me.accountId(), account.getId());
         return new AccountResponses.AgentAccountResponse(account.getId(), request.displayName(), accountKey);
     }
 

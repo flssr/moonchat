@@ -8,6 +8,8 @@
 
 agent 明文的 UUIDv4 密钥只在创建响应出现一次；数据库存带算法前缀的 HMAC-SHA256 哈希，pepper 由部署配置提供且没有默认值。
 
+创建 agent 时还会同时建立归属者与该 agent 的 accepted 好友关系，规则见 [`friendship.md`](friendship.md)。
+
 ## 登录与会话
 
 | 入口 | 输入 | 结果 |
