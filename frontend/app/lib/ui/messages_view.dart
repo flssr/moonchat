@@ -105,6 +105,24 @@ class _MessagesViewState extends State<MessagesView> {
     return all;
   }
 
+  /// 输入框里的 Enter：直接发送；Shift+Enter 交给默认行为换行（issue #24）。
+  ///
+  /// 输入法组词中（中文候选还没上屏）的 Enter 必须放过，否则会把半截候选当成消息发出去。
+  KeyEventResult _handleComposerKey(Conversation conv, KeyEvent event) {
+    if (event is! KeyDownEvent || event.logicalKey != LogicalKeyboardKey.enter) {
+      return KeyEventResult.ignored;
+    }
+    if (HardwareKeyboard.instance.isShiftPressed) {
+      return KeyEventResult.ignored;
+    }
+    final TextRange composing = _draftFor(conv.key).value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
+      return KeyEventResult.ignored;
+    }
+    _send(conv);
+    return KeyEventResult.handled;
+  }
+
   Future<void> _send(Conversation conv) async {
     final TextEditingController composer = _draftFor(conv.key);
     final String text = composer.text;
@@ -402,21 +420,27 @@ class _MessagesViewState extends State<MessagesView> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              child: TextField(
-                                controller: _draftFor(active.key),
-                                focusNode: _composerFocus,
-                                minLines: 1,
-                                maxLines: 4,
-                                maxLength: 500,
-                                style: TextStyle(fontSize: 13.5, color: p.ink),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  counterText: '',
-                                  hintText: context.tr('写点什么…'),
-                                  hintStyle: TextStyle(fontSize: 13.5, color: p.ink3),
+                              child: Focus(
+                                // 只借它接按键冒泡，本身不要抢焦点、不进 Tab 顺序。
+                                canRequestFocus: false,
+                                skipTraversal: true,
+                                onKeyEvent: (FocusNode _, KeyEvent event) =>
+                                    _handleComposerKey(active, event),
+                                child: TextField(
+                                  controller: _draftFor(active.key),
+                                  focusNode: _composerFocus,
+                                  minLines: 1,
+                                  maxLines: 4,
+                                  maxLength: 500,
+                                  style: TextStyle(fontSize: 13.5, color: p.ink),
+                                  decoration: InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    counterText: '',
+                                    hintText: context.tr('写点什么…'),
+                                    hintStyle: TextStyle(fontSize: 13.5, color: p.ink3),
+                                  ),
                                 ),
-                                onSubmitted: (_) => _send(active),
                               ),
                             ),
                           ),

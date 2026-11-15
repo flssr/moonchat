@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../avatars.dart';
+import '../session/session_store.dart';
 import '../settings/settings.dart';
 import '../settings/settings_store.dart';
 import '../turms/realtime.dart';
@@ -72,10 +73,15 @@ class ChatMessage {
 /// 读（会话列表 / 历史）本该由 Turms 会话给出，见 `realtime.dart`；
 /// 这里只放 REST 能给的东西：身份、账号、好友、群、成员、发送结果。
 class AppState extends ChangeNotifier {
-  AppState({ApiClient? api, RealtimeClient? realtime, SettingsStore? store})
-      : api = api ?? ApiClient(),
+  AppState({
+    ApiClient? api,
+    RealtimeClient? realtime,
+    SettingsStore? store,
+    SessionStore? session,
+  })  : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime(),
-        _store = store ?? createSettingsStore() {
+        _store = store ?? createSettingsStore(),
+        _session = session ?? createSessionStore() {
     // 401 一律回登录页（`docs/truth/frontend/README.md`）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
     avatars = _store.loadAvatars();
@@ -84,6 +90,14 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
 
   final SettingsStore _store;
+
+  /// 本机记住的登录态：刷新页面后用它恢复会话（issue #24）。
+  final SessionStore _session;
+
+  /// 关系列表的轮询间隔：好友与群没有推送通道，只能定时重拉。
+  static const Duration _pollInterval = Duration(seconds: 15);
+
+  Timer? _pollTimer;
 
   /// 本机头像偏好：账号 id → 默认头像 key。服务端还没有这一列（issue #10），
   /// 所以换设备不跟随；服务端回了 `avatar` 之后再改成服务端优先。
@@ -97,6 +111,12 @@ class AppState extends ChangeNotifier {
 
   /// 切账号进行中：外壳保持挂载，只显示忙碌态。
   bool switching = false;
+
+  /// 正在用本机凭据恢复会话：外壳据此显示启动页，而不是闪一下登录表单。
+  bool restoring = false;
+
+  /// 本次会话由本机凭据恢复而来：没有登舱过渡可播，外壳要直接交棒。
+  bool restored = false;
 
   /// 归属者的登录 JWT：切号与 `GET /api/accounts/mine` 永远用它。
   /// 切进 agent 后 `loginToken` 会变成该 agent 的 JWT，但 agent 不能替归属者再切号。
@@ -285,6 +305,8 @@ class AppState extends ChangeNotifier {
       await _openSession(result.account.accountId);
       phase = AuthPhase.ready;
       _scheduleLoginRenewal();
+      _persistSession();
+      _startPolling();
     } catch (e) {
       // 会话可能已经建了一半（token、读通道、推送订阅）：清干净再回登录页。
       logout();
@@ -292,6 +314,45 @@ class AppState extends ChangeNotifier {
     } finally {
       notifyListeners();
     }
+  }
+
+  /// 用本机记住的登录态恢复会话：刷新页面不再要求重新登录（issue #24）。
+  ///
+  /// 令牌失效时由 `ApiClient.onUnauthenticated` 统一登出并清掉本机副本；
+  /// 网络失败也回登录页，不在界面上留半截会话。
+  Future<void> restore() async {
+    final StoredSession? saved = _session.load();
+    if (saved == null || phase != AuthPhase.loggedOut) {
+      return;
+    }
+    identityToken = saved.token;
+    loginToken = saved.token;
+    restoring = true;
+    phase = AuthPhase.busy;
+    notifyListeners();
+    try {
+      await _openSession(saved.accountId);
+      phase = AuthPhase.ready;
+      restored = true;
+      _scheduleLoginRenewal();
+      _persistSession();
+      _startPolling();
+    } catch (_) {
+      logout();
+    } finally {
+      restoring = false;
+      notifyListeners();
+    }
+  }
+
+  /// 记住当前登录态：归属者 JWT + 最后用的账号 id（切号后是 agent 的 id）。
+  void _persistSession() {
+    final String? token = identityToken;
+    final Account? me = account;
+    if (token == null || me == null) {
+      return;
+    }
+    _session.save(StoredSession(token: token, accountId: me.accountId));
   }
 
   /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`docs/truth/frontend/README.md`）。
@@ -491,6 +552,8 @@ class AppState extends ChangeNotifier {
   void logout() {
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
+    _stopPolling();
+    _session.clear();
     realtime.disconnect();
     realtimeUp = false;
     identityToken = null;
@@ -512,6 +575,7 @@ class AppState extends ChangeNotifier {
     _historyLoading.clear();
     _historyFailed.clear();
     _resetNavigation();
+    restored = false;
     phase = AuthPhase.loggedOut;
     notifyListeners();
   }
@@ -537,6 +601,7 @@ class AppState extends ChangeNotifier {
           loginToken = r.token;
         }
         loginExpiresAt = r.expiresAt;
+        _persistSession();
         _scheduleLoginRenewal();
       } catch (_) {
         logout();
@@ -570,6 +635,82 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 关系与群列表没有推送通道（Biz 只校验不投递），只能定时重拉，
+  /// 否则别人发来的好友申请、别人建的群在这个页面上永远不出现（issue #24）。
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(_pollInterval, (Timer _) => refreshRelations());
+  }
+
+  void _stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  /// 轮询的一轮：只重拉会因别人操作而变化的三份列表。
+  ///
+  /// 刻意不碰 `_profiles` / `_roomDetails`：清掉它们会让已经打开的资料页停在加载态，
+  /// 而那两处的过期只在 15 秒级别，不值得每轮重建。
+  Future<void> refreshRelations() async {
+    final String? token = loginToken;
+    if (!isReady || switching || token == null) {
+      return;
+    }
+    try {
+      final List<Object> results = await Future.wait(<Future<Object>>[
+        api.friendships(token: token, status: 'accepted'),
+        api.friendships(token: token, status: 'pending'),
+        api.rooms(token),
+      ]);
+      final List<Friendship> nextFriends = results[0] as List<Friendship>;
+      final List<Friendship> nextPending =
+          (results[1] as List<Friendship>).where((Friendship f) => f.incoming).toList();
+      final List<Room> nextRooms = results[2] as List<Room>;
+      if (_sameFriends(nextFriends, friends) &&
+          _sameFriends(nextPending, pending) &&
+          _sameRooms(nextRooms, rooms)) {
+        return;
+      }
+      friends = nextFriends;
+      pending = nextPending;
+      rooms = nextRooms;
+      _roomIdByTurmsGroupId
+        ..clear()
+        ..addEntries(nextRooms.where((Room r) => r.turmsGroupId != null)
+            .map((Room r) => MapEntry<String, int>(r.turmsGroupId!, r.roomId)));
+      notifyListeners();
+    } catch (_) {
+      // 下一轮再试。401 已由 ApiClient 统一登出，其余失败不值得每轮弹一次提示。
+    }
+  }
+
+  static bool _sameFriends(List<Friendship> a, List<Friendship> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].peerAccountId != b[i].peerAccountId || a[i].displayName != b[i].displayName) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static bool _sameRooms(List<Room> a, List<Room> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].roomId != b[i].roomId ||
+          a[i].name != b[i].name ||
+          a[i].ownerAccountId != b[i].ownerAccountId ||
+          a[i].turmsGroupId != b[i].turmsGroupId) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// 切到自己名下的另一个账号：与新登录同一条签发路径。
   /// 用独立的 [switching] 而不是 `phase`，否则外壳会被拆掉、整屏跳回登录页。
   Future<void> switchAccount(int accountId) async {
@@ -591,6 +732,7 @@ class AppState extends ChangeNotifier {
       await _openSession(accountId);
       _scheduleLoginRenewal();
       phase = AuthPhase.ready;
+      _persistSession();
     } catch (e) {
       // 换号失败就把会话收回登录页，别把界面留在切换中。
       logout();
@@ -820,6 +962,7 @@ class AppState extends ChangeNotifier {
     _disposed = true;
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
+    _stopPolling();
     // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。
     api.onUnauthenticated = null;
     realtime.disconnect();
