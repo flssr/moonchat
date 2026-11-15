@@ -35,7 +35,18 @@ AppState _state(_MemoryStore store) {
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
-      client: MockClient((http.Request req) async => http.Response('{}', 404)),
+      client: MockClient((http.Request req) async {
+        // 资料编辑打开时会先 GET 完整资料，其余接口这个测试不关心。
+        if (req.method == 'GET' && req.url.path == '/api/accounts/me') {
+          return http.Response(
+            '{"account_id":1,"display_name":"阿月","gender":"private","birthday":null,'
+            '"updated_at":"2026-11-12T00:00:00Z"}',
+            200,
+            headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+          );
+        }
+        return http.Response('{}', 404);
+      }),
     ),
     store: store,
   )

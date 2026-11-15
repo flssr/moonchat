@@ -102,6 +102,7 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个账号还没有会话': 'This account has no conversations yet',
     '重试': 'Retry',
     '重试失败': 'Retry failed',
+    '加载中': 'Loading',
     // 联系人
     '按账号 ID 查找': 'Find by account ID',
     '查找': 'Find',
@@ -313,6 +314,7 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个账号还没有会话': 'このアカウントにはまだ会話がありません',
     '重试': '再試行',
     '重试失败': '再試行に失敗',
+    '加载中': '読み込み中',
     // 連絡先
     '按账号 ID 查找': 'アカウントIDで検索',
     '查找': '検索',
@@ -521,6 +523,7 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个账号还没有会话': 'Dieses Konto hat noch keine Unterhaltungen',
     '重试': 'Erneut versuchen',
     '重试失败': 'Erneuter Versuch fehlgeschlagen',
+    '加载中': 'Wird geladen',
     // Kontakte
     '按账号 ID 查找': 'Nach Konto-ID suchen',
     '查找': 'Suchen',

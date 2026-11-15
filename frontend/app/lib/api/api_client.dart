@@ -71,7 +71,8 @@ class ApiException implements Exception {
   String toString() => 'ApiException($code/$statusCode): $message';
 }
 
-/// 23 条 `/api/*` 的唯一调用点。路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
+/// 24 条 `/api/*` 路由的唯一调用点，前端目前用到 21 条（黑名单三条未接）。
+/// 路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),
@@ -234,26 +235,25 @@ class ApiClient {
     return CreatedAgent.fromJson(json);
   }
 
-  /// #6 改本账号资料。`birthday` 只有非空或明确清除时才发，避免部分快照把服务端生日清掉。
-  Future<UpdatedProfile> updateProfile({
+  /// #6 改本账号资料：`PUT` 是全量提交，三个字段都发；`birthday: null` 表示清空。
+  Future<MyProfile> updateProfile({
     required String token,
     required String displayName,
     required String gender,
     DateTime? birthday,
-    bool clearBirthday = false,
   }) async {
-    assert(birthday == null || !clearBirthday, 'birthday and clearBirthday are mutually exclusive');
-    final Map<String, Object?> body = <String, Object?>{
+    final json = await _send('PUT', '/api/accounts/me', token: token, body: {
       'display_name': displayName,
       'gender': gender,
-    };
-    if (birthday != null) {
-      body['birthday'] = _formatDate(birthday);
-    } else if (clearBirthday) {
-      body['birthday'] = null;
-    }
-    final json = await _send('PATCH', '/api/accounts/me', token: token, body: body);
-    return UpdatedProfile.fromJson(json);
+      'birthday': birthday == null ? null : _formatDate(birthday),
+    });
+    return MyProfile.fromJson(json);
+  }
+
+  /// #24 本人完整资料。登录、切账号与 `mine` 都只有列表字段，编辑页回填用这个。
+  Future<MyProfile> myProfile(String token) async {
+    final json = await _send('GET', '/api/accounts/me', token: token);
+    return MyProfile.fromJson(json);
   }
 
   /// #7 资料页。
