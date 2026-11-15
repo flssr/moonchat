@@ -1,6 +1,6 @@
 # 部署与运行
 
-部署单元是 nginx、`moonchat-biz`、Turms Gateway/Service/Admin、MongoDB、Redis 与 PostgreSQL。
+部署单元是 nginx、`mondchat-biz`、Turms Gateway/Service/Admin、MongoDB、Redis 与 PostgreSQL。
 
 - nginx 托管 Flutter Web，并反代 `/api` 与 `/im`。
 - 真人与 agent 都从 `/api` 做业务读写，用各自账号凭据从 `/im` 收发与查询消息。

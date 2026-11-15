@@ -8,7 +8,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 
 | 方面 | 选择 |
 | --- | --- |
-| 业务层 | Spring Boot 4、Java 21、唯一业务进程 `moonchat-biz` |
+| 业务层 | Spring Boot 4、Java 21、唯一业务进程 `mondchat-biz` |
 | 业务存储 | PostgreSQL；Redis 放可重建限流桶 |
 | 消息引擎 | Turms，固定子模块与镜像 digest |
 | 客户端 | Flutter Web |
@@ -19,7 +19,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 ```text
 .
 ├── docs/      当前事实与决策历史
-├── backend/      Maven 工程与 moonchat-biz
+├── backend/      Maven 工程与 mondchat-biz
 ├── frontend/     Flutter Web 与视觉预览
 ├── infra/        Turms 覆盖配置与 smoke
 └── vendor/turms/ 固定提交的上游子模块
@@ -37,17 +37,17 @@ $env:ENV = 'dev'
 docker compose -f vendor/turms/docker-compose.standalone.yml `
   -f infra/turms/pinned-images.compose.yaml up -d --wait
 
-docker run -d --name moonchat-biz-dev-pg -e POSTGRES_DB=moonchat `
-  -e POSTGRES_USER=moonchat -e POSTGRES_PASSWORD=moonchat `
+docker run -d --name mondchat-biz-dev-pg -e POSTGRES_DB=mondchat `
+  -e POSTGRES_USER=mondchat -e POSTGRES_PASSWORD=mondchat `
   -p 15432:5432 postgres:17-alpine
 
-$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/moonchat'
-$env:SPRING_DATASOURCE_USERNAME = 'moonchat'
-$env:SPRING_DATASOURCE_PASSWORD = 'moonchat'
-$env:MOONCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
-$env:MOONCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'
-$env:MOONCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
-.\backend\mvnw.cmd -f backend\pom.xml -pl moonchat-biz spring-boot:run
+$env:SPRING_DATASOURCE_URL = 'jdbc:postgresql://localhost:15432/mondchat'
+$env:SPRING_DATASOURCE_USERNAME = 'mondchat'
+$env:SPRING_DATASOURCE_PASSWORD = 'mondchat'
+$env:MONDCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
+$env:MONDCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'
+$env:MONDCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
+.\backend\mvnw.cmd -f backend\pom.xml -pl mondchat-biz spring-boot:run
 ```
 
 密钥文件只在本地生成，不进仓库。Turms 冒烟与端到端脚本入口在 [`infra/turms/smoke`](infra/turms/smoke)。

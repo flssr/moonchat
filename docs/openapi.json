@@ -1,7 +1,7 @@
 {
   "openapi" : "3.1.0",
   "info" : {
-    "title" : "MoonChat Biz API",
+    "title" : "MondChat Biz API",
     "description" : "Biz 业务接口（/api/*）。错误响应统一为 {code, message}，客户端与 agent 只按 code 分流。",
     "version" : "v1"
   },
