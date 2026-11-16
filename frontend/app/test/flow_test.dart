@@ -366,6 +366,12 @@ void main() {
     expect(state.pending, isEmpty);
     expect(biz.friends.map((Map<String, Object?> f) => f['peer_account_id']), contains(4));
     expect(state.friends.length, 2);
+
+    // 被加的一方同意后，客户端自动发一句欢迎语（本地先落气泡）。
+    final List<ChatMessage> greeting = state.messagesOf('dm:4');
+    final ChatMessage message =
+        greeting.firstWhere((ChatMessage m) => m.text == '我们已经是好友啦，一起来聊天吧OWO');
+    expect(message.mine, isTrue);
   });
 
   test('删好友：写 tombstone 后从列表消失', () async {
