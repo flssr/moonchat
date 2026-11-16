@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:local_notifier/local_notifier.dart';
 import 'package:mondchat/i18n/context_tr.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
@@ -28,6 +29,7 @@ class DesktopShell extends StatefulWidget {
 class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayListener {
   bool _confirmClose = false;
   bool _quitting = false;
+  bool _trayReady = false;
 
   @override
   void initState() {
@@ -54,8 +56,18 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
           ],
         ),
       );
+      _trayReady = true;
     } catch (_) {
-      // 托盘不可用时不影响主窗口。
+      // 托盘不可用时不影响主窗口；最小化会退化成任务栏。
+      _trayReady = false;
+    }
+  }
+
+  Future<void> _toast(String body) async {
+    try {
+      await LocalNotification(title: 'MondChat', body: body).show();
+    } catch (_) {
+      // 通知不可用就算了。
     }
   }
 
@@ -77,7 +89,15 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
 
   Future<void> _minimizeToTray() async {
     setState(() => _confirmClose = false);
+    if (!_trayReady) {
+      // 托盘图标还没建好（或平台不支持）时不能直接 hide，否则窗口和任务栏都没了，
+      // 看起来就像应用被关掉；退回普通最小化并说明。
+      await windowManager.minimize();
+      await _toast('托盘不可用，已最小化到任务栏。');
+      return;
+    }
     await windowManager.hide();
+    await _toast('已最小化到托盘，点任务栏托盘图标恢复。');
   }
 
   Future<void> _quit() async {

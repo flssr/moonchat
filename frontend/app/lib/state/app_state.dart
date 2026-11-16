@@ -547,15 +547,27 @@ class AppState extends ChangeNotifier {
       if (base == null) {
         continue;
       }
-      final int missed = (_messages[c.key] ?? const <ChatMessage>[])
-          .where((ChatMessage m) => !m.mine && m.sentAt.isAfter(base))
-          .length;
-      if (missed == 0) {
+      int missed = 0;
+      ChatMessage? latest;
+      for (final ChatMessage m in _messages[c.key] ?? const <ChatMessage>[]) {
+        if (!m.mine && m.sentAt.isAfter(base)) {
+          missed++;
+          latest = m;
+        }
+      }
+      if (missed == 0 || latest == null) {
         continue;
       }
       final bool reading = c.key == activeConversationKey && windowFocused;
       if (!reading) {
         _unread[c.key] = (_unread[c.key] ?? 0) + missed;
+        if (notifyOnMessage) {
+          // 和在线提示一样走桌面通知，把离线期间收到的条数和最后一条内容带上。
+          unawaited(_notifier.show(
+            title: c.title,
+            body: '$missed 条新消息\n${latest.text}',
+          ));
+        }
       }
     }
     notifyListeners();
