@@ -59,9 +59,13 @@ class _MessagesViewState extends State<MessagesView> {
 
   TextEditingController _draftFor(String key) => _drafts.putIfAbsent(key, TextEditingController.new);
 
+  /// 上一次看到的资料浮层账号；用来识别「浮层刚关掉」。
+  int? _profileSeen;
+
   @override
   void initState() {
     super.initState();
+    _profileSeen = widget.state.profileAccountId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadActive());
   }
 
@@ -71,9 +75,22 @@ class _MessagesViewState extends State<MessagesView> {
     // 外壳每次 notifyListeners 都会重建这个 widget；只有「换了个会话」才该拉历史，
     // 否则新消息/筛选/资料页加载都会触发一次翻页，历史会被无声地整段抽干。
     final String? key = widget.state.activeConversationKey;
-    if (key != _loadedKey) {
+    final bool switched = key != _loadedKey;
+    if (switched) {
       _loadedKey = key;
       _loadActive();
+    }
+    // 资料浮层是全屏遮罩：用户在浮层里点「发消息」或点遮罩关掉后，
+    // 焦点要交还输入框；否则他以为能直接打字，输入其实还停在别处。
+    final int? profile = widget.state.profileAccountId;
+    final bool profileClosed = _profileSeen != null && profile == null;
+    _profileSeen = profile;
+    if (profileClosed || (switched && key != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _composerFocus.requestFocus();
+        }
+      });
     }
   }
 
