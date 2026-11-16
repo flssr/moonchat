@@ -9,5 +9,6 @@ site
 CA-docs
 old_docs
 frontend
+desktop
 vendor
 **/target

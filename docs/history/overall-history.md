@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [Mongo 改最小分片集群](#mongo-改最小分片集群)
 - [生产部署与 CD](#生产部署与-cd)
 - [文档体系](#文档体系)
 - [架构骨架](#架构骨架)
@@ -33,6 +34,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### Mongo 改最小分片集群
+
+2026-11-17 00:55 CST   [2026-11-16 16:55 UTC]
+
+决策：Mongo 从单节点副本集改成最小分片集群：`mongo-config`（`rs-config`，缓存 0.12G，限制 224m）、`mongo-shard`（`rs0`，缓存 0.2G，限制 384m）、`mongos`（限制 128m），加两个一次性初始化容器 `mongo-rs-init`（发起两个副本集并等 primary）与 `mongo-shard-init`（`sh.addShard`）；所有 Turms 的 Mongo URI 改成 `mongodb://mongos:27017/turms`，不带 `?replicaSet`。为腾出内存，`postgres` 384→320m、`redis` 128→96m、`turms-service` 832→800m（`-Xmx448m`）、`turms-gateway` 640→576m（`-Xmx320m`）、`mondchat-biz` 512→480m（`-Xmx256m`），常驻 `mem_limit` 合计仍是 3008m。
+
+原因：Turms 的 Mongo 客户端只接受 `SHARDED` / `LOAD_BALANCED`（`turms-service` 与 `turms-gateway` 的 `MongoConfig` 都写死，`TurmsMongoClient.verifyServers` 直接抛 `IncompatibleMongoException`），判定来自 Mongodb 驱动读 `hello` 得到的集群类型，副本集一律是 `REPLICA_SET`，没有任何配置项能绕过，`loadBalanced=true` 也不行——LB 模式要求对端是 mongos。实测这个版本在服务器上启动约 4 秒后自行退出，是方案设计问题不是内存问题。选最小分片而不是降 Turms 版本：`vendor/turms` 子模块与 `infra/turms/pinned-images.compose.yaml` 都钉在当前提交，降版本要换 digest 并重验冒烟，而数据全落一个 shard 时不需要分片键与 balancer，代价只是多两个进程和一层启动顺序。
 
 ### 生产部署与 CD
 
