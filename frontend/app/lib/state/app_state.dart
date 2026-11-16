@@ -489,7 +489,11 @@ class AppState extends ChangeNotifier {
     }
     // Turms 会把发送者自己的消息也推回来。若本地那条「发送中」还没拿到 REST 回执，
     // 认领它而不是再插一条，否则同一个气泡会一真一假地留在列表里。
-    if (incoming.id.isNotEmpty) {
+    //
+    // 只能认领「自己发的」回声：双方同时发同一句话（比如都发 666）时，对端那条
+    // 的发送者是对方；这里若按文本认领，会把对端消息吞进自己的待发气泡，表现就是
+    // “对面发了但我这边没出现/列表两边对不上”。
+    if (incoming.id.isNotEmpty && incoming.senderId == me) {
       for (final ChatMessage m in list) {
         if (m.serverIdText == null && m.mine && m.text == incoming.text) {
           m

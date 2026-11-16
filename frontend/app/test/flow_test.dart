@@ -647,6 +647,38 @@ void main() {
     expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
   });
 
+  test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    // 我已经发了一条 666（REST 回执有 id，但精确去重键要等 Turms 推送）。
+    await state.sendMessage(dm, '666');
+    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+
+    // 对端也发了 666。它只能作为新消息插入，不能被认领成我那条待回声的消息。
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000002',
+      text: '666',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+
+    final List<ChatMessage> list = state.messagesOf(dm.key);
+    expect(list, hasLength(2));
+    expect(list.where((ChatMessage m) => m.mine), hasLength(1));
+    expect(list.where((ChatMessage m) => !m.mine), hasLength(1));
+    expect(
+      list.firstWhere((ChatMessage m) => !m.mine).serverIdText,
+      '1881590000000000002',
+    );
+    // 我那条仍在等自己的回声，不能安上对端的 id。
+    expect(list.firstWhere((ChatMessage m) => m.mine).serverIdText, isNull);
+  });
+
   test('切进 agent 后还能切回真人：账号列表用归属者 token 查', () async {
     final AppState state = _stateOn(_FakeBiz());
     addTearDown(state.dispose);
