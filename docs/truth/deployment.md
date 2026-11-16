@@ -102,7 +102,13 @@ server {
    | `MONDCHAT_TURMS_GATEWAY_URL` | 客户端连的 WS 地址，如 `wss://api.mondchat.com/im` |
    | `MONDCHAT_JWT_SECRET_FILE` | 可选，默认 `/opt/mondchat/secrets/jwt-hmac256.key` |
 
-2. `/opt/mondchat/secrets/jwt-hmac256.key`（`chmod 600`）：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。
+2. `/opt/mondchat/secrets/jwt-hmac256.key`：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。**属主必须是 10001，不是 root**：bind mount 保留宿主属主与权限，biz 以 uid 10001 跑，读 `root:600` 的文件会拿到 `AccessDeniedException: /opt/mondchat/secrets/jwt-hmac256.key` 然后启动退出——只 `chmod 600` 不够，属主和权限都要对：
+
+   ```bash
+   sudo sh -c 'umask 077; openssl rand -hex 32 > /opt/mondchat/secrets/jwt-hmac256.key; chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key'
+   ```
+
+   轮换密钥用同一条命令（会覆盖并重设属主），别用 `sudo tee`，否则属主又变回 root。Turms 两个容器以 root 读同一份文件，改属主不影响 gateway 验签。
 3. `docker login ghcr.io`，用带 `read:packages` 的 PAT，否则 `docker compose pull` 拿不到私有镜像。
 4. 2G swap：`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`，并写进 `/etc/fstab`；`vm.swappiness=10`。
 5. 宿主要有 `curl`（CD 的健康检查用它打本机 `8080/actuator/health`），以及 Compose 2.17+（用到 `up -d --wait`）。

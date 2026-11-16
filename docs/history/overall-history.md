@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [bind mount 的密钥文件属主要给 10001](#bind-mount-的密钥文件属主要给-10001)
 - [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
 - [Turms 容器限额提到 1280m](#turms-容器限额提到-1280m)
 - [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
@@ -37,6 +38,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### bind mount 的密钥文件属主要给 10001
+
+2026-11-17 01:05 CST   [2026-11-16 17:05 UTC]
+
+决策：`docs/truth/deployment.md` 的服务器预置里，`jwt-hmac256.key` 不再只写 `chmod 600`，改成一条带属主的命令：`umask 077; openssl rand -hex 32 > …; chown 10001:10001 …`，并写明轮换密钥要照抄这条、不要用 `sudo tee`。
+
+原因：第三次部署时 biz 起来就退出，日志是 `AccessDeniedException: /opt/mondchat/secrets/jwt-hmac256.key`。bind mount 保留宿主文件的属主与权限，密钥是 `root:600`，容器里的 biz 以 uid 10001 跑，读不了；Turms 两个容器以 root 读同一份文件所以没暴露这个问题。这只能靠宿主侧修，CD 改不了，所以必须写进预置步骤，否则重装机器会原样再踩一次。前两个同类的真机坑是 Mongo 缓存 0.25G 下限与 Turms 内存 1053m 下限。
 
 ### biz 镜像补 logs 目录
 
