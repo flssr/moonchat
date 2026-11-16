@@ -13,7 +13,7 @@
 
 ## 刷新与登录态
 
-登录成功后，归属者 JWT 与最后使用的账号 id 存进本机：Web 是浏览器 `localStorage` 的 `mondchat.session.v1`，Windows 是 `%APPDATA%\MondChat\session.json`。刷新页面或重开客户端时先用它调 `POST /api/sessions` 恢复会话，期间显示启动页而不是登录表单；令牌被服务端拒掉时清掉本机副本并回登录页，登出与 401 也同样清副本。账号列表、好友、群的变动由客户端每 15 秒重拉一次。
+登录成功后，归属者 JWT 与最后使用的账号 id 存进本机：Web 是浏览器 `localStorage` 的 `mondchat.session.v1`，Windows 是本机 `MondChat\session.json`（根目录依次取 `APPDATA`、`LOCALAPPDATA`、用户 Roaming、exe 同目录里第一个可写的，避免某些启动方式下 `%APPDATA%` 为空导致不落盘）。刷新页面或重开客户端时先用它调 `POST /api/sessions` 恢复会话，期间显示启动页而不是登录表单；令牌被服务端拒掉时清掉本机副本并回登录页，登出与 401 也同样清副本。账号列表、好友、群的变动由客户端每 15 秒重拉一次。
 
 ## 账号页
 
@@ -21,4 +21,4 @@
 
 只有真人可以创建 agent。创建响应中的 `account_key` 只在页面展示一次，离开即丢失；新 agent 没有好友、群或会话。
 
-设置页包含本地偏好：三档字号、中英日德四种界面语言、亮色/暗色/跟随系统主题。设置只保存在本机（Web 的 `localStorage`、Windows 的 `%APPDATA%\MondChat`），不进入 Biz。个人资料编辑器目前支持昵称、性别、生日与星座联动，但后端尚未接收性别和生日，保存会失败。
+设置页包含本地偏好：三档字号、中英日德四种界面语言、亮色/暗色/跟随系统主题。设置只保存在本机（Web 的 `localStorage`、Windows 的本机 `MondChat\` 目录），不进入 Biz。个人资料编辑器目前支持昵称、性别、生日与星座联动，但后端尚未接收性别和生日，保存会失败。

@@ -12,8 +12,32 @@ import 'package:mondchat/settings/settings.dart';
 /// 读写失败只影响下一次启动（设置回默认、要求重新登录），不阻断当前会话，
 /// 所以这里吞掉异常 —— 与 Web 的隐私模式 / 配额满同一种处理。
 Directory? _appDataDir() {
-  final String? appData = Platform.environment['APPDATA'];
-  return appData == null || appData.isEmpty ? null : Directory('$appData\\MondChat');
+  // 有些启动方式下 APPDATA 为空/不可写，找不到可写目录就整机不落盘，
+  // 会话、缓存、设置全变成内存态（用户表现为每次都要重登、离线消息没有基线）。
+  // 依次试 APPDATA、LOCALAPPDATA、用户 Roaming、exe 同目录，第一个能写的就用。
+  final List<String> candidates = <String>[
+    Platform.environment['APPDATA'] ?? '',
+    Platform.environment['LOCALAPPDATA'] ?? '',
+    if ((Platform.environment['USERPROFILE'] ?? '').isNotEmpty)
+      '${Platform.environment['USERPROFILE']}\\AppData\\Roaming',
+    File(Platform.resolvedExecutable).parent.path,
+  ];
+  for (final String root in candidates) {
+    if (root.isEmpty) {
+      continue;
+    }
+    final Directory dir = Directory('$root\\MondChat');
+    try {
+      dir.createSync(recursive: true);
+      final File probe = File('${dir.path}\\.write-probe');
+      probe.writeAsStringSync('');
+      probe.deleteSync();
+      return dir;
+    } catch (_) {
+      // 换下一个根目录。
+    }
+  }
+  return null;
 }
 
 class _JsonFile {
