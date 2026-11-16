@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
@@ -118,7 +119,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
                     Text(profile.displayName,
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink)),
                     const SizedBox(height: 2),
-                    MonoText('#${profile.accountId}', selectable: true),
+                    MonoText('#${shortAccountId(profile.accountId)}', selectable: true),
                   ],
                 ),
               ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
@@ -334,7 +335,11 @@ class _MessagesViewState extends State<MessagesView> {
                             widget.state.account?.displayName ?? '',
                             style: TextStyle(fontSize: 12.5, color: p.ink),
                           ),
-                          MonoText('#${widget.state.account?.accountId ?? ''}'),
+                          MonoText(
+                            widget.state.account == null
+                                ? ''
+                                : '#${shortAccountId(widget.state.account!.accountId)}',
+                          ),
                         ],
                       ),
                     ),
@@ -672,7 +677,8 @@ class _MessageGroup extends StatelessWidget {
       return state.account?.displayName ?? '';
     }
     if (conversation.isRoom) {
-      return members[first.senderAccountId]?.displayName ?? '#${first.senderAccountId}';
+      return members[first.senderAccountId]?.displayName ??
+          '#${shortAccountId(first.senderAccountId)}';
     }
     return conversation.title;
   }
@@ -820,9 +826,9 @@ class _RoomInfoState extends State<_RoomInfo> {
   }
 
   Future<void> _inviteById() async {
-    final int? id = int.tryParse(_invite.text.trim());
+    final int? id = accountIdFromInput(_invite.text);
     if (id == null) {
-      setState(() => _inviteError = '需要数字账号 ID');
+      setState(() => _inviteError = '需要短号或完整账号 ID');
       return;
     }
     setState(() {
@@ -968,7 +974,7 @@ class _RoomInfoState extends State<_RoomInfo> {
                   decoration: InputDecoration(
                     isDense: true,
                     border: InputBorder.none,
-                    hintText: context.tr('账号 ID'),
+                    hintText: context.tr('短号或账号 ID'),
                     hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                   ),
                 ),

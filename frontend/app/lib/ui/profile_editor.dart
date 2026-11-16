@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../avatars.dart';
@@ -295,7 +296,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                       color: p.ink,
                     ),
                   ),
-                  MonoText('#${_account.accountId}', selectable: true),
+                  MonoText('#${shortAccountId(_account.accountId)}', selectable: true),
                   const SizedBox(height: 4),
                   Text(
                     context.tr('默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。'),

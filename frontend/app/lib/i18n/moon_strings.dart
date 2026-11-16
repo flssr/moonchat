@@ -108,6 +108,13 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': 'Retry failed',
     '加载中': 'Loading',
     // 联系人
+    '需要短号或完整账号 ID': 'Short number or full account ID required',
+    '按短号查找': 'Find by short number',
+    '短号或账号 ID': 'Short number or account ID',
+    '加好友需要对方的短号或账号 ID。':
+        'To add a friend, you need their short number or account ID.',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'Group members, friends, and search results open their profile here.',
     '按账号 ID 查找': 'Find by account ID',
     '查找': 'Find',
     '创建': 'Create',
@@ -324,6 +331,13 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': '再試行に失敗',
     '加载中': '読み込み中',
     // 連絡先
+    '需要短号或完整账号 ID': '短番号または完全なアカウントIDが必要',
+    '按短号查找': '短番号で検索',
+    '短号或账号 ID': '短番号またはアカウントID',
+    '加好友需要对方的短号或账号 ID。':
+        '友達追加には短番号かアカウントIDが必要。',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'グループメンバー、友達、検索結果はここでプロフィールを開きます。',
     '按账号 ID 查找': 'アカウントIDで検索',
     '查找': '検索',
     '创建': '作成',
@@ -537,6 +551,13 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': 'Erneuter Versuch fehlgeschlagen',
     '加载中': 'Wird geladen',
     // Kontakte
+    '需要短号或完整账号 ID': 'Kurze Nummer oder vollständige Konto-ID erforderlich',
+    '按短号查找': 'Nach kurzer Nummer suchen',
+    '短号或账号 ID': 'Kurze Nummer oder Konto-ID',
+    '加好友需要对方的短号或账号 ID。':
+        'Zum Hinzufügen brauchst du die kurze Nummer oder Konto-ID.',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'Gruppenmitglieder, Freunde und Suchergebnisse öffnen hier das Profil.',
     '按账号 ID 查找': 'Nach Konto-ID suchen',
     '查找': 'Suchen',
     '创建': 'Erstellen',

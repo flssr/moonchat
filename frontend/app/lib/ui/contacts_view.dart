@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
@@ -48,9 +49,9 @@ class _ContactsViewState extends State<ContactsView> {
     if (_busy) {
       return;
     }
-    final int? id = int.tryParse(_lookup.text.trim());
+    final int? id = accountIdFromInput(_lookup.text);
     if (id == null) {
-      setState(() => _lookupError = '需要数字账号 ID');
+      setState(() => _lookupError = '需要短号或完整账号 ID');
       return;
     }
     setState(() {
@@ -169,7 +170,7 @@ class _ContactsViewState extends State<ContactsView> {
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
-                                  hintText: context.tr('按账号 ID 查找'),
+                                  hintText: context.tr('按短号查找'),
                                   hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _find(),
@@ -282,7 +283,7 @@ class _ContactsViewState extends State<ContactsView> {
                     ? (friends.isEmpty
                         ? MoonEmpty(
                             title: context.tr('还没有好友'),
-                            hint: context.tr('加好友需要对方的账号 ID 或主页链接。'),
+                            hint: context.tr('加好友需要对方的短号或账号 ID。'),
                           )
                         : ListView.builder(
                             shrinkWrap: narrow,
@@ -393,7 +394,7 @@ class _ContactsViewState extends State<ContactsView> {
       child: _selectedId == null
           ? MoonEmpty(
               title: context.tr('选一个人'),
-              hint: context.tr('群成员、好友、按账号 ID 查找的结果都在这里打开资料页。'),
+              hint: context.tr('群成员、好友、按短号查找的结果都在这里打开资料页。'),
             )
           : SingleChildScrollView(
               child: Align(
