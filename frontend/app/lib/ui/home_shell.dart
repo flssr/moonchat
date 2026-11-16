@@ -108,6 +108,7 @@ class _HomeShellState extends State<HomeShell> {
                       ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,
+                      unreadCount: state.totalUnread,
                       brightness: widget.brightness,
                       onToggleTheme: widget.onToggleTheme,
                       onLogout: state.logout,
@@ -136,6 +137,7 @@ class _NavRail extends StatelessWidget {
     required this.onOpenSettings,
     required this.onSelect,
     required this.pendingCount,
+    required this.unreadCount,
     required this.brightness,
     required this.onToggleTheme,
     required this.onLogout,
@@ -148,6 +150,7 @@ class _NavRail extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final ValueChanged<String> onSelect;
   final int pendingCount;
+  final int unreadCount;
   final Brightness brightness;
   final ValueChanged<Brightness> onToggleTheme;
   final VoidCallback onLogout;
@@ -187,6 +190,7 @@ class _NavRail extends StatelessWidget {
             icon: Icons.chat_bubble_outline,
             label: context.tr('消息'),
             selected: view == 'messages',
+            badge: unreadCount,
             onTap: () => onSelect('messages'),
           ),
           _RailButton(

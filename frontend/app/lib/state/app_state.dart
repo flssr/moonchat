@@ -558,16 +558,15 @@ class AppState extends ChangeNotifier {
       if (missed == 0 || latest == null) {
         continue;
       }
-      final bool reading = c.key == activeConversationKey && windowFocused;
-      if (!reading) {
-        _unread[c.key] = (_unread[c.key] ?? 0) + missed;
-        if (notifyOnMessage) {
-          // 和在线提示一样走桌面通知，把离线期间收到的条数和最后一条内容带上。
-          unawaited(_notifier.show(
-            title: c.title,
-            body: '$missed 条新消息\n${latest.text}',
-          ));
-        }
+      // 登录补拉到的离线消息用户还没看过，即使恢复的当前会话就是它也要提示；
+      // 在线实时推送才按“当前会话 + 窗口在前台”算已读。
+      _unread[c.key] = (_unread[c.key] ?? 0) + missed;
+      if (notifyOnMessage) {
+        // 和在线提示一样走桌面通知，把离线期间收到的条数和最后一条内容带上。
+        unawaited(_notifier.show(
+          title: c.title,
+          body: '$missed 条新消息\n${latest.text}',
+        ));
       }
     }
     notifyListeners();

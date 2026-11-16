@@ -114,13 +114,27 @@ class _MessagesViewState extends State<MessagesView> {
 
   List<Conversation> get _filtered {
     final List<Conversation> all = widget.state.conversations;
-    if (widget.state.filter == 'dm') {
-      return all.where((Conversation c) => c.type == 'dm').toList();
-    }
-    if (widget.state.filter == 'room') {
-      return all.where((Conversation c) => c.isRoom).toList();
-    }
-    return all;
+    final List<Conversation> list = widget.state.filter == 'dm'
+        ? all.where((Conversation c) => c.type == 'dm').toList()
+        : widget.state.filter == 'room'
+            ? all.where((Conversation c) => c.isRoom).toList()
+            : List<Conversation>.of(all);
+    // 有新消息的会话排到最前，按最后一条消息时间倒序；没有消息的留在后面。
+    list.sort((Conversation a, Conversation b) {
+      final DateTime? ta = widget.state.lastMessage(a.key)?.sentAt;
+      final DateTime? tb = widget.state.lastMessage(b.key)?.sentAt;
+      if (ta == null && tb == null) {
+        return a.title.compareTo(b.title);
+      }
+      if (ta == null) {
+        return 1;
+      }
+      if (tb == null) {
+        return -1;
+      }
+      return tb.compareTo(ta);
+    });
+    return list;
   }
 
   /// 输入框里的 Enter：直接发送；Shift+Enter 交给默认行为换行（issue #24）。
@@ -318,13 +332,15 @@ class _MessagesViewState extends State<MessagesView> {
                                       constraints: const BoxConstraints(minWidth: 18),
                                       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                                       decoration: BoxDecoration(
-                                        color: p.ink,
+                                        color: p.accent,
                                         borderRadius: BorderRadius.circular(9),
                                       ),
                                       child: Text(
-                                        '${widget.state.unreadFor(c.key)}',
+                                        widget.state.unreadFor(c.key) > 99
+                                            ? '99+'
+                                            : '${widget.state.unreadFor(c.key)}',
                                         textAlign: TextAlign.center,
-                                        style: TextStyle(fontSize: 10, color: p.surface),
+                                        style: TextStyle(fontSize: 10, color: p.accentInk),
                                       ),
                                     ),
                                 ],
