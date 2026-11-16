@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [生产部署与 CD](#生产部署与-cd)
 - [文档体系](#文档体系)
 - [架构骨架](#架构骨架)
 - [施工切片](#施工切片)
@@ -32,6 +33,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### 生产部署与 CD
+
+2026-11-16 22:35 CST   [2026-11-16 14:35 UTC]
+
+决策：生产是 2 核 4G 单机 docker compose（`infra/prod/compose.yaml`）：PostgreSQL、Redis、单节点副本集 MongoDB（`rs0`，一次性 `mongodb-init` 发起）、turms-service、turms-gateway、mondchat-biz 六个常驻容器，常驻 `mem_limit` 合计 2.94G，宿主另配 2G swap；不开 turms-admin，内部端口不出宿主，只有 biz 8080 与 gateway 10510 绑 `127.0.0.1`，交给宿主机上 1Panel 的 OpenResty 反代 `/api` 与 `/im`。CD 只做后端：push 到 `main` 构建 `mondchat-biz` 镜像推 GHCR，SSH 上机 `pull` 与 `up -d --wait`，宿主上 `curl /actuator/health`。Flutter Web 产物不在这台机器部署，仓库也不再自带 nginx/Caddy 容器。
+
+原因：PoC 个位数用户，4G 内存要同时放 PG、Redis、Turms 两个 JVM 与 Biz，只有单节点副本集这条路撑得住预算——`vendor/turms` 那套 config + shard + router 光内存上限就 6G。反代本来就由 1Panel 的 OpenResty 在宿主机上管，`deployment.md` 原先写的 nginx 反代与实际不符，这次一并改掉。CD 只发后端，是因为前端和它的站点都在别处，把 Web 产物塞进这条流水线只会多一处没人用的部署面。
 
 ### 后端改名
 
