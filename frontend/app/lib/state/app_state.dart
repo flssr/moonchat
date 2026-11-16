@@ -82,6 +82,7 @@ class AppState extends ChangeNotifier {
     SessionStore? session,
     MessageNotifier? notifier,
     MessageCacheStore? cache,
+    this.primeOnLogin = true,
   })  : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime(),
         _store = store ?? createSettingsStore(),
@@ -96,7 +97,10 @@ class AppState extends ChangeNotifier {
   final ApiClient api;
   final MessageNotifier _notifier;
   final MessageCacheStore _cache;
+  final bool primeOnLogin;
   Timer? _cacheTimer;
+  DateTime? _cacheSavedAt;
+  bool _cacheRestored = false;
 
   /// 收到消息时的通知开关（设置页）；未读与列表预览不受它影响。
   bool notifyOnMessage = true;
@@ -437,6 +441,9 @@ class AppState extends ChangeNotifier {
     _restoreCache(accountId);
     await _connectRealtime();
     _scheduleTurmsRenewal();
+    if (primeOnLogin) {
+      unawaited(_primeConversations());
+    }
   }
 
   /// 重登先把本机缓存的最后一段消息和上次会话铺回去，再让 Turms 历史和推送覆盖。
@@ -444,6 +451,17 @@ class AppState extends ChangeNotifier {
     final Map<String, dynamic>? data = _cache.load(accountId);
     if (data == null) {
       return;
+    }
+    _cacheRestored = true;
+    _cacheSavedAt = DateTime.tryParse(data['saved_at'] as String? ?? '');
+    final Object? rawUnread = data['unread'];
+    if (rawUnread is Map<String, dynamic>) {
+      _unread.clear();
+      rawUnread.forEach((String key, Object? value) {
+        if (value is num && value > 0) {
+          _unread[key] = value.toInt();
+        }
+      });
     }
     final Object? rawMessages = data['messages'];
     if (rawMessages is Map<String, dynamic>) {
@@ -484,12 +502,64 @@ class AppState extends ChangeNotifier {
         }
       });
     }
+    // 旧版本缓存没有 saved_at：用缓存里最新一条消息的时间当“上次在线”的近似基线。
+    if (_cacheSavedAt == null) {
+      DateTime? newest;
+      for (final List<ChatMessage> list in _messages.values) {
+        if (list.isNotEmpty && (newest == null || list.last.sentAt.isAfter(newest))) {
+          newest = list.last.sentAt;
+        }
+      }
+      _cacheSavedAt = newest;
+    }
     final Object? active = data['active'];
     if (active is String && conversations.any((Conversation c) => c.key == active)) {
       activeConversationKey = active;
       view = 'messages';
+      _unread.remove(active);
     }
     notifyListeners();
+  }
+
+  /// 登录后把每个会话的最新一页拉回来：会话列表的预览、离线期间的消息和未读都靠这一步。
+  Future<void> _primeConversations() async {
+    if (!realtimeUp || _disposed) {
+      return;
+    }
+    final Map<String, DateTime?> baseline = <String, DateTime?>{};
+    for (final Conversation c in conversations) {
+      final List<ChatMessage>? list = _messages[c.key];
+      baseline[c.key] = list != null && list.isNotEmpty
+          ? list.last.sentAt
+          : (_cacheRestored ? _cacheSavedAt : null);
+    }
+    for (final Conversation c in conversations) {
+      if (_disposed || !realtimeUp) {
+        return;
+      }
+      await loadHistory(c);
+    }
+    for (final Conversation c in conversations) {
+      if (_disposed) {
+        return;
+      }
+      final DateTime? base = baseline[c.key];
+      if (base == null) {
+        continue;
+      }
+      final int missed = (_messages[c.key] ?? const <ChatMessage>[])
+          .where((ChatMessage m) => !m.mine && m.sentAt.isAfter(base))
+          .length;
+      if (missed == 0) {
+        continue;
+      }
+      final bool reading = c.key == activeConversationKey && windowFocused;
+      if (!reading) {
+        _unread[c.key] = (_unread[c.key] ?? 0) + missed;
+      }
+    }
+    notifyListeners();
+    _scheduleCacheSave();
   }
 
   Map<String, dynamic> _exportCache() {
@@ -513,6 +583,8 @@ class AppState extends ChangeNotifier {
     });
     return <String, dynamic>{
       'active': activeConversationKey,
+      'saved_at': DateTime.now().toUtc().toIso8601String(),
+      'unread': _unread,
       'messages': messages,
     };
   }
@@ -616,7 +688,7 @@ class AppState extends ChangeNotifier {
         maxCount: 50,
       );
       for (final IncomingMessage m in page.reversed) {
-        _ingest(m);
+        _ingest(m, live: false);
       }
     } catch (_) {
       // 下一次重连再补。
@@ -624,7 +696,7 @@ class AppState extends ChangeNotifier {
   }
 
   /// 推送进来的一条消息：按会话坐标落到本地列表，同一条只落一次。
-  void _ingest(IncomingMessage incoming) {
+  void _ingest(IncomingMessage incoming, {bool live = true}) {
     final int me = account?.accountId ?? 0;
     if (me == 0) {
       return;
@@ -683,7 +755,7 @@ class AppState extends ChangeNotifier {
     ));
     list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
     final bool reading = key == activeConversationKey && windowFocused;
-    if (incoming.senderId != me && !reading) {
+    if (live && incoming.senderId != me && !reading) {
       _unread[key] = (_unread[key] ?? 0) + 1;
       if (notifyOnMessage) {
         Conversation? conv;
@@ -747,7 +819,7 @@ class AppState extends ChangeNotifier {
         before: cursor,
       );
       for (final IncomingMessage m in page.reversed) {
-        _ingest(m);
+        _ingest(m, live: false);
       }
       // 空页，或整页都是重复（游标没前进）：都说明这个会话到头了。
       if (page.isEmpty || (_messages[conv.key]?.length ?? 0) == beforeCount) {

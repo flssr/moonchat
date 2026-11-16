@@ -200,6 +200,7 @@ AppState _newState({
   int Function()? statusOf,
   _FakeRealtime? realtime,
   MessageCacheStore? cache,
+  bool primeOnLogin = false,
 }) {
   return AppState(
     api: ApiClient(
@@ -208,6 +209,7 @@ AppState _newState({
     ),
     realtime: realtime ?? _FakeRealtime(),
     cache: cache,
+    primeOnLogin: primeOnLogin,
   );
 }
 
@@ -683,6 +685,34 @@ void main() {
     expect(second.lastMessage(dm.key)?.text, '缓存这条');
   });
 
+  test('登录补拉每个会话最新一页：预览和离线未读', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final _FakeCache cache = _FakeCache();
+    cache.saved[1] = <String, dynamic>{
+      'saved_at': '2026-11-10T09:00:00Z',
+      'messages': <String, dynamic>{},
+    };
+    rt.pages.add(<IncomingMessage>[
+      IncomingMessage(
+        id: '901',
+        text: '离线来的',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T09:01:00Z'),
+      ),
+    ]);
+    final AppState state = _newState(realtime: rt, cache: cache, primeOnLogin: true);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    for (int i = 0; i < 100 && state.lastMessage(dm.key) == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(state.lastMessage(dm.key)?.text, '离线来的');
+    expect(state.unreadFor(dm.key), 1);
+  });
+
   test('后台收到消息累计未读，打开会话清零', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final AppState state = _newState(realtime: rt);
@@ -919,6 +949,7 @@ AppState _stateOn(_FakeBiz biz, {_FakeRealtime? realtime, SessionStore? session}
       api: ApiClient(baseUrl: 'http://mock.local', client: biz.client),
       realtime: realtime ?? _FakeRealtime(),
       session: session,
+      primeOnLogin: false,
     );
 
 /// 假的会话存储：只在本测试进程里记住一份。
