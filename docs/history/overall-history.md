@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
 - [Turms 容器限额提到 1280m](#turms-容器限额提到-1280m)
 - [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
 - [Mongo 改最小分片集群](#mongo-改最小分片集群)
@@ -36,6 +37,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### biz 镜像补 logs 目录
+
+2026-11-17 01:20 CST   [2026-11-16 17:20 UTC]
+
+决策：`backend/mondchat-biz/Dockerfile` 在 `useradd` 之后加一步 `mkdir -p /opt/mondchat/logs && chown -R 10001:10001 /opt/mondchat`，`COPY app.jar` 与 `USER mondchat` 位置不动。用数字 uid:gid 而不是 `mondchat:mondchat`，因为 `useradd --system` 不保证建同名的组，写组名有构建期失败的风险。
+
+原因：分片与内存两个问题修完后，`mondchat-biz` 起来就退出，日志是 `Logback configuration error: Failed to create parent directories for [/opt/mondchat/logs/...]`。`logback-spring.xml` 的滚动文件用相对路径 `logs/`，基准是 `WORKDIR /opt/mondchat`，而镜像里这个目录是 root 所有且根本不存在，`USER mondchat` 之后 uid 10001 建不出来，Spring Boot 判定日志初始化失败直接退出。容器内 `logs/` 不挂宿主卷，容器重建即丢，排障走 `docker logs`，这一点也写进了 `docs/truth/deployment.md` 的运维边界。
 
 ### Turms 容器限额提到 1280m
 
