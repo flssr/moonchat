@@ -146,25 +146,23 @@ class _BarButtonState extends State<_BarButton> {
         : Colors.transparent;
     final Color foreground =
         _hover && widget.danger ? Colors.white : p.ink3;
+    // 标题栏在 MaterialApp.builder 里、Navigator 之外，没有 Overlay 可给 Tooltip 用；
+    // 三个按钮都是系统惯例图标，这里只保留无障碍语义。
     return Semantics(
       button: true,
       label: widget.label,
-      child: Tooltip(
-        message: widget.label,
-        waitDuration: const Duration(milliseconds: 600),
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: widget.onPressed,
-            child: Container(
-              width: 44,
-              height: DesktopTitleBar.height,
-              color: background,
-              alignment: Alignment.center,
-              child: Icon(widget.icon, size: 15, color: foreground),
-            ),
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onPressed,
+          child: Container(
+            width: 44,
+            height: DesktopTitleBar.height,
+            color: background,
+            alignment: Alignment.center,
+            child: Icon(widget.icon, size: 15, color: foreground),
           ),
         ),
       ),
