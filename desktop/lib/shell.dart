@@ -2,10 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:mondchat/i18n/context_tr.dart';
 import 'package:mondchat/state/app_state.dart';
-import 'package:mondchat/theme.dart';
-import 'package:mondchat/ui/widgets.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -26,7 +23,6 @@ class DesktopShell extends StatefulWidget {
 }
 
 class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayListener {
-  bool _confirmClose = false;
   bool _quitting = false;
 
   @override
@@ -66,20 +62,9 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
     super.dispose();
   }
 
-  void _requestClose() {
-    setState(() => _confirmClose = true);
-  }
-
   Future<void> _show() async {
     await windowManager.show();
     await windowManager.focus();
-  }
-
-  Future<void> _minimizeToTaskbar() async {
-    setState(() => _confirmClose = false);
-    // 托盘插件在部分 Windows 上图标不出现，hide() 会让人以为应用被关了。
-    // 最小化到任务栏最稳：窗口还有入口，进程继续收消息、弹通知。
-    await windowManager.minimize();
   }
 
   Future<void> _quit() async {
@@ -99,7 +84,8 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
   @override
   void onWindowClose() {
     if (!_quitting) {
-      _requestClose();
+      // 不走确认框：关闭就是退出，先落盘缓存再快速退。
+      unawaited(_quit());
     }
   }
 
@@ -123,64 +109,10 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
 
   @override
   Widget build(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return Stack(
+    return Column(
       children: <Widget>[
-        Column(
-          children: <Widget>[
-            DesktopTitleBar(onClose: _requestClose),
-            Expanded(child: widget.child),
-          ],
-        ),
-        if (_confirmClose)
-          Positioned.fill(
-            child: Material(
-              color: const Color(0x66000000),
-              child: Center(
-                child: Container(
-                  width: 320,
-                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                  decoration: BoxDecoration(
-                    color: p.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: p.line),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      Text(
-                        context.tr('要关闭 MondChat 吗？'),
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        context.tr('可以关掉应用，也可以最小化到任务栏继续收消息。'),
-                        style: TextStyle(fontSize: 12, color: p.ink3),
-                      ),
-                      const SizedBox(height: 16),
-                      MoonButton(
-                        label: context.tr('关闭应用程序'),
-                        kind: MoonButtonKind.danger,
-                        onPressed: _quit,
-                      ),
-                      const SizedBox(height: 8),
-                      MoonButton(
-                        label: context.tr('最小化到任务栏'),
-                        kind: MoonButtonKind.secondary,
-                        onPressed: _minimizeToTaskbar,
-                      ),
-                      const SizedBox(height: 4),
-                      TextButton(
-                        onPressed: () => setState(() => _confirmClose = false),
-                        child: Text(context.tr('取消'), style: TextStyle(color: p.ink3)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+        DesktopTitleBar(onClose: _quit),
+        Expanded(child: widget.child),
       ],
     );
   }
