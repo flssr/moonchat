@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:local_notifier/local_notifier.dart';
 import 'package:mondchat/i18n/context_tr.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
@@ -29,7 +28,6 @@ class DesktopShell extends StatefulWidget {
 class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayListener {
   bool _confirmClose = false;
   bool _quitting = false;
-  bool _trayReady = false;
 
   @override
   void initState() {
@@ -56,18 +54,8 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
           ],
         ),
       );
-      _trayReady = true;
     } catch (_) {
-      // 托盘不可用时不影响主窗口；最小化会退化成任务栏。
-      _trayReady = false;
-    }
-  }
-
-  Future<void> _toast(String body) async {
-    try {
-      await LocalNotification(title: 'MondChat', body: body).show();
-    } catch (_) {
-      // 通知不可用就算了。
+      // 托盘图标没起来也不影响最小化：窗口始终留在任务栏。
     }
   }
 
@@ -87,17 +75,11 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
     await windowManager.focus();
   }
 
-  Future<void> _minimizeToTray() async {
+  Future<void> _minimizeToTaskbar() async {
     setState(() => _confirmClose = false);
-    if (!_trayReady) {
-      // 托盘图标还没建好（或平台不支持）时不能直接 hide，否则窗口和任务栏都没了，
-      // 看起来就像应用被关掉；退回普通最小化并说明。
-      await windowManager.minimize();
-      await _toast('托盘不可用，已最小化到任务栏。');
-      return;
-    }
-    await windowManager.hide();
-    await _toast('已最小化到托盘，点任务栏托盘图标恢复。');
+    // 托盘插件在部分 Windows 上图标不出现，hide() 会让人以为应用被关了。
+    // 最小化到任务栏最稳：窗口还有入口，进程继续收消息、弹通知。
+    await windowManager.minimize();
   }
 
   Future<void> _quit() async {
@@ -173,7 +155,7 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        context.tr('可以关掉应用，也可以留在托盘里继续收消息。'),
+                        context.tr('可以关掉应用，也可以最小化到任务栏继续收消息。'),
                         style: TextStyle(fontSize: 12, color: p.ink3),
                       ),
                       const SizedBox(height: 16),
@@ -184,9 +166,9 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
                       ),
                       const SizedBox(height: 8),
                       MoonButton(
-                        label: context.tr('最小化到托盘'),
+                        label: context.tr('最小化到任务栏'),
                         kind: MoonButtonKind.secondary,
-                        onPressed: _minimizeToTray,
+                        onPressed: _minimizeToTaskbar,
                       ),
                       const SizedBox(height: 4),
                       TextButton(

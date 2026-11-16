@@ -119,8 +119,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '要关闭 MondChat 吗？': 'Close MondChat?',
     '可以关掉应用，也可以留在托盘里继续收消息。':
         'Quit the app, or keep it in the tray to receive messages.',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'Quit the app, or minimize to the taskbar to keep receiving messages.',
     '关闭应用程序': 'Quit application',
     '最小化到托盘': 'Minimize to tray',
+    '最小化到任务栏': 'Minimize to taskbar',
     '短号或账号 ID': 'Short number or account ID',
     '加好友需要对方的短号或账号 ID。':
         'To add a friend, you need their short number or account ID.',
@@ -353,8 +356,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '要关闭 MondChat 吗？': 'MondChat を閉じますか？',
     '可以关掉应用，也可以留在托盘里继续收消息。':
         'アプリを終了するか、トレイに残してメッセージを受け取れます。',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'アプリを終了するか、タスクバーに最小化してメッセージを受け取れます。',
     '关闭应用程序': 'アプリを終了',
     '最小化到托盘': 'トレイに最小化',
+    '最小化到任务栏': 'タスクバーに最小化',
     '短号或账号 ID': '短番号またはアカウントID',
     '加好友需要对方的短号或账号 ID。':
         '友達追加には短番号かアカウントIDが必要。',
@@ -584,8 +590,11 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '要关闭 MondChat 吗？': 'MondChat schließen?',
     '可以关掉应用，也可以留在托盘里继续收消息。':
         'App beenden oder im Infobereich bleiben, um Nachrichten zu erhalten.',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'App beenden oder in die Taskleiste minimieren, um Nachrichten zu erhalten.',
     '关闭应用程序': 'Anwendung beenden',
     '最小化到托盘': 'In den Infobereich minimieren',
+    '最小化到任务栏': 'In die Taskleiste minimieren',
     '短号或账号 ID': 'Kurze Nummer oder Konto-ID',
     '加好友需要对方的短号或账号 ID。':
         'Zum Hinzufügen brauchst du die kurze Nummer oder Konto-ID.',
