@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### Windows 桌面客户端
+
+2026-11-16 17:16 CET   [2026-11-16 16:16 UTC]
+
+决策：桌面端是 `desktop/` 下独立的 Flutter 工程，按路径依赖复用 `frontend/app` 的界面与状态，只实现 Windows 的本机文件存储（`%APPDATA%\MondChat`）与 Turms 读通道；exe 名为 `MondChat.exe`，由 CI 的 `desktop` job 在 `windows-latest` 上构建并上传 artifact。
+
+原因：Flutter 的 Windows runner 必须与 `pubspec.yaml` 同目录，塞进共享包会把 `vendor/turms` 子模块拖进每次 Web CI；独立工程保住 Web 的检查面，也让桌面端只在自己需要时才拉固定提交的 Turms 依赖。开发机没有 Visual Studio 2022 的 C++ 桌面工作负载，无法本地出 exe，于是把构建放在 CI。
+
 ### 登录态持久化
 
 2026-11-15 13:13 CET   [2026-11-15 12:13 UTC]

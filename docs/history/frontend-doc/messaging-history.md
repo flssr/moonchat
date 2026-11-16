@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 桌面端 Turms 传输
+
+2026-11-16 17:16 CET   [2026-11-16 16:16 UTC]
+
+决策：Windows 客户端不复用官方的 `turms-client-dart`（它只实现 TCP 11510），而是在 `desktop/lib/realtime.dart` 里按 `turms-client-js` 的线上格式直连 `/im`（10510）：一帧一个 protobuf，请求/响应按 `requestId` 配对，空帧做心跳，用 `DeviceType.DESKTOP` 登录。读通道只做登录、查历史与收推送，写仍然只走 Biz。
+
+原因：生产与本地编排只把 Turms 的 WebSocket 端口暴露给反代（`/im`），TCP 11510 不出容器网络；为桌面端单独开 TCP 端口要动反代与 TLS，成本与风险都高于在客户端补一层已经固定的线上协议。proto 类直接依赖仓库固定提交里的 `turms-client-dart`，字段编号不手写。
+
 ### 输入框回车
 
 2026-11-15 13:13 CET   [2026-11-15 12:13 UTC]

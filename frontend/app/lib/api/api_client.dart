@@ -74,7 +74,7 @@ class ApiException implements Exception {
 /// 24 条 `/api/*` 路由的唯一调用点，前端目前用到 21 条（黑名单三条未接）。
 /// 路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
-  ApiClient({String? baseUrl, http.Client? client})
+  ApiClient({String? baseUrl, http.Client? client, this.deviceType = 'browser'})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -86,8 +86,8 @@ class ApiClient {
   );
 
   /// 写入网关只认这几个取值（`ConversationController.java:31-37`），其余返回 400。
-  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的 `WEB` 在 `realtime_web.dart`。
-  static const String deviceType = 'browser';
+  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的设备类型在各自的 realtime 实现里。
+  final String deviceType;
 
   final String _base;
   final http.Client _client;

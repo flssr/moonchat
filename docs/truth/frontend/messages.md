@@ -1,6 +1,6 @@
 # 消息与会话
 
-消息读取完全走客户端的 Turms 会话。Web 端通过 `dart:js_interop` 调用仓库内置的 `turms-client-js`；非 Web 平台使用不支持实时连接的占位实现。
+消息读取完全走客户端的 Turms 会话。Web 端通过 `dart:js_interop` 调用仓库内置的 `turms-client-js`；Windows 桌面端在 `desktop/lib/realtime.dart` 里按同一线上格式直连 `/im` WebSocket（一帧一个 protobuf，按 `requestId` 配对）。Turms 官方的 Dart 客户端只支持 TCP 11510，部署只暴露 10510 的 WebSocket，所以桌面端不复用它。
 
 ## 会话与历史
 

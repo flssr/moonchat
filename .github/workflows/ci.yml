@@ -49,3 +49,36 @@ jobs:
       - run: flutter test
       # 读通道在 web-only 的 js_interop 里，VM 测试编译不到它；单独加一道 web 构建。
       - run: flutter build web --release
+
+  # 桌面壳独立成包：复用 frontend/app 的界面，只带 Windows 存储与 Turms WebSocket。
+  # 它依赖 vendor/turms 里的 Dart proto，所以只有这个 job 拉子模块（Web/后端 job 不拉）。
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.9
+          channel: stable
+          cache: true
+      - name: 同步共享资源
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force assets -ErrorAction SilentlyContinue
+          Copy-Item -Recurse ..\frontend\app\assets assets
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      # MondChat.exe 在这里出；开发机没有 VS 的 C++ 工作负载，用 artifact 分发。
+      - run: flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mondchat-windows
+          path: desktop/build/windows/x64/runner/Release/
+          if-no-files-found: error
