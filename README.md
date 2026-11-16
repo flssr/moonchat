@@ -47,6 +47,7 @@ $env:SPRING_DATASOURCE_PASSWORD = 'mondchat'
 $env:MONDCHAT_JWT_SECRET_FILE = "$PWD/infra/turms/secrets/jwt-hmac256.key"
 $env:MONDCHAT_AUTH_JWT_SECRET = '<32 字节以上的任意字符串>'
 $env:MONDCHAT_AGENT_KEY_PEPPER = '<任意字符串>'
+$env:SPRING_PROFILES_ACTIVE = 'dev'  # 打开本机来源的 CORS，Flutter Web 开发服务器才能调 /api
 .\backend\mvnw.cmd -f backend\pom.xml -pl mondchat-biz spring-boot:run
 ```
 
