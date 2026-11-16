@@ -59,8 +59,8 @@ services:
       - "27017"
       - --bind_ip_all
       - --wiredTigerCacheSizeGB
-      - "0.12"
-    mem_limit: 224m
+      - "0.25"
+    mem_limit: 320m
     volumes:
       - mongo-config-data:/data/db
     healthcheck:
@@ -81,7 +81,7 @@ services:
       - "27017"
       - --bind_ip_all
       - --wiredTigerCacheSizeGB
-      - "0.2"
+      - "0.25"
     mem_limit: 384m
     volumes:
       - mongo-shard-data:/data/db

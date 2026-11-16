@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
 - [Mongo 改最小分片集群](#mongo-改最小分片集群)
 - [生产部署与 CD](#生产部署与-cd)
 - [文档体系](#文档体系)
@@ -34,6 +35,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### Mongo 缓存下限改成 0.25G
+
+2026-11-17 00:45 CST   [2026-11-16 16:45 UTC]
+
+决策：两个 `mongod` 的 `--wiredTigerCacheSizeGB` 都从 0.12 / 0.2 改成 0.25，`mongo-config` 的 `mem_limit` 从 224m 提到 320m；常驻 `mem_limit` 合计从 3008m 变成 3104m，其余容器不动。
+
+原因：第一次真机部署时 `mongo-config` 一直 unhealthy，日志是 `storage.wiredTiger.engineConfig.cacheSizeGB must be greater than or equal to 0.25`——MongoDB 的 WiredTiger 缓存有 0.25G 下限，低于它 mongod 拒绝启动并进重启循环，`docker compose up -d --wait` 因此整单失败。这也是「配置参数必须先在真机上验一次」的实例：分片拓扑本身是对的，栽在一个库下限上。
 
 ### Mongo 改最小分片集群
 
