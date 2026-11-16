@@ -32,14 +32,14 @@
 
 ## 反向代理（1Panel OpenResty）
 
-反代入口是**独立域名或独立端口**，具体值待用户确认（下面写作 `<反代入口>`）。80 端口已绑定 `/site` 下的官网静态页，不复用这条链路。
+反代入口是独立子域名 `api.mondchat.com`：DNS 加一条 A 记录指向服务器，1Panel 建站点时 root 留空、只放下面的反代片段，并给这个子域名单独签证书。80 端口已绑定 `/site` 下的官网静态页，不复用这条链路。
 
 在 1Panel 站点配置里加两个 location：
 
 ```nginx
 server {
     listen 443 ssl;
-    server_name <反代入口>;
+    server_name api.mondchat.com;
 
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
@@ -63,8 +63,8 @@ server {
 ```
 
 - `/api/` 必须保留前缀：控制器都挂在 `/api/**`，所以 `proxy_pass` 不带 URI 部分。
-- 部署前提里 Biz 侧回给客户端的 WS 地址由 `.env` 的 `MONDCHAT_TURMS_GATEWAY_URL` 决定，形如 `wss://<反代入口>/im`。
-- **生产不开 CORS**：`DevCorsConfig` 只在 `dev` profile 生效。放在别处的前端必须由那一侧把 `/api`、`/im` 反代到 `<反代入口>`（浏览器视角同源），直接从别的 origin 调本机入口会被浏览器拦掉。
+- 部署前提里 Biz 侧回给客户端的 WS 地址由 `.env` 的 `MONDCHAT_TURMS_GATEWAY_URL` 决定，形如 `wss://api.mondchat.com/im`。
+- **生产不开 CORS**：`DevCorsConfig` 只在 `dev` profile 生效。放在别处的前端必须由那一侧把 `/api`、`/im` 反代到 `api.mondchat.com`（浏览器视角同源），直接从别的 origin 调本机入口会被浏览器拦掉。
 
 ## 服务器预置
 
@@ -80,7 +80,7 @@ server {
    | `MONDCHAT_AGENT_KEY_PEPPER` | agent 账号密钥的 HMAC pepper，无默认值 |
    | `MONDCHAT_BIZ_IMAGE` | 镜像全名，如 `ghcr.io/<owner>/mondchat-biz` |
    | `MONDCHAT_BIZ_TAG` | 镜像 tag，默认 `latest`；回滚时填提交 sha（不带冒号） |
-   | `MONDCHAT_TURMS_GATEWAY_URL` | 客户端连的 WS 地址，如 `wss://<反代入口>/im` |
+   | `MONDCHAT_TURMS_GATEWAY_URL` | 客户端连的 WS 地址，如 `wss://api.mondchat.com/im` |
    | `MONDCHAT_JWT_SECRET_FILE` | 可选，默认 `/opt/mondchat/secrets/jwt-hmac256.key` |
 
 2. `/opt/mondchat/secrets/jwt-hmac256.key`（`chmod 600`）：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。
