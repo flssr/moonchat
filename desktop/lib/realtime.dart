@@ -14,13 +14,23 @@ import 'package:turms_client_dart/turms_client.dart';
 class DesktopRealtime implements RealtimeClient {
   static const Duration _connectTimeout = Duration(seconds: 15);
   static const Duration _requestTimeout = Duration(seconds: 20);
-  static const Duration _heartbeatIdle = Duration(seconds: 100);
-  static const Duration _heartbeatCheck = Duration(seconds: 30);
+  static const Duration _heartbeatIdle = Duration(seconds: 30);
+  static const Duration _heartbeatCheck = Duration(seconds: 10);
+  static const Duration _heartbeatTimeout = Duration(seconds: 90);
+  static const Duration _reconnectBase = Duration(seconds: 2);
+  static const int _reconnectMaxSeconds = 30;
 
   WebSocket? _socket;
   Timer? _heartbeat;
+  Timer? _reconnectTimer;
   int _lastRequestAt = 0;
+
+  /// 最后一次收到服务器帧（包括心跳空帧）的时间；半开连接靠它发现。
+  int _lastFrameAt = 0;
   int _nextRequestId = 0;
+  int _reconnectAttempt = 0;
+  bool _manualClose = true;
+  _ReconnectArgs? _reconnectArgs;
 
   /// 代次：disconnect 或新连接会自增；旧连接晚到的帧与关闭回调按代次丢弃。
   int _generation = 0;
@@ -42,6 +52,17 @@ class DesktopRealtime implements RealtimeClient {
     void Function(Object error)? onError,
   }) async {
     await disconnect();
+    _manualClose = false;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectArgs = _ReconnectArgs(
+      credential: credential,
+      myAccountId: myAccountId,
+      onMessage: onMessage,
+      onConnected: onConnected,
+      onError: onError,
+    );
+    _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
     final int generation = ++_generation;
     _onMessage = onMessage;
     _onConnected = onConnected;
@@ -72,6 +93,7 @@ class DesktopRealtime implements RealtimeClient {
       );
       _ensureSuccess(response, 'Turms 会话');
       _up = true;
+      _reconnectAttempt = 0;
       _startHeartbeat();
       _onConnected?.call(true);
     } catch (e) {
@@ -111,6 +133,9 @@ class DesktopRealtime implements RealtimeClient {
 
   @override
   Future<void> disconnect() async {
+    _manualClose = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _generation++;
     _heartbeat?.cancel();
     _heartbeat = null;
@@ -178,8 +203,9 @@ class DesktopRealtime implements RealtimeClient {
     if (generation != _generation || frame is! List<int>) {
       return;
     }
+    // 心跳回包也是空帧：先记存活，再看内容。
+    _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
     if (frame.isEmpty) {
-      // 心跳回包是空帧。
       return;
     }
     final TurmsNotification notification;
@@ -282,21 +308,56 @@ class DesktopRealtime implements RealtimeClient {
     if (error != null) {
       _onError?.call(error);
     }
+    _scheduleReconnect();
+  }
+
+  /// 断线自愈：半开连接不会触发 onDone，心跳回包超时也要把连接判死；
+  /// 断开后指数退避重连，直到显式 disconnect（登出/切号）。
+  void _scheduleReconnect() {
+    if (_manualClose || _reconnectArgs == null) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    final int seconds =
+        (_reconnectBase.inSeconds << _reconnectAttempt.clamp(0, 4))
+            .clamp(_reconnectBase.inSeconds, _reconnectMaxSeconds);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () {
+      final _ReconnectArgs? args = _reconnectArgs;
+      if (_manualClose || args == null) {
+        return;
+      }
+      unawaited(
+        connect(
+          credential: args.credential,
+          myAccountId: args.myAccountId,
+          onMessage: args.onMessage,
+          onConnected: args.onConnected,
+          onError: args.onError,
+        ),
+      );
+    });
   }
 
   void _startHeartbeat() {
     _heartbeat?.cancel();
-    _lastRequestAt = DateTime.now().millisecondsSinceEpoch;
+    final int now = DateTime.now().millisecondsSinceEpoch;
+    _lastRequestAt = now;
+    _lastFrameAt = now;
     _heartbeat = Timer.periodic(_heartbeatCheck, (Timer _) {
       final WebSocket? socket = _socket;
       if (socket == null) {
         return;
       }
-      final int now = DateTime.now().millisecondsSinceEpoch;
-      if (now - _lastRequestAt < _heartbeatIdle.inMilliseconds) {
+      final int current = DateTime.now().millisecondsSinceEpoch;
+      if (current - _lastFrameAt > _heartbeatTimeout.inMilliseconds) {
+        _markDown(_generation, StateError('Turms 心跳超时'));
         return;
       }
-      _lastRequestAt = now;
+      if (current - _lastRequestAt < _heartbeatIdle.inMilliseconds) {
+        return;
+      }
+      _lastRequestAt = current;
       socket.add(Uint8List(0));
     });
   }
@@ -313,4 +374,20 @@ class DesktopRealtime implements RealtimeClient {
     }
     return gatewayUrl;
   }
+}
+
+class _ReconnectArgs {
+  const _ReconnectArgs({
+    required this.credential,
+    required this.myAccountId,
+    required this.onMessage,
+    required this.onConnected,
+    required this.onError,
+  });
+
+  final TurmsCredential credential;
+  final int myAccountId;
+  final void Function(IncomingMessage message) onMessage;
+  final void Function(bool connected)? onConnected;
+  final void Function(Object error)? onError;
 }

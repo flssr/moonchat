@@ -417,7 +417,12 @@ class AppState extends ChangeNotifier {
       credential: credential,
       myAccountId: me.accountId,
       onConnected: (bool up) {
+        final bool wasUp = realtimeUp;
         realtimeUp = up;
+        // 断线期间 Turms 不会补推：重连成功后补拉一次当前会话最新一页。
+        if (up && !wasUp) {
+          unawaited(_refreshActiveMessages());
+        }
         notifyListeners();
       },
       onMessage: _ingest,
@@ -426,6 +431,34 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
+  }
+
+  /// 重连后补拉当前会话最新一页：断线/挂机期间丢失的推送只能靠历史补回来。
+  Future<void> _refreshActiveMessages() async {
+    final String? key = activeConversationKey;
+    if (key == null || !realtimeUp) {
+      return;
+    }
+    final Conversation? conv = conversationOf(key);
+    if (conv == null) {
+      return;
+    }
+    final String? targetId = conv.isRoom ? conv.turmsGroupId : '${conv.targetId}';
+    if (targetId == null || targetId.isEmpty) {
+      return;
+    }
+    try {
+      final List<IncomingMessage> page = await realtime.history(
+        conversationType: conv.type,
+        targetId: targetId,
+        maxCount: 50,
+      );
+      for (final IncomingMessage m in page.reversed) {
+        _ingest(m);
+      }
+    } catch (_) {
+      // 下一次重连再补。
+    }
   }
 
   /// 推送进来的一条消息：按会话坐标落到本地列表，同一条只落一次。
