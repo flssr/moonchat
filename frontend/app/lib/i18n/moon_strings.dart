@@ -47,6 +47,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'Coming soon',
     '待接入': 'Pending',
     '关闭': 'Close',
+    // 窗口按钮（桌面无边框标题栏）
+    '最小化': 'Minimize',
+    '最大化': 'Maximize',
+    '还原': 'Restore',
     // 登录
     '1–20 字': '1–20 characters',
     '8–72 位，不能是纯数字': '8–72 characters, not all digits',
@@ -259,6 +263,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'お楽しみに',
     '待接入': '準備中',
     '关闭': '閉じる',
+    // ウィンドウボタン（デスクトップの枠なしタイトルバー）
+    '最小化': '最小化',
+    '最大化': '最大化',
+    '还原': '元に戻す',
     // ログイン
     '1–20 字': '1〜20文字',
     '8–72 位，不能是纯数字': '8〜72文字、数字のみ不可',
@@ -468,6 +476,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'Bald verfügbar',
     '待接入': 'In Arbeit',
     '关闭': 'Schließen',
+    // Fensterknöpfe (rahmenlose Titelleiste)
+    '最小化': 'Minimieren',
+    '最大化': 'Maximieren',
+    '还原': 'Wiederherstellen',
     // Anmeldung
     '1–20 字': '1–20 Zeichen',
     '8–72 位，不能是纯数字': '8–72 Zeichen, nicht nur Ziffern',

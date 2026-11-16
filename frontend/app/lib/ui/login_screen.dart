@@ -11,12 +11,20 @@ import 'widgets.dart';
 /// S1 登录 / 注册 + S2 登舱过渡（`docs/truth/frontend/README.md`）。
 /// 表单在左，右侧是月面舞台；登录成功后播一次短促离场，再交给外壳换屏。
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.state, this.onArrived});
+  const LoginScreen({
+    super.key,
+    required this.state,
+    this.onArrived,
+    this.edgeToEdge = false,
+  });
 
   final AppState state;
 
   /// 登舱过渡播完（或减少动态时直接跳过）后回调；外壳据此切到主界面。
   final VoidCallback? onArrived;
+
+  /// 桌面壳把登录页铺满整个窗口：去掉居中卡片的外边距与圆角，表单和舞台顶到窗口边缘。
+  final bool edgeToEdge;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -143,26 +151,74 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
+  /// 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
+  Widget _fade(Widget child) {
+    return IgnorePointer(
+      ignoring: _arriving,
+      child: AnimatedOpacity(
+        opacity: _arriving ? 0 : 1,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        child: child,
+      ),
+    );
+  }
+
+  /// 桌面无边框窗口的登录页：表单与舞台直接铺满可用区域，不留居中的卡片边距。
+  Widget _buildEdgeToEdge(BuildContext context) {
+    final MoonPalette p = context.moon;
+    final Widget stage = _buildStage(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints c) {
+          final Widget form = _buildForm(context);
+          if (c.maxWidth < 900) {
+            return Column(
+              children: <Widget>[
+                Expanded(flex: 3, child: SingleChildScrollView(child: _fade(form))),
+                Expanded(flex: 2, child: stage),
+              ],
+            );
+          }
+          return Row(
+            children: <Widget>[
+              Expanded(
+                flex: 44,
+                child: ColoredBox(
+                  color: p.surface,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: _fade(form),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(flex: 56, child: stage),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
+    if (widget.edgeToEdge) {
+      return _buildEdgeToEdge(context);
+    }
     return Scaffold(
       backgroundColor: p.bg,
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
-          // 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
           final Widget formBody = _buildForm(context);
-          final Widget form = IgnorePointer(
-            ignoring: _arriving,
-            child: AnimatedOpacity(
-              opacity: _arriving ? 0 : 1,
-              duration: const Duration(milliseconds: 420),
-              curve: Curves.easeOutCubic,
-              // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
-              child: narrow ? formBody : SingleChildScrollView(child: formBody),
-            ),
-          );
+          // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
+          final Widget form = _fade(narrow ? formBody : SingleChildScrollView(child: formBody));
           final Widget stage = _buildStage(context);
           return Center(
             child: SingleChildScrollView(

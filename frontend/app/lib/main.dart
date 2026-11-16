@@ -18,11 +18,25 @@ void main() {
 
 class MondChatApp extends StatefulWidget {
   /// [state] 只给测试注入；生产入口不传，由外壳自己持有并负责释放。
-  const MondChatApp({super.key, this.state, this.settings, this.store});
+  const MondChatApp({
+    super.key,
+    this.state,
+    this.settings,
+    this.store,
+    this.chrome,
+    this.edgeToEdge = false,
+  });
 
   final AppState? state;
   final MoonSettings? settings;
   final SettingsStore? store;
+
+  /// 桌面壳用它在 `MaterialApp` 内插一条自定义标题栏；Web 传 null。
+  /// 放在 builder 里才能拿到应用自己的主题（标题栏跟随亮/暗色）。
+  final Widget Function(BuildContext context, Widget child)? chrome;
+
+  /// 登录页铺满可用区域（桌面无边框窗口）；Web 保持居中的卡片。
+  final bool edgeToEdge;
 
   @override
   State<MondChatApp> createState() => _MondChatAppState();
@@ -128,10 +142,11 @@ class _MondChatAppState extends State<MondChatApp> {
         final MediaQueryData data = MediaQuery.of(context);
         // 保留系统字号档位，再叠应用内的小/中/大。
         final double systemScale = data.textScaler.scale(1);
-        return MediaQuery(
+        final Widget content = MediaQuery(
           data: data.copyWith(textScaler: TextScaler.linear(systemScale * _textScale)),
           child: child!,
         );
+        return widget.chrome == null ? content : widget.chrome!(context, content);
       },
       home: ListenableBuilder(
         listenable: _state,
@@ -168,7 +183,11 @@ class _MondChatAppState extends State<MondChatApp> {
                   )
                 : restoring
                     ? const _StartupSplash()
-                    : LoginScreen(state: _state, onArrived: _onArrived);
+                    : LoginScreen(
+                        state: _state,
+                        onArrived: _onArrived,
+                        edgeToEdge: widget.edgeToEdge,
+                      );
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
           return AnimatedSwitcher(

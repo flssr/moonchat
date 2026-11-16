@@ -7,14 +7,20 @@
 | --- | --- | --- |
 | 本地设置 / 登录态 | `localStorage` | `%APPDATA%\MondChat\*.json`（`lib/storage.dart`） |
 | Turms 读通道 | 页面里的 `turms-client-js` | 原生 WebSocket + Dart proto（`lib/realtime.dart`） |
+| 窗口 | 浏览器标签页 | 无边框窗口，自定义 32px 标题栏（`lib/title_bar.dart`） |
 
 Turms 的 Dart 客户端只有 TCP 传输（11510），生产与本地编排暴露的只有 `/im` WebSocket（10510），
 所以桌面端的读通道按 `turms-client-js` 的线上格式直接走 WebSocket：一帧一个 protobuf，
 请求/响应按 `requestId` 配对。写入仍然只走 Biz，客户端不拿 Turms 写权限。
 
+窗口由 `window_manager` 的 `TitleBarStyle.hidden` 去掉系统标题栏；`DesktopTitleBar` 负责
+拖动、双击最大化、最小化/最大化/关闭。登录页传 `edgeToEdge: true`，表单与舞台铺满客户区，
+不再保留 Web 的居中卡片边距。
+
 ## 构建
 
 需要 Flutter SDK 与 **Visual Studio 2022「使用 C++ 的桌面开发」工作负载**（Windows 桌面构建的前置）。
+工程带原生插件，Flutter 在 Windows 上构建插件需要符号链接支持（系统设置里打开“开发者模式”）。
 
 ```powershell
 .\desktop\build.ps1                                  # 生产默认 https://api.mondchat.com

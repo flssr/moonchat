@@ -14,6 +14,9 @@ dependencies:
     path: ../frontend/app
   turms_client_dart:
     path: ../vendor/turms/turms-client-dart
+  # 锁 0.5.x：传统原生插件只在 build windows 时编译原生代码；0.6.x 换成
+  # nativeapi，flutter test 也会触发 C 构建，没有 MSVC 的机器连测试都跑不了。
+  window_manager: ^0.5.1
 
 dev_dependencies:
   flutter_test:
