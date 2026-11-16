@@ -51,6 +51,7 @@ Future<void> main() async {
     realtime: DesktopRealtime(),
     store: settings,
     session: DesktopSessionStore(),
+    cache: DesktopMessageCacheStore(),
     notifier: DesktopNotifier(),
   );
   runApp(

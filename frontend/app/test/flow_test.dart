@@ -10,6 +10,7 @@ import 'package:mondchat/api/api_client.dart';
 import 'package:mondchat/api/models.dart';
 import 'package:mondchat/main.dart';
 import 'package:mondchat/session/session_store.dart';
+import 'package:mondchat/message_cache.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
 import 'package:mondchat/turms/realtime.dart';
@@ -184,13 +185,29 @@ MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
   });
 }
 
-AppState _newState({int sendStatus = 201, int Function()? statusOf, _FakeRealtime? realtime}) {
+class _FakeCache implements MessageCacheStore {
+  final Map<int, Map<String, dynamic>> saved = <int, Map<String, dynamic>>{};
+
+  @override
+  Map<String, dynamic>? load(int accountId) => saved[accountId];
+
+  @override
+  void save(int accountId, Map<String, dynamic> data) => saved[accountId] = data;
+}
+
+AppState _newState({
+  int sendStatus = 201,
+  int Function()? statusOf,
+  _FakeRealtime? realtime,
+  MessageCacheStore? cache,
+}) {
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
       client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf),
     ),
     realtime: realtime ?? _FakeRealtime(),
+    cache: cache,
   );
 }
 
@@ -645,6 +662,25 @@ void main() {
     ));
     expect(state.messagesOf(dm.key), hasLength(1), reason: '同一条消息不能一真一假两条');
     expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
+  });
+
+  test('重登先从本机缓存恢复上次会话与最后一条消息', () async {
+    final _FakeCache cache = _FakeCache();
+    final AppState first = _newState(cache: cache);
+    await first.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = first.conversations.first;
+    first.selectConversation(dm.key);
+    await first.sendMessage(dm, '缓存这条');
+    first.flushCache();
+    first.dispose();
+
+    final AppState second = _newState(cache: cache);
+    addTearDown(second.dispose);
+    await second.login(email: 'a@b.c', password: 'password1');
+
+    expect(second.activeConversationKey, dm.key);
+    expect(second.messagesOf(dm.key).single.text, '缓存这条');
+    expect(second.lastMessage(dm.key)?.text, '缓存这条');
   });
 
   test('后台收到消息累计未读，打开会话清零', () async {

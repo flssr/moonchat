@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:mondchat/avatars.dart';
+import 'package:mondchat/message_cache.dart';
 import 'package:mondchat/session/session_store.dart';
 import 'package:mondchat/settings/settings.dart';
 
@@ -115,6 +116,44 @@ class DesktopSettingsStore implements SettingsStore {
     _avatars?.write(
       avatars.map((int id, String key) => MapEntry<String, String>('$id', key)),
     );
+  }
+}
+
+class DesktopMessageCacheStore implements MessageCacheStore {
+  DesktopMessageCacheStore({Directory? dir}) {
+    final Directory? root = dir ?? _appDataDir();
+    if (root != null) {
+      _file = _JsonFile(File('${root.path}\\cache.json'));
+    }
+  }
+
+  _JsonFile? _file;
+  Map<String, dynamic> _all = <String, dynamic>{};
+  bool _loaded = false;
+
+  void _ensureLoaded() {
+    if (_loaded) {
+      return;
+    }
+    _loaded = true;
+    final Object? raw = _file?.read();
+    if (raw is Map<String, dynamic>) {
+      _all = raw;
+    }
+  }
+
+  @override
+  Map<String, dynamic>? load(int accountId) {
+    _ensureLoaded();
+    final Object? value = _all['$accountId'];
+    return value is Map<String, dynamic> ? value : null;
+  }
+
+  @override
+  void save(int accountId, Map<String, dynamic> data) {
+    _ensureLoaded();
+    _all['$accountId'] = data;
+    _file?.write(_all);
   }
 }
 

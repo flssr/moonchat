@@ -36,6 +36,23 @@ void main() {
     expect(reopened.loadAvatars(), <int, String>{7: 'female_01'});
   });
 
+  test('会话缓存写入本机文件后重新读取', () {
+    final DesktopMessageCacheStore store = DesktopMessageCacheStore(dir: dir);
+    store.save(1, <String, dynamic>{
+      'active': 'dm:2',
+      'messages': <String, dynamic>{
+        'dm:2': <Map<String, dynamic>>[
+          <String, dynamic>{'text': '缓存这条', 'sent_at': '2026-11-16T20:00:00Z'},
+        ],
+      },
+    });
+
+    final DesktopMessageCacheStore reopened = DesktopMessageCacheStore(dir: dir);
+    final Map<String, dynamic>? data = reopened.load(1);
+    expect(data?['active'], 'dm:2');
+    expect((data?['messages'] as Map<String, dynamic>)['dm:2'], hasLength(1));
+  });
+
   test('本机文件里的未知头像 key 当作没选过', () {
     File('${dir.path}\\avatars.json').writeAsStringSync(
       '{"7":"female_01","8":"not_an_avatar"}',

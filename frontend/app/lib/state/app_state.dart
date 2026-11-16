@@ -8,6 +8,7 @@ import '../avatars.dart';
 import '../session/session_store.dart';
 import '../settings/settings.dart';
 import '../settings/settings_store.dart';
+import '../message_cache.dart';
 import '../notify.dart';
 import '../turms/realtime.dart';
 
@@ -80,11 +81,13 @@ class AppState extends ChangeNotifier {
     SettingsStore? store,
     SessionStore? session,
     MessageNotifier? notifier,
+    MessageCacheStore? cache,
   })  : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime(),
         _store = store ?? createSettingsStore(),
         _session = session ?? createSessionStore(),
-        _notifier = notifier ?? const NoopNotifier() {
+        _notifier = notifier ?? const NoopNotifier(),
+        _cache = cache ?? const NoopMessageCacheStore() {
     // 401 一律回登录页（`docs/truth/frontend/README.md`）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
     avatars = _store.loadAvatars();
@@ -92,6 +95,8 @@ class AppState extends ChangeNotifier {
 
   final ApiClient api;
   final MessageNotifier _notifier;
+  final MessageCacheStore _cache;
+  Timer? _cacheTimer;
 
   /// 收到消息时的通知开关（设置页）；未读与列表预览不受它影响。
   bool notifyOnMessage = true;
@@ -183,6 +188,7 @@ class AppState extends ChangeNotifier {
       _unread.remove(key);
     }
     notifyListeners();
+    _scheduleCacheSave();
   }
 
   int unreadFor(String key) => _unread[key] ?? 0;
@@ -428,8 +434,102 @@ class AppState extends ChangeNotifier {
       loginExpiresAt = session.loginExpiresAt;
     }
     await refreshAll();
+    _restoreCache(accountId);
     await _connectRealtime();
     _scheduleTurmsRenewal();
+  }
+
+  /// 重登先把本机缓存的最后一段消息和上次会话铺回去，再让 Turms 历史和推送覆盖。
+  void _restoreCache(int accountId) {
+    final Map<String, dynamic>? data = _cache.load(accountId);
+    if (data == null) {
+      return;
+    }
+    final Object? rawMessages = data['messages'];
+    if (rawMessages is Map<String, dynamic>) {
+      _messages.clear();
+      rawMessages.forEach((String key, Object? list) {
+        if (list is! List<dynamic>) {
+          return;
+        }
+        final List<ChatMessage> parsed = <ChatMessage>[];
+        for (final Object? item in list) {
+          if (item is! Map<String, dynamic>) {
+            continue;
+          }
+          final DateTime? sentAt = DateTime.tryParse(item['sent_at'] as String? ?? '');
+          final String text = item['text'] as String? ?? '';
+          if (sentAt == null || text.isEmpty) {
+            continue;
+          }
+          parsed.add(ChatMessage(
+            localId: item['local_id'] as String? ?? 'cache:${parsed.length}',
+            conversationKey: key,
+            text: text,
+            sentAt: sentAt,
+            state: MessageState.values.firstWhere(
+              (MessageState s) => s.name == item['state'],
+              orElse: () => MessageState.sent,
+            ),
+            mine: item['mine'] == true,
+            senderAccountId: (item['sender'] as num?)?.toInt() ?? 0,
+            serverId: (item['server_id'] as num?)?.toInt(),
+            serverIdText: item['server_id_text'] as String?,
+            senderName: item['sender_name'] as String?,
+          ));
+        }
+        if (parsed.isNotEmpty) {
+          parsed.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
+          _messages[key] = parsed;
+        }
+      });
+    }
+    final Object? active = data['active'];
+    if (active is String && conversations.any((Conversation c) => c.key == active)) {
+      activeConversationKey = active;
+      view = 'messages';
+    }
+    notifyListeners();
+  }
+
+  Map<String, dynamic> _exportCache() {
+    final Map<String, dynamic> messages = <String, dynamic>{};
+    _messages.forEach((String key, List<ChatMessage> list) {
+      final int start = list.length > 200 ? list.length - 200 : 0;
+      messages[key] = <Map<String, dynamic>>[
+        for (final ChatMessage m in list.skip(start))
+          <String, dynamic>{
+            'local_id': m.localId,
+            'text': m.text,
+            'sent_at': m.sentAt.toIso8601String(),
+            'state': m.state.name,
+            'mine': m.mine,
+            'sender': m.senderAccountId,
+            'server_id': m.serverId,
+            'server_id_text': m.serverIdText,
+            'sender_name': m.senderName,
+          },
+      ];
+    });
+    return <String, dynamic>{
+      'active': activeConversationKey,
+      'messages': messages,
+    };
+  }
+
+  void _scheduleCacheSave() {
+    _cacheTimer?.cancel();
+    _cacheTimer = Timer(const Duration(milliseconds: 300), flushCache);
+  }
+
+  /// 退出前同步落盘；桌面壳在关闭时直接调用。
+  void flushCache() {
+    _cacheTimer?.cancel();
+    final int? id = account?.accountId;
+    if (id == null) {
+      return;
+    }
+    _cache.save(id, _exportCache());
   }
 
   /// Turms 凭据 12 小时过期，到期前重调 `POST /api/sessions` 换新的并重连
@@ -565,6 +665,7 @@ class AppState extends ChangeNotifier {
             ..state = MessageState.sent;
           list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
           notifyListeners();
+          _scheduleCacheSave();
           return;
         }
       }
@@ -598,6 +699,7 @@ class AppState extends ChangeNotifier {
       }
     }
     notifyListeners();
+    _scheduleCacheSave();
   }
 
   /// 打开会话时往回翻一页：游标是最早一条的 `deliveryDate`（Turms 没有消息 id 分页）。
@@ -665,6 +767,7 @@ class AppState extends ChangeNotifier {
 
   /// 清凭据回登录页。
   void logout() {
+    flushCache();
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
     _stopPolling();
@@ -843,6 +946,7 @@ class AppState extends ChangeNotifier {
       _renewTimer?.cancel();
       _turmsTimer?.cancel();
       _turmsRenewFailures = 0;
+      flushCache();
       _members.clear();
       _messages.clear();
       _roomIdByTurmsGroupId.clear();
@@ -1069,6 +1173,7 @@ class AppState extends ChangeNotifier {
       rethrow;
     } finally {
       notifyListeners();
+      _scheduleCacheSave();
     }
   }
 
@@ -1087,6 +1192,7 @@ class AppState extends ChangeNotifier {
       rethrow;
     } finally {
       notifyListeners();
+      _scheduleCacheSave();
     }
   }
 
@@ -1094,6 +1200,7 @@ class AppState extends ChangeNotifier {
     final List<ChatMessage> list = _messages.putIfAbsent(message.conversationKey, () => <ChatMessage>[]);
     list.add(message);
     notifyListeners();
+    _scheduleCacheSave();
   }
 
   @override
@@ -1105,6 +1212,7 @@ class AppState extends ChangeNotifier {
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
     _stopPolling();
+    flushCache();
     // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。
     api.onUnauthenticated = null;
     realtime.disconnect();

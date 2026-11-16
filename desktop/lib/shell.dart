@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -81,8 +82,16 @@ class _DesktopShellState extends State<DesktopShell> with WindowListener, TrayLi
 
   Future<void> _quit() async {
     _quitting = true;
-    await windowManager.setPreventClose(false);
-    await windowManager.destroy();
+    // 先同步把会话缓存落盘，再硬退出：窗口 manager 的关闭链路在 Windows 上要等
+    // 插件回调，用户体感是“点了没反应”，直接 exit 比逐层 close 快。
+    widget.state.flushCache();
+    try {
+      await windowManager.setPreventClose(false);
+    } catch (_) {
+      // 已经关了也无所谓。
+    }
+    unawaited(windowManager.destroy());
+    exit(0);
   }
 
   @override
