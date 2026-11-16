@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [Turms 容器限额提到 1280m](#turms-容器限额提到-1280m)
 - [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
 - [Mongo 改最小分片集群](#mongo-改最小分片集群)
 - [生产部署与 CD](#生产部署与-cd)
@@ -35,6 +36,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### Turms 容器限额提到 1280m
+
+2026-11-17 01:10 CST   [2026-11-16 17:10 UTC]
+
+决策：`turms-service` 的 `mem_limit` 从 800m、`turms-gateway` 从 576m 都提到 1280m，`-Xmx448m` / `-Xmx320m` 与 metaspace 不动。常驻 `mem_limit` 合计因此变成 4288m，比物理 3.66G 还大，这是有意的：`mem_limit` 是上限不是预留，实际用量由 `-Xmx` 与缓存决定，稳态预估 2.8–3.3G，尖峰靠 2G swap。文档里写清了这一点，免得下次有人看到总和比机器大就当配置错误。
+
+原因：mongo 分片层起来后，`turms-service` 在启动阶段抛 `IncompatibleJvmException: The max available memory is too small to run. Expected: >= 1000MB. Actual: 760MB`。Root cause 在 `turms-server-common/.../healthcheck/MemoryHealthChecker.java` 132–142 行：它拿 cgroup 限额 × 95%（`MemoryHealthCheckProperties.maxAvailableMemoryPercentage` 默认 95）跟自己写死的 1000MB 下限比，低于就走人。800m × 0.95 = 760MB，正好卡死；换算下来容器限额至少约 1053m，取 1280m 留余量。这是继「Mongo 缓存 0.25G 下限」之后第二个只有真机才暴露的组件硬下限，两处都写进了 `docs/truth/deployment.md`。
 
 ### Mongo 缓存下限改成 0.25G
 
