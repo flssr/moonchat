@@ -647,6 +647,27 @@ void main() {
     expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
   });
 
+  test('后台收到消息累计未读，打开会话清零', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000003',
+      text: '在吗',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    expect(state.unreadFor(dm.key), 1);
+    expect(state.lastMessage(dm.key)?.text, '在吗');
+
+    state.selectConversation(dm.key);
+    expect(state.unreadFor(dm.key), 0);
+  });
+
   test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final AppState state = _newState(realtime: rt);

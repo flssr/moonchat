@@ -8,7 +8,9 @@ import 'package:window_manager/window_manager.dart';
 /// 原生标题栏由 `TitleBarStyle.hidden` 去掉，所以拖动与按钮都画在 Flutter 里；
 /// 颜色走应用自己的 `MoonPalette`，亮/暗色切换时跟着变。
 class DesktopTitleBar extends StatefulWidget {
-  const DesktopTitleBar({super.key});
+  const DesktopTitleBar({super.key, this.onClose});
+
+  final VoidCallback? onClose;
 
   static const double height = 32;
 
@@ -108,7 +110,7 @@ class _DesktopTitleBarState extends State<DesktopTitleBar> with WindowListener {
             _BarButton(
               icon: Icons.close,
               label: context.tr('关闭'),
-              onPressed: windowManager.close,
+              onPressed: widget.onClose ?? windowManager.close,
               danger: true,
             ),
           ],

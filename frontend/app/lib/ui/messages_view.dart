@@ -271,11 +271,16 @@ class _MessagesViewState extends State<MessagesView> {
                               ),
                               child: Row(
                                 children: <Widget>[
-                                  MoonAvatar(
-                                    name: c.title,
-                                    seed: c.targetId,
-                                    avatar: c.isRoom ? null : widget.state.avatarOf(c.targetId),
-                                    size: 34,
+                                  GestureDetector(
+                                    onTap: c.isRoom
+                                        ? null
+                                        : () => widget.state.openProfileById(c.targetId),
+                                    child: MoonAvatar(
+                                      name: c.title,
+                                      seed: c.targetId,
+                                      avatar: c.isRoom ? null : widget.state.avatarOf(c.targetId),
+                                      size: 34,
+                                    ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -290,13 +295,16 @@ class _MessagesViewState extends State<MessagesView> {
                                           style: TextStyle(fontSize: 13, color: p.ink),
                                         ),
                                         Text(
-                                          c.isRoom
-                                              ? (c.memberCount == null
-                                                  ? context.tr('群聊')
-                                                  : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                                      'm': '${c.memberCount}',
-                                                    }))
-                                              : context.tr('私聊'),
+                                          widget.state.lastMessage(c.key)?.text ??
+                                              (c.isRoom
+                                                  ? (c.memberCount == null
+                                                      ? context.tr('群聊')
+                                                      : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                          'm': '${c.memberCount}',
+                                                        }))
+                                                  : context.tr('私聊')),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: TextStyle(fontSize: 11.5, color: p.ink3),
                                         ),
                                       ],
@@ -304,6 +312,21 @@ class _MessagesViewState extends State<MessagesView> {
                                   ),
                                   if (c.isRoom && c.ownerAccountId == widget.state.account?.accountId)
                                     MoonTag(text: context.tr('群主')),
+                                  if (widget.state.unreadFor(c.key) > 0)
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 6),
+                                      constraints: const BoxConstraints(minWidth: 18),
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: p.ink,
+                                        borderRadius: BorderRadius.circular(9),
+                                      ),
+                                      child: Text(
+                                        '${widget.state.unreadFor(c.key)}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontSize: 10, color: p.surface),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -553,10 +576,7 @@ class _MessageListState extends State<_MessageList> {
   Widget build(BuildContext context) {
     final List<ChatMessage> messages = widget.state.messagesOf(widget.conversation.key);
     if (messages.isEmpty) {
-      return MoonEmpty(
-        title: context.tr('关系已经成立，发第一句话吧'),
-        hint: context.tr('历史消息由客户端持 Turms 凭据直接查，Biz 不在读路径上。'),
-      );
+      return const SizedBox.shrink();
     }
     final bool loadingOlder = widget.state.isHistoryLoading(widget.conversation.key);
     final Map<int, RoomMember> members = <int, RoomMember>{
@@ -705,11 +725,14 @@ class _MessageGroup extends StatelessWidget {
         mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: <Widget>[
           if (!mine) ...<Widget>[
-            MoonAvatar(
-              name: name,
-              seed: first.senderAccountId,
-              avatar: _avatar(),
-              size: 26,
+            GestureDetector(
+              onTap: () => state.openProfileById(first.senderAccountId),
+              child: MoonAvatar(
+                name: name,
+                seed: first.senderAccountId,
+                avatar: _avatar(),
+                size: 26,
+              ),
             ),
             const SizedBox(width: 10),
           ],
@@ -1034,11 +1057,14 @@ class _ConversationMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
     if (!conversation.isRoom) {
-      return MoonAvatar(
-        name: conversation.title,
-        seed: conversation.targetId,
-        avatar: state.avatarOf(conversation.targetId),
-        size: 30,
+      return GestureDetector(
+        onTap: () => state.openProfileById(conversation.targetId),
+        child: MoonAvatar(
+          name: conversation.title,
+          seed: conversation.targetId,
+          avatar: state.avatarOf(conversation.targetId),
+          size: 30,
+        ),
       );
     }
     final Paged<RoomMember>? page = state.membersOf(conversation.targetId);

@@ -8,6 +8,7 @@ import '../avatars.dart';
 import '../session/session_store.dart';
 import '../settings/settings.dart';
 import '../settings/settings_store.dart';
+import '../notify.dart';
 import '../turms/realtime.dart';
 
 enum AuthPhase { loggedOut, busy, ready }
@@ -78,16 +79,28 @@ class AppState extends ChangeNotifier {
     RealtimeClient? realtime,
     SettingsStore? store,
     SessionStore? session,
+    MessageNotifier? notifier,
   })  : api = api ?? ApiClient(),
         realtime = realtime ?? createRealtime(),
         _store = store ?? createSettingsStore(),
-        _session = session ?? createSessionStore() {
+        _session = session ?? createSessionStore(),
+        _notifier = notifier ?? const NoopNotifier() {
     // 401 一律回登录页（`docs/truth/frontend/README.md`）：凭据没了就别再让界面假装还在线。
     this.api.onUnauthenticated = logout;
     avatars = _store.loadAvatars();
   }
 
   final ApiClient api;
+  final MessageNotifier _notifier;
+
+  /// 收到消息时的通知开关（设置页）；未读与列表预览不受它影响。
+  bool notifyOnMessage = true;
+
+  /// 窗口是否在前台；桌面壳监听焦点变化后写进来。
+  bool windowFocused = true;
+
+  final Map<String, int> _unread = <String, int>{};
+  final Set<int> _blocked = <int>{};
 
   final SettingsStore _store;
 
@@ -167,6 +180,54 @@ class AppState extends ChangeNotifier {
     if (key != null) {
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
+      _unread.remove(key);
+    }
+    notifyListeners();
+  }
+
+  int unreadFor(String key) => _unread[key] ?? 0;
+
+  int get totalUnread => _unread.values.fold<int>(0, (int sum, int n) => sum + n);
+
+  ChatMessage? lastMessage(String key) {
+    final List<ChatMessage>? list = _messages[key];
+    return list == null || list.isEmpty ? null : list.last;
+  }
+
+  bool isBlocked(int accountId) => _blocked.contains(accountId);
+
+  void setNotifyOnMessage(bool value) => notifyOnMessage = value;
+
+  void setWindowFocused(bool value) {
+    if (windowFocused == value) {
+      return;
+    }
+    windowFocused = value;
+    final String? key = activeConversationKey;
+    if (value && key != null) {
+      _unread.remove(key);
+    }
+    notifyListeners();
+  }
+
+  void openProfileById(int accountId) {
+    openProfile(accountId);
+    unawaited(() async {
+      try {
+        await loadProfile(accountId);
+      } catch (_) {
+        // 资料页自己会显示失败态。
+      }
+    }());
+  }
+
+  Future<void> toggleBlock(int accountId) async {
+    if (_blocked.contains(accountId)) {
+      await api.unblockAccount(token: loginToken!, accountId: accountId);
+      _blocked.remove(accountId);
+    } else {
+      await api.blockAccount(token: loginToken!, accountId: accountId);
+      _blocked.add(accountId);
     }
     notifyListeners();
   }
@@ -203,6 +264,7 @@ class AppState extends ChangeNotifier {
     contactsTab = 'friends';
     selectedContactId = null;
     profileAccountId = null;
+    _unread.clear();
   }
 
   /// 历史翻页的运行状态：同一个会话不并发拉；空页即到底；失败后先不重试。
@@ -519,6 +581,22 @@ class AppState extends ChangeNotifier {
       serverIdText: incoming.id.isEmpty ? null : incoming.id,
     ));
     list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
+    final bool reading = key == activeConversationKey && windowFocused;
+    if (incoming.senderId != me && !reading) {
+      _unread[key] = (_unread[key] ?? 0) + 1;
+      if (notifyOnMessage) {
+        Conversation? conv;
+        for (final Conversation c in conversations) {
+          if (c.key == key) {
+            conv = c;
+            break;
+          }
+        }
+        if (conv != null) {
+          unawaited(_notifier.show(title: conv.title, body: incoming.text));
+        }
+      }
+    }
     notifyListeners();
   }
 
@@ -669,6 +747,14 @@ class AppState extends ChangeNotifier {
     // 关系变了之后资料页的 `is_friend` 与群详情的成员数都会过期，清掉重取。
     _profiles.clear();
     _roomDetails.clear();
+    try {
+      final BlocklistPage page = await api.blocklist(token: token);
+      _blocked
+        ..clear()
+        ..addAll(page.items.map((BlocklistItem item) => item.accountId));
+    } catch (_) {
+      // 黑名单拉不到不影响主流程。
+    }
     notifyListeners();
   }
 
@@ -882,6 +968,25 @@ class AppState extends ChangeNotifier {
   Future<void> respondFriend(int peerAccountId, String action) async {
     await api.respondFriend(token: loginToken!, peerAccountId: peerAccountId, action: action);
     await refreshAll();
+    if (action != 'accept') {
+      return;
+    }
+    Conversation? conv;
+    for (final Conversation c in conversations) {
+      if (c.key == 'dm:$peerAccountId') {
+        conv = c;
+        break;
+      }
+    }
+    if (conv == null) {
+      return;
+    }
+    try {
+      // 被加的一方同意后自动打招呼（限一次，失败不回滚好友关系）。
+      await sendMessage(conv, '我们已经是好友啦，一起来聊天吧OWO');
+    } catch (_) {
+      // 好友已经加上了，欢迎语发失败不阻塞。
+    }
   }
 
   Future<void> deleteFriend(int peerAccountId) async {

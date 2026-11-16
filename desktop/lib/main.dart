@@ -1,14 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:local_notifier/local_notifier.dart';
 import 'package:mondchat/api/api_client.dart';
 import 'package:mondchat/main.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:window_manager/window_manager.dart';
 
+import 'notifier.dart';
 import 'realtime.dart';
+import 'shell.dart';
 import 'storage.dart';
-import 'title_bar.dart';
 
 /// 桌面端没有网页同源，必须给绝对地址；生产默认走反代入口，
 /// 开发时用 `--dart-define=MONDCHAT_API_BASE=http://127.0.0.1:8080` 覆盖。
@@ -19,18 +21,14 @@ const String _apiBase = String.fromEnvironment(
 
 /// 无边框窗口里的自定义标题栏：在 MaterialApp 的 builder 内插入，
 /// 这样标题栏能用应用自己的主题色；下面的内容铺满剩余区域。
-Widget _chrome(BuildContext context, Widget child) {
-  return Column(
-    children: <Widget>[
-      const DesktopTitleBar(),
-      Expanded(child: child),
-    ],
-  );
-}
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
+  try {
+    await localNotifier.setup(appName: 'MondChat');
+  } catch (_) {
+    // 通知初始化失败不能挡住启动。
+  }
   const WindowOptions options = WindowOptions(
     size: Size(1280, 800),
     minimumSize: Size(960, 640),
@@ -53,12 +51,13 @@ Future<void> main() async {
     realtime: DesktopRealtime(),
     store: settings,
     session: DesktopSessionStore(),
+    notifier: DesktopNotifier(),
   );
   runApp(
     MondChatApp(
       state: state,
       store: settings,
-      chrome: _chrome,
+      chrome: (BuildContext context, Widget child) => DesktopShell(state: state, child: child),
       edgeToEdge: true,
     ),
   );

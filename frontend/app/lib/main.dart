@@ -51,6 +51,7 @@ class _MondChatAppState extends State<MondChatApp> {
   late ThemeMode _mode;
   late double _textScale;
   late Locale _locale;
+  late bool _notify;
 
   /// `?theme=` 是预览参数，不能把被强制的值写回用户偏好。
   bool _themeForced = false;
@@ -72,6 +73,8 @@ class _MondChatAppState extends State<MondChatApp> {
     };
     _textScale = _initial.textScale;
     _locale = _localeFor(_initial.languageCode);
+    _notify = _initial.notifyOnMessage;
+    _state.setNotifyOnMessage(_notify);
     // 刷新页面时先试本机凭据：有就恢复会话，没有就留在登录页（issue #24）。
     unawaited(_state.restore());
   }
@@ -89,7 +92,14 @@ class _MondChatAppState extends State<MondChatApp> {
       textScale: _textScale,
       languageCode: _locale.languageCode,
       themeMode: _themeForced ? _initial.themeMode : _mode,
+      notifyOnMessage: _notify,
     ));
+  }
+
+  void _setNotify(bool value) {
+    setState(() => _notify = value);
+    _state.setNotifyOnMessage(value);
+    _persist();
   }
 
   void _toggleTheme(Brightness current) {
@@ -180,6 +190,8 @@ class _MondChatAppState extends State<MondChatApp> {
                     textScale: _textScale,
                     onLanguageChanged: _setLanguage,
                     onTextScaleChanged: _setTextScale,
+                    notifyOnMessage: _notify,
+                    onNotifyChanged: _setNotify,
                   )
                 : restoring
                     ? const _StartupSplash()

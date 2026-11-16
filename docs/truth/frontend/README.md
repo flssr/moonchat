@@ -14,7 +14,7 @@
 | 多语言 | `lib/i18n/` |
 | 本地设置 | `lib/settings/` |
 | 产品官网 | `site/`（见 [site.md](./site.md)） |
-| Windows 桌面壳 | `desktop/`（本机文件存储、Turms WebSocket 与无边框自定义标题栏，见其 README） |
+| Windows 桌面壳 | `desktop/`（本机文件存储、Turms WebSocket、无边框自定义标题栏、关闭确认/托盘与桌面通知，见其 README） |
 
 `AppState` 是客户端数据与导航状态的单一写入点。页面只渲染状态并发起动作，不各自保存一份业务真相。
 

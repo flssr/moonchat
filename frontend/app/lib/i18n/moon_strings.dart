@@ -110,6 +110,17 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     // 联系人
     '需要短号或完整账号 ID': 'Short number or full account ID required',
     '按短号查找': 'Find by short number',
+    '已申请': 'Requested',
+    '黑名单': 'Block',
+    '取消黑名单': 'Unblock',
+    '消息通知': 'Message notifications',
+    '收到消息并且提示': 'Notify on new messages',
+    '收到消息不提示': 'No message notifications',
+    '要关闭 MondChat 吗？': 'Close MondChat?',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'Quit the app, or keep it in the tray to receive messages.',
+    '关闭应用程序': 'Quit application',
+    '最小化到托盘': 'Minimize to tray',
     '短号或账号 ID': 'Short number or account ID',
     '加好友需要对方的短号或账号 ID。':
         'To add a friend, you need their short number or account ID.',
@@ -333,6 +344,17 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     // 連絡先
     '需要短号或完整账号 ID': '短番号または完全なアカウントIDが必要',
     '按短号查找': '短番号で検索',
+    '已申请': '申請済み',
+    '黑名单': 'ブロック',
+    '取消黑名单': 'ブロック解除',
+    '消息通知': 'メッセージ通知',
+    '收到消息并且提示': '新着メッセージを通知',
+    '收到消息不提示': '新着メッセージを通知しない',
+    '要关闭 MondChat 吗？': 'MondChat を閉じますか？',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'アプリを終了するか、トレイに残してメッセージを受け取れます。',
+    '关闭应用程序': 'アプリを終了',
+    '最小化到托盘': 'トレイに最小化',
     '短号或账号 ID': '短番号またはアカウントID',
     '加好友需要对方的短号或账号 ID。':
         '友達追加には短番号かアカウントIDが必要。',
@@ -553,6 +575,17 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     // Kontakte
     '需要短号或完整账号 ID': 'Kurze Nummer oder vollständige Konto-ID erforderlich',
     '按短号查找': 'Nach kurzer Nummer suchen',
+    '已申请': 'Angefragt',
+    '黑名单': 'Blockieren',
+    '取消黑名单': 'Blockierung aufheben',
+    '消息通知': 'Nachrichtenbenachrichtigungen',
+    '收到消息并且提示': 'Bei neuen Nachrichten benachrichtigen',
+    '收到消息不提示': 'Keine Nachrichtenbenachrichtigungen',
+    '要关闭 MondChat 吗？': 'MondChat schließen?',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'App beenden oder im Infobereich bleiben, um Nachrichten zu erhalten.',
+    '关闭应用程序': 'Anwendung beenden',
+    '最小化到托盘': 'In den Infobereich minimieren',
     '短号或账号 ID': 'Kurze Nummer oder Konto-ID',
     '加好友需要对方的短号或账号 ID。':
         'Zum Hinzufügen brauchst du die kurze Nummer oder Konto-ID.',

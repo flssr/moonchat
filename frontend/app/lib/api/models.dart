@@ -301,6 +301,41 @@ class Paged<T> {
 }
 
 /// #19 发言的响应：201 只表示 Turms 已落库并接下投递。
+class BlocklistItem {
+  const BlocklistItem({
+    required this.accountId,
+    required this.displayName,
+    this.createdAt,
+  });
+
+  factory BlocklistItem.fromJson(Map<String, dynamic> j) => BlocklistItem(
+        accountId: _int(j['account_id']),
+        displayName: _str(j['display_name']),
+        createdAt: _date(j['created_at']),
+      );
+
+  final int accountId;
+  final String displayName;
+  final DateTime? createdAt;
+}
+
+class BlocklistPage {
+  const BlocklistPage({required this.items, required this.total});
+
+  factory BlocklistPage.fromJson(Map<String, dynamic> j) {
+    final List<dynamic> raw = (j['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return BlocklistPage(
+      items: raw
+          .map((dynamic e) => BlocklistItem.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false),
+      total: _intOrNull(j['total']) ?? 0,
+    );
+  }
+
+  final List<BlocklistItem> items;
+  final int total;
+}
+
 class SentMessage {
   const SentMessage({
     required this.messageId,

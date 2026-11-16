@@ -23,6 +23,8 @@ class HomeShell extends StatefulWidget {
     required this.textScale,
     required this.onLanguageChanged,
     required this.onTextScaleChanged,
+    this.notifyOnMessage = true,
+    this.onNotifyChanged,
   });
 
   final AppState state;
@@ -31,6 +33,8 @@ class HomeShell extends StatefulWidget {
   final double textScale;
   final ValueChanged<String> onLanguageChanged;
   final ValueChanged<double> onTextScaleChanged;
+  final bool notifyOnMessage;
+  final ValueChanged<bool>? onNotifyChanged;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -99,6 +103,8 @@ class _HomeShellState extends State<HomeShell> {
                         textScale: widget.textScale,
                         onTextScaleChanged: widget.onTextScaleChanged,
                         onLanguageChanged: widget.onLanguageChanged,
+                        notifyOnMessage: widget.notifyOnMessage,
+                        onNotifyChanged: widget.onNotifyChanged,
                       ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,

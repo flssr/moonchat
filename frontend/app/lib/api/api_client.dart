@@ -340,6 +340,31 @@ class ApiClient {
     await _send('POST', '/api/rooms/$roomId/members', token: token, body: {'account_id': accountId});
   }
 
+  /// #21 黑名单列表（任意来源可读）。
+  Future<BlocklistPage> blocklist({
+    required String token,
+    int page = 1,
+    int size = 50,
+  }) async {
+    final Map<String, dynamic> json = await _send(
+      'GET',
+      '/api/blocklist',
+      token: token,
+      query: <String, String>{'page': '$page', 'size': '$size'},
+    );
+    return BlocklistPage.fromJson(json);
+  }
+
+  /// #22 拉黑（只给真人）。
+  Future<void> blockAccount({required String token, required int accountId}) async {
+    await _send('POST', '/api/blocklist', token: token, body: <String, Object?>{'account_id': accountId});
+  }
+
+  /// #23 取消拉黑。
+  Future<void> unblockAccount({required String token, required int accountId}) async {
+    await _send('DELETE', '/api/blocklist/$accountId', token: token);
+  }
+
   /// #17 退群。
   Future<void> leaveRoom({required String token, required int roomId}) async {
     await _send('DELETE', '/api/rooms/$roomId/members/me', token: token);
