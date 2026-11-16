@@ -177,7 +177,7 @@ services:
   turms-service:
     <<: *service
     image: ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c
-    mem_limit: 800m
+    mem_limit: 1280m
     depends_on:
       mongo-shard-init:
         condition: service_completed_successfully
@@ -216,7 +216,7 @@ services:
   turms-gateway:
     <<: *service
     image: ghcr.io/turms-im/turms-gateway@sha256:99f51a29c23dff5590c6a71191b571d002a377afd161f29d5b500b188b0a42b6
-    mem_limit: 576m
+    mem_limit: 1280m
     depends_on:
       mongo-shard-init:
         condition: service_completed_successfully

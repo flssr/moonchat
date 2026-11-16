@@ -20,11 +20,13 @@
 | `mongos` | `mongo:8.0.12-noble` | 无 | 128m | 路由，无缓存 |
 | `mongo-rs-init` | `mongo:8.0.12-noble` | 无 | 96m | 一次性，发起两个副本集 |
 | `mongo-shard-init` | `mongo:8.0.12-noble` | 无 | 96m | 一次性，`sh.addShard` |
-| `turms-service` | 钉 digest `2be538a0…` | 无 | 800m | `-Xmx448m` + metaspace 160m |
-| `turms-gateway` | 钉 digest `99f51a29…` | `127.0.0.1:10510` | 576m | `-Xmx320m` + metaspace 128m |
+| `turms-service` | 钉 digest `2be538a0…` | 无 | 1280m | `-Xmx448m` + metaspace 160m |
+| `turms-gateway` | 钉 digest `99f51a29…` | `127.0.0.1:10510` | 1280m | `-Xmx320m` + metaspace 128m |
 | `mondchat-biz` | GHCR `mondchat-biz` | `127.0.0.1:8080` | 480m | `-Xmx256m` + metaspace 128m |
 
-常驻 `mem_limit` 合计 3104m ≈ 3.03G，加上一次性初始化容器的 96m 也不到 3.2G；宿主给 1Panel、OpenResty、dockerd 留约 1G，另配 **2G swap** 兜 JVM 启动尖峰。容器只设 `mem_limit`、不设 `memswap_limit`，所以单个容器到顶时先被压进等量 swap 而不是立刻被 OOM kill，表现出来是变慢而不是崩。
+常驻 `mem_limit` 合计 **4288m ≈ 4.19G，比物理 3.66G 还大**，这不是笔误：`mem_limit` 是上限不是预留，实际用量由各容器的 `-Xmx` 与缓存决定。之所以给两个 Turms 容器 1280m，是因为 Turms 启动时自己校验「容器限额 × 0.95 ≥ 1000MB」（`MemoryHealthChecker`），低于约 1053m 直接抛 `IncompatibleJvmException` 退出；1280m × 0.95 = 1216MB 才算过关。稳态预估 2.8–3.3G，宿主给 1Panel、OpenResty、dockerd 留约 1G，尖峰靠 **2G swap**。容器只设 `mem_limit`、不设 `memswap_limit`，所以单个容器到顶时先被压进等量 swap 而不是立刻被 OOM kill，表现出来是变慢而不是崩。
+
+真觉得 swap 抖得太频繁时，第一个该调的旋钮是给两个 Turms 容器加 `-XX:MaxDirectMemorySize=128m`：`-XX:MaxDirectMemorySize` 不写时等于 `-Xmx`，Netty 的直连内存会再占一份和堆一样大的上限，PoC 的流量用不到那么多。
 
 - 只有 `mondchat-biz` 的 8080 与 `turms-gateway` 的 10510 绑回环，给宿主上的 OpenResty 用；PostgreSQL、Redis、MongoDB 三件套、`turms-service` 的端口都不出容器网络。
 - 不开 turms-admin。
