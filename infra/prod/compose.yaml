@@ -1,0 +1,209 @@
+# MondChat 生产编排：2 核 4G 单机 PoC。
+# 反代不在仓库里：1Panel 的 OpenResty（宿主机管理）把 /api 转到 127.0.0.1:8080、
+# /im 转到 127.0.0.1:10510。只把这两个端口绑回环，其余一律不出容器网络。
+# 宿主上要预置的东西（.env、HMAC 密钥、docker login、2G swap）见 docs/truth/deployment.md。
+#
+# 用法：这套编排与 vendor/turms 那套冒烟编排同源但独立，别混着起。
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-service: &service
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mondchat
+      POSTGRES_USER: mondchat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+    mem_limit: 384m
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mondchat -d mondchat"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    <<: *service
+    image: redis:8.0.3-alpine
+    mem_limit: 128m
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 单节点副本集：Turms 要事务；vendor/turms 那套 config+shard+router 光内存上限就 6G，2C4G 起不来。
+  mongodb:
+    <<: *service
+    image: mongo:8.0.12-noble
+    command: ["mongod", "--bind_ip_all", "--replSet", "rs0", "--wiredTigerCacheSizeGB", "0.25"]
+    mem_limit: 512m
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性容器：发起副本集并等到选出 primary。重跑安全：rs.status() 通了就跳过 initiate。
+  mongodb-init:
+    image: mongo:8.0.12-noble
+    restart: "no"
+    mem_limit: 96m
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -c
+      - |
+        mongosh --host mongodb:27017 --quiet --eval '
+          try { rs.status() } catch (e) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongodb:27017" }] })
+          }'
+        for _ in $(seq 1 30); do
+          if mongosh --host mongodb:27017 --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "mongodb 副本集没有选出 primary"
+        exit 1
+
+  # 集群与数据源配置走 -D（照 vendor/turms/docker-compose.standalone.yml 的写法），
+  # 只有 JWT 那三项用环境变量（infra/turms/jwt-identity.compose.yaml 已验证的写法）。
+  turms-service:
+    <<: *service
+    image: ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c
+    mem_limit: 832m
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      TURMS_SERVICE_JVM_OPTS: >-
+        -Xmx512m -XX:MaxMetaspaceSize=160m
+        -Dturms.security.password.initial-root-password=${MONDCHAT_TURMS_ADMIN_PASSWORD:?请在 .env 设置 MONDCHAT_TURMS_ADMIN_PASSWORD}
+        -Dturms.cluster.discovery.address.advertise-strategy=advertise_address
+        -Dturms.cluster.discovery.address.advertise-host=turms-service
+        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.admin.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.user.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.group.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.conversation.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.message.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.mongo.conference.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.service.redis.sequence-id.uri-list[0]=redis://redis:6379
+        -Dturms.service.redis.session.uri-list[0]=redis://redis:6379
+        -Dturms.service.redis.location.uri-list[0]=redis://redis:6379
+        -Dturms.service.redis.ip-blocklist.uri=redis://redis:6379
+        -Dturms.service.redis.user-id-blocklist.uri=redis://redis:6379
+        -Dturms.service.message.allow-send-messages-to-stranger=true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS -u turms:${MONDCHAT_TURMS_ADMIN_PASSWORD} http://127.0.0.1:8510/health | grep -q UP
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  turms-gateway:
+    <<: *service
+    image: ghcr.io/turms-im/turms-gateway@sha256:99f51a29c23dff5590c6a71191b571d002a377afd161f29d5b500b188b0a42b6
+    mem_limit: 640m
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      mongodb-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      turms-service:
+        condition: service_healthy
+    ports:
+      # 只给宿主上的 OpenResty 用，不对外。
+      - "127.0.0.1:10510:10510"
+    environment:
+      TURMS_GATEWAY_JVM_OPTS: >-
+        -Xmx384m -XX:MaxMetaspaceSize=128m
+        -Dturms.cluster.connection.server.port=7610
+        -Dturms.cluster.connection.server.port-auto-increment=false
+        -Dturms.cluster.discovery.address.advertise-strategy=advertise_address
+        -Dturms.cluster.discovery.address.advertise-host=turms-gateway
+        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.gateway.mongo.admin.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.gateway.mongo.user.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.gateway.redis.session.uri-list[0]=redis://redis:6379
+        -Dturms.gateway.redis.location.uri-list[0]=redis://redis:6379
+        -Dturms.gateway.redis.ip-blocklist.uri=redis://redis:6379
+        -Dturms.gateway.redis.user-id-blocklist.uri=redis://redis:6379
+      TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_TYPE: jwt
+      TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_JWT_ALGORITHM_HMAC256_FILEPATH: /opt/turms/secrets/jwt-hmac256.key
+    volumes:
+      # 与 mondchat-biz 挂同一份 HMAC 密钥；Turms 只支持从文件读。
+      - ${MONDCHAT_JWT_SECRET_FILE:-/opt/mondchat/secrets/jwt-hmac256.key}:/opt/turms/secrets/jwt-hmac256.key:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS -u turms:${MONDCHAT_TURMS_ADMIN_PASSWORD} http://127.0.0.1:9510/health | grep -q UP
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  mondchat-biz:
+    <<: *service
+    image: ${MONDCHAT_BIZ_IMAGE:?请在 .env 设置 MONDCHAT_BIZ_IMAGE}:${MONDCHAT_BIZ_TAG:-latest}
+    mem_limit: 512m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      turms-service:
+        condition: service_healthy
+    ports:
+      # 只给宿主上的 OpenResty 用，不对外。
+      - "127.0.0.1:8080:8080"
+    environment:
+      # JRE 镜像里没有 curl，不为一个探针改镜像；健康检查由 CD 在宿主上打 /actuator/health。
+      JAVA_TOOL_OPTIONS: -Xmx320m -XX:MaxMetaspaceSize=160m
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mondchat
+      SPRING_DATASOURCE_USERNAME: mondchat
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
+      # Turms 用 DB0，限流桶放 DB1，不混在一起。
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_DATABASE: "1"
+      MONDCHAT_TURMS_ADMIN_URL: http://turms-service:8510
+      MONDCHAT_TURMS_ADMIN_USERNAME: turms
+      MONDCHAT_TURMS_ADMIN_PASSWORD: ${MONDCHAT_TURMS_ADMIN_PASSWORD:?请在 .env 设置 MONDCHAT_TURMS_ADMIN_PASSWORD}
+      # 客户端连的 WS 地址是反代入口下的 /im，见 docs/truth/deployment.md。
+      MONDCHAT_TURMS_GATEWAY_URL: ${MONDCHAT_TURMS_GATEWAY_URL:?请在 .env 设置 MONDCHAT_TURMS_GATEWAY_URL，例如 wss://im.example.com/im}
+      MONDCHAT_JWT_SECRET_FILE: /opt/mondchat/secrets/jwt-hmac256.key
+      MONDCHAT_AUTH_JWT_SECRET: ${MONDCHAT_AUTH_JWT_SECRET:?请在 .env 设置 MONDCHAT_AUTH_JWT_SECRET}
+      MONDCHAT_AGENT_KEY_PEPPER: ${MONDCHAT_AGENT_KEY_PEPPER:?请在 .env 设置 MONDCHAT_AGENT_KEY_PEPPER}
+    volumes:
+      - ${MONDCHAT_JWT_SECRET_FILE:-/opt/mondchat/secrets/jwt-hmac256.key}:/opt/mondchat/secrets/jwt-hmac256.key:ro
+
+volumes:
+  pg-data:
+  redis-data:
+  mongo-data:

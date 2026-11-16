@@ -1,0 +1,13 @@
+# build context 是仓库根，只留 biz 的 Dockerfile 会读的东西。
+.git
+.github
+.idea
+.vscode
+logs
+docs
+site
+CA-docs
+old_docs
+frontend
+vendor
+**/target
