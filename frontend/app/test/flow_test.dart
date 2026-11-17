@@ -882,12 +882,15 @@ void main() {
     expect(find.byType(HomeShell), findsNothing);
 
     await tester.tap(find.text('登录'));
-    for (int i = 0; i < 20; i++) {
-      await tester.pump(const Duration(milliseconds: 50));
+    // 等恢复链路跑完：会话已经 ready，但登舱过渡还没播完，不能同帧换屏。
+    for (int i = 0; i < 20 && !state.isReady; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
     }
-    await tester.pumpAndSettle();
-
     expect(state.isReady, isTrue);
+    expect(find.byType(HomeShell), findsNothing, reason: '记住我恢复会话也要先播登舱过渡');
+    expect(find.text('MondChat'), findsOneWidget);
+
+    await tester.pumpAndSettle();
     expect(find.byType(HomeShell), findsOneWidget);
     state.dispose();
   });

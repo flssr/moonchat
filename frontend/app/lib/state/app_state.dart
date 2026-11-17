@@ -149,12 +149,6 @@ class AppState extends ChangeNotifier {
   /// 切账号进行中：外壳保持挂载，只显示忙碌态。
   bool switching = false;
 
-  /// 正在用本机凭据恢复会话：外壳据此显示启动页，而不是闪一下登录表单。
-  bool restoring = false;
-
-  /// 本次会话由本机凭据恢复而来：没有登舱过渡可播，外壳要直接交棒。
-  bool restored = false;
-
   /// 归属者的登录 JWT：切号与 `GET /api/accounts/mine` 永远用它。
   /// 切进 agent 后 `loginToken` 会变成该 agent 的 JWT，但 agent 不能替归属者再切号。
   String? identityToken;
@@ -424,8 +418,9 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 用本机记住的登录态恢复会话：刷新页面不再要求重新登录（issue #24）。
+  /// 用本机记住的登录态恢复会话：登录页的「记住我」卡片点登录时调用。
   ///
+  /// 只负责把会话恢复成 `ready`；登舱过渡由登录页播完再交棒（两条入口同一条出口）。
   /// 令牌失效时由 `ApiClient.onUnauthenticated` 统一登出并清掉本机副本；
   /// 网络失败也回登录页，不在界面上留半截会话。
   Future<void> restore() async {
@@ -435,20 +430,17 @@ class AppState extends ChangeNotifier {
     }
     identityToken = saved.token;
     loginToken = saved.token;
-    restoring = true;
     phase = AuthPhase.busy;
     notifyListeners();
     try {
       await _openSession(saved.accountId);
       phase = AuthPhase.ready;
-      restored = true;
       _scheduleLoginRenewal();
       _persistSession();
       _startPolling();
     } catch (_) {
       logout();
     } finally {
-      restoring = false;
       notifyListeners();
     }
   }
@@ -943,7 +935,6 @@ class AppState extends ChangeNotifier {
     _historyLoading.clear();
     _historyFailed.clear();
     _resetNavigation();
-    restored = false;
     phase = AuthPhase.loggedOut;
     notifyListeners();
   }

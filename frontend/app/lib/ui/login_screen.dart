@@ -52,6 +52,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   /// 过渡已经开始：表单淡出并停用，避免用户在这 800ms 里继续操作。
   bool _arriving = false;
 
+  /// 「记住我」卡片恢复会话中：按钮转忙碌，别让它被连点。
+  bool _restoring = false;
+
   /// 每次进入登录页取一句：State 只在进出登录页时重建，切主题或切注册模式都不会换。
   late final LoginQuote _quote = nextLoginQuote();
 
@@ -173,6 +176,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     if (mounted) {
       widget.onArrived?.call();
     }
+  }
+
+  /// 「记住我」卡片：恢复本机会话后同样播一次登舱过渡，出口和表单登录一致。
+  Future<void> _restoreRemembered() async {
+    if (_restoring || _arriving) {
+      return;
+    }
+    setState(() => _restoring = true);
+    await widget.state.restore();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _restoring = false);
+    if (!widget.state.isReady) {
+      return;
+    }
+    await _playArrival();
   }
 
   /// 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
@@ -387,7 +407,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             const SizedBox(height: 28),
             MoonButton(
               label: context.tr('登录'),
-              onPressed: () => widget.state.restore(),
+              onPressed: _restoreRemembered,
+              busy: _restoring,
             ),
             const SizedBox(height: 8),
             MoonButton(
