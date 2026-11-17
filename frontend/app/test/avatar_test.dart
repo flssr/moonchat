@@ -94,6 +94,43 @@ void main() {
     expect(isKnownAvatar('uploaded.png'), isFalse);
   });
 
+  test('新建 agent 自动带一枚平台 agent 头像', () async {
+    final _MemoryStore store = _MemoryStore();
+    http.Response ok(String body) => http.Response(
+          body,
+          200,
+          headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+        );
+    final AppState state = AppState(
+      api: ApiClient(
+        baseUrl: 'http://mock.local',
+        client: MockClient((http.Request req) async {
+          if (req.method == 'POST' && req.url.path == '/api/agent-accounts') {
+            return ok('{"account_id":100000003,"display_name":"小帮手","account_key":"key-1"}');
+          }
+          if (req.method == 'GET' && req.url.path == '/api/accounts/mine') {
+            return ok('{"items":[{"account_id":100000001,"display_name":"阿月","type":"human"},'
+                '{"account_id":100000003,"display_name":"小帮手","type":"agent"}]}');
+          }
+          return http.Response('{}', 404);
+        }),
+      ),
+      store: store,
+    )
+      ..loginToken = 'login-jwt'
+      ..identityToken = 'login-jwt'
+      ..phase = AuthPhase.ready;
+    addTearDown(state.dispose);
+
+    final CreatedAgent created = await state.createAgent('小帮手');
+
+    final String? avatar = state.avatarOf(created.accountId);
+    expect(avatar, isNotNull, reason: '新 agent 不能只剩首字头像');
+    expect(kAgentAvatars, contains(avatar));
+    expect(store.avatars[created.accountId], avatar, reason: '默认头像也要落本机偏好');
+    expect(state.accounts.map((Account a) => a.accountId), contains(created.accountId));
+  });
+
   test('选头像按账号落本机偏好，清掉回默认', () {
     final _MemoryStore store = _MemoryStore();
     final AppState state = _state(store);

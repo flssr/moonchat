@@ -1196,6 +1196,10 @@ class AppState extends ChangeNotifier {
 
   Future<CreatedAgent> createAgent(String displayName) async {
     final CreatedAgent created = await api.createAgent(token: loginToken!, displayName: displayName);
+    // 新 agent 直接给一枚平台 agent 头像：不落一枚的话，账号列表、资料页和会话里都只剩
+    // 按 id 生成的首字头像，看起来像「创建时头像没保存」。按 account_id 在三张里轮换，
+    // 号段固定，同一个账号每次算出来都一样。
+    setAvatar(created.accountId, kAgentAvatars[created.accountId % kAgentAvatars.length]);
     // 密钥只在创建响应里出现一次；列表刷新失败不能把这次响应一起吞掉，否则密钥永久丢失。
     try {
       accounts = await api.mine(identityToken ?? loginToken!);
