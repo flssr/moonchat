@@ -47,6 +47,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'Coming soon',
     '待接入': 'Pending',
     '关闭': 'Close',
+    // 窗口按钮（桌面无边框标题栏）
+    '最小化': 'Minimize',
+    '最大化': 'Maximize',
+    '还原': 'Restore',
     // 登录
     '1–20 字': '1–20 characters',
     '8–72 位，不能是纯数字': '8–72 characters, not all digits',
@@ -104,6 +108,27 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': 'Retry failed',
     '加载中': 'Loading',
     // 联系人
+    '需要短号或完整账号 ID': 'Short number or full account ID required',
+    '按短号查找': 'Find by short number',
+    '已申请': 'Requested',
+    '黑名单': 'Block',
+    '取消黑名单': 'Unblock',
+    '消息通知': 'Message notifications',
+    '收到消息并且提示': 'Notify on new messages',
+    '收到消息不提示': 'No message notifications',
+    '要关闭 MondChat 吗？': 'Close MondChat?',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'Quit the app, or keep it in the tray to receive messages.',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'Quit the app, or minimize to the taskbar to keep receiving messages.',
+    '关闭应用程序': 'Quit application',
+    '最小化到托盘': 'Minimize to tray',
+    '最小化到任务栏': 'Minimize to taskbar',
+    '短号或账号 ID': 'Short number or account ID',
+    '加好友需要对方的短号或账号 ID。':
+        'To add a friend, you need their short number or account ID.',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'Group members, friends, and search results open their profile here.',
     '按账号 ID 查找': 'Find by account ID',
     '查找': 'Find',
     '创建': 'Create',
@@ -147,6 +172,18 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         'Delete {name}? The conversation remains, history is read-only.',
     '删除': 'Delete',
     '删除好友': 'Delete friend',
+    '删除并拉黑': 'Delete and block',
+    '【草稿】': '[Draft]',
+    '当前不是对方好友，请添加后再进行会话': 'You are not friends anymore. Add them back to chat.',
+    '知道了': 'OK',
+    '搜索好友短号': 'Search friend number',
+    '无此好友': 'No such friend',
+    '选择好友': 'Select a friend',
+    '邀请好友': 'Invite friends',
+    '已选 {n} 位好友': 'Selected {n} friends',
+    '确认': 'Confirm',
+    '记住我': 'Remember me',
+    '切换账号': 'Switch account',
     '删除后会话保留、历史只读，不能再发新消息。':
         'After deletion the conversation remains, history is read-only, no new messages.',
     '这是你自己。': 'This is you.',
@@ -167,9 +204,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'Avatar',
     '选择默认头像': 'Choose a default avatar',
     '默认': 'Default',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'Default avatars come from the platform; uploads are not supported. '
-            'A tap applies it right away and saves it on this device only.',
+            'A tap saves the choice on the server.',
     '星座': 'Constellation',
     '性别': 'Gender',
     '选择生日': 'Select birthday',
@@ -259,6 +296,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'お楽しみに',
     '待接入': '準備中',
     '关闭': '閉じる',
+    // ウィンドウボタン（デスクトップの枠なしタイトルバー）
+    '最小化': '最小化',
+    '最大化': '最大化',
+    '还原': '元に戻す',
     // ログイン
     '1–20 字': '1〜20文字',
     '8–72 位，不能是纯数字': '8〜72文字、数字のみ不可',
@@ -316,6 +357,27 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': '再試行に失敗',
     '加载中': '読み込み中',
     // 連絡先
+    '需要短号或完整账号 ID': '短番号または完全なアカウントIDが必要',
+    '按短号查找': '短番号で検索',
+    '已申请': '申請済み',
+    '黑名单': 'ブロック',
+    '取消黑名单': 'ブロック解除',
+    '消息通知': 'メッセージ通知',
+    '收到消息并且提示': '新着メッセージを通知',
+    '收到消息不提示': '新着メッセージを通知しない',
+    '要关闭 MondChat 吗？': 'MondChat を閉じますか？',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'アプリを終了するか、トレイに残してメッセージを受け取れます。',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'アプリを終了するか、タスクバーに最小化してメッセージを受け取れます。',
+    '关闭应用程序': 'アプリを終了',
+    '最小化到托盘': 'トレイに最小化',
+    '最小化到任务栏': 'タスクバーに最小化',
+    '短号或账号 ID': '短番号またはアカウントID',
+    '加好友需要对方的短号或账号 ID。':
+        '友達追加には短番号かアカウントIDが必要。',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'グループメンバー、友達、検索結果はここでプロフィールを開きます。',
     '按账号 ID 查找': 'アカウントIDで検索',
     '查找': '検索',
     '创建': '作成',
@@ -359,6 +421,18 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         '{name}を削除しますか？会話は残り、履歴は読み取り専用です。',
     '删除': '削除',
     '删除好友': '友達を削除',
+    '删除并拉黑': '削除してブロック',
+    '【草稿】': '【下書き】',
+    '当前不是对方好友，请添加后再进行会话': 'もう友達ではありません。追加してから会話してください。',
+    '知道了': 'OK',
+    '搜索好友短号': '友達の短番号で検索',
+    '无此好友': '友達が見つかりません',
+    '选择好友': '友達を選択',
+    '邀请好友': '友達を招待',
+    '已选 {n} 位好友': '友達を {n} 人選択',
+    '确认': '確認',
+    '记住我': 'ログインを記憶',
+    '切换账号': 'アカウントを切り替え',
     '删除后会话保留、历史只读，不能再发新消息。':
         '削除後も会話は残り、履歴は読み取り専用で新規送信不可。',
     '这是你自己。': 'あなた自身です。',
@@ -379,9 +453,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'アバター',
     '选择默认头像': 'デフォルトのアバターを選ぶ',
     '默认': 'デフォルト',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'デフォルトのアバターはプラットフォーム提供です。アップロードは未対応で、'
-            '選ぶとすぐ反映され、この端末にのみ保存されます。',
+            '選ぶとサーバーに保存されます。',
     '星座': '星座',
     '性别': '性別',
     '选择生日': '誕生日を選択',
@@ -468,6 +542,10 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '敬请期待': 'Bald verfügbar',
     '待接入': 'In Arbeit',
     '关闭': 'Schließen',
+    // Fensterknöpfe (rahmenlose Titelleiste)
+    '最小化': 'Minimieren',
+    '最大化': 'Maximieren',
+    '还原': 'Wiederherstellen',
     // Anmeldung
     '1–20 字': '1–20 Zeichen',
     '8–72 位，不能是纯数字': '8–72 Zeichen, nicht nur Ziffern',
@@ -525,6 +603,27 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '重试失败': 'Erneuter Versuch fehlgeschlagen',
     '加载中': 'Wird geladen',
     // Kontakte
+    '需要短号或完整账号 ID': 'Kurze Nummer oder vollständige Konto-ID erforderlich',
+    '按短号查找': 'Nach kurzer Nummer suchen',
+    '已申请': 'Angefragt',
+    '黑名单': 'Blockieren',
+    '取消黑名单': 'Blockierung aufheben',
+    '消息通知': 'Nachrichtenbenachrichtigungen',
+    '收到消息并且提示': 'Bei neuen Nachrichten benachrichtigen',
+    '收到消息不提示': 'Keine Nachrichtenbenachrichtigungen',
+    '要关闭 MondChat 吗？': 'MondChat schließen?',
+    '可以关掉应用，也可以留在托盘里继续收消息。':
+        'App beenden oder im Infobereich bleiben, um Nachrichten zu erhalten.',
+    '可以关掉应用，也可以最小化到任务栏继续收消息。':
+        'App beenden oder in die Taskleiste minimieren, um Nachrichten zu erhalten.',
+    '关闭应用程序': 'Anwendung beenden',
+    '最小化到托盘': 'In den Infobereich minimieren',
+    '最小化到任务栏': 'In die Taskleiste minimieren',
+    '短号或账号 ID': 'Kurze Nummer oder Konto-ID',
+    '加好友需要对方的短号或账号 ID。':
+        'Zum Hinzufügen brauchst du die kurze Nummer oder Konto-ID.',
+    '群成员、好友、按短号查找的结果都在这里打开资料页。':
+        'Gruppenmitglieder, Freunde und Suchergebnisse öffnen hier das Profil.',
     '按账号 ID 查找': 'Nach Konto-ID suchen',
     '查找': 'Suchen',
     '创建': 'Erstellen',
@@ -568,6 +667,19 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         '{name} löschen? Unterhaltung bleibt, Verlauf schreibgeschützt.',
     '删除': 'Löschen',
     '删除好友': 'Freund entfernen',
+    '删除并拉黑': 'Löschen und blockieren',
+    '【草稿】': '[Entwurf]',
+    '当前不是对方好友，请添加后再进行会话':
+        'Ihr seid keine Freunde mehr. Fügt euch wieder hinzu, um zu chatten.',
+    '知道了': 'OK',
+    '搜索好友短号': 'Freundesnummer suchen',
+    '无此好友': 'Kein solcher Freund',
+    '选择好友': 'Freund auswählen',
+    '邀请好友': 'Freunde einladen',
+    '已选 {n} 位好友': '{n} Freunde ausgewählt',
+    '确认': 'Bestätigen',
+    '记住我': 'Angemeldet bleiben',
+    '切换账号': 'Konto wechseln',
     '删除后会话保留、历史只读，不能再发新消息。':
         'Nach dem Löschen bleibt die Unterhaltung, der Verlauf ist schreibgeschützt, keine neuen Nachrichten.',
     '这是你自己。': 'Das bist du.',
@@ -588,9 +700,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'Avatar',
     '选择默认头像': 'Standard-Avatar wählen',
     '默认': 'Standard',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'Standard-Avatare stellt die Plattform bereit; Hochladen ist nicht möglich. '
-            'Die Auswahl wirkt sofort und wird nur auf diesem Gerät gespeichert.',
+            'Die Auswahl wird auf dem Server gespeichert.',
     '星座': 'Sternzeichen',
     '性别': 'Geschlecht',
     '选择生日': 'Geburtstag wählen',

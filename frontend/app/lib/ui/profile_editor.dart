@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../avatars.dart';
@@ -64,10 +65,31 @@ class _ProfileEditorState extends State<_ProfileEditor> {
     _loadProfile();
   }
 
-  /// 头像不进 `PUT`：选中即落本机偏好，服务端还没有这一列。
-  void _pickAvatar(String? key) {
-    setState(() => _avatar = key);
-    widget.state.setAvatar(_account.accountId, key);
+  /// 头像走服务端 `PUT /api/accounts/me/avatar`：选中即生效，失败回滚到上一枚。
+  Future<void> _pickAvatar(String? key) async {
+    if (_busy) {
+      return;
+    }
+    final String? previous = _avatar;
+    setState(() {
+      _avatar = key;
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.state.updateAvatar(key);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _avatar = previous;
+          _error = e.displayText;
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
   }
 
   /// 回填的唯一来源：`GET /api/accounts/me`。
@@ -85,6 +107,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
         _name.text = profile.displayName;
         _gender = profile.gender ?? 'private';
         _birthday = profile.birthday;
+        _avatar = profile.avatar;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -295,10 +318,10 @@ class _ProfileEditorState extends State<_ProfileEditor> {
                       color: p.ink,
                     ),
                   ),
-                  MonoText('#${_account.accountId}', selectable: true),
+                  MonoText('#${shortAccountId(_account.accountId)}', selectable: true),
                   const SizedBox(height: 4),
                   Text(
-                    context.tr('默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。'),
+                    context.tr('默认头像由平台提供，暂不支持上传；选中即保存到服务端。'),
                     style: TextStyle(fontSize: 11, height: 1.5, color: p.ink3),
                   ),
                 ],

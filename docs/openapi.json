@@ -57,6 +57,34 @@
         }
       }
     },
+    "/api/accounts/me/avatar" : {
+      "put" : {
+        "tags" : [ "account-controller" ],
+        "operationId" : "updateAvatar",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AvatarRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/AvatarResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions" : {
       "post" : {
         "tags" : [ "session-controller" ],
@@ -714,9 +742,29 @@
             "type" : "string",
             "format" : "date"
           },
+          "avatar" : {
+            "type" : "string"
+          },
           "updated_at" : {
             "type" : "string",
             "format" : "date-time"
+          }
+        }
+      },
+      "AvatarRequest" : {
+        "type" : "object",
+        "properties" : {
+          "avatar" : {
+            "type" : "string",
+            "pattern" : "female_0[1-3]|male_0[1-3]|agent_(blue|pink|gold)"
+          }
+        }
+      },
+      "AvatarResponse" : {
+        "type" : "object",
+        "properties" : {
+          "avatar" : {
+            "type" : "string"
           }
         }
       },
@@ -743,6 +791,9 @@
             "type" : "string"
           },
           "type" : {
+            "type" : "string"
+          },
+          "avatar" : {
             "type" : "string"
           },
           "login_token" : {
@@ -997,6 +1048,9 @@
           },
           "display_name" : {
             "type" : "string"
+          },
+          "avatar" : {
+            "type" : "string"
           }
         }
       },
@@ -1123,6 +1177,9 @@
           "display_name" : {
             "type" : "string"
           },
+          "avatar" : {
+            "type" : "string"
+          },
           "is_friend" : {
             "type" : "boolean"
           },
@@ -1163,6 +1220,9 @@
             "format" : "int64"
           },
           "display_name" : {
+            "type" : "string"
+          },
+          "avatar" : {
             "type" : "string"
           },
           "status" : {
@@ -1219,6 +1279,9 @@
             "format" : "int64"
           },
           "display_name" : {
+            "type" : "string"
+          },
+          "avatar" : {
             "type" : "string"
           },
           "is_friend" : {

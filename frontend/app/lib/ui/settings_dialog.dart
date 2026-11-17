@@ -11,6 +11,8 @@ Future<void> showSettingsDialog(
   required double textScale,
   required ValueChanged<double> onTextScaleChanged,
   required ValueChanged<String> onLanguageChanged,
+  bool notifyOnMessage = true,
+  ValueChanged<bool>? onNotifyChanged,
 }) async {
   await showDialog<void>(
     context: context,
@@ -18,6 +20,8 @@ Future<void> showSettingsDialog(
       textScale: textScale,
       onTextScaleChanged: onTextScaleChanged,
       onLanguageChanged: onLanguageChanged,
+      notifyOnMessage: notifyOnMessage,
+      onNotifyChanged: onNotifyChanged,
     ),
   );
 }
@@ -27,11 +31,15 @@ class _SettingsDialog extends StatefulWidget {
     required this.textScale,
     required this.onTextScaleChanged,
     required this.onLanguageChanged,
+    required this.notifyOnMessage,
+    required this.onNotifyChanged,
   });
 
   final double textScale;
   final ValueChanged<double> onTextScaleChanged;
   final ValueChanged<String> onLanguageChanged;
+  final bool notifyOnMessage;
+  final ValueChanged<bool>? onNotifyChanged;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -39,6 +47,7 @@ class _SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
+  late bool _notify = widget.notifyOnMessage;
   String? _language;
 
   @override
@@ -62,6 +71,11 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   void _setLanguage(String value) {
     setState(() => _language = value);
     widget.onLanguageChanged(value);
+  }
+
+  void _setNotify(bool value) {
+    setState(() => _notify = value);
+    widget.onNotifyChanged?.call(value);
   }
 
   @override
@@ -130,6 +144,25 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                       selected: _language == code,
                       onTap: () => _setLanguage(code),
                     ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              Text(_t('消息通知'), style: _labelStyle(p)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  MoonChoicePill(
+                    label: _t('收到消息并且提示'),
+                    selected: _notify,
+                    onTap: () => _setNotify(true),
+                  ),
+                  MoonChoicePill(
+                    label: _t('收到消息不提示'),
+                    selected: !_notify,
+                    onTap: () => _setNotify(false),
+                  ),
                 ],
               ),
               const SizedBox(height: 22),

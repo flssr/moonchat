@@ -83,6 +83,18 @@ public final class AccountRequests {
         }
     }
 
+    /**
+     * 改头像：`PUT /api/accounts/me/avatar`，整枚替换语义——`null` 就是清回客户端生成的首字头像。
+     *
+     * <p>正则只挡「不在平台这一套 key 里」的形状；「真人只能选真人那 6 个、agent 只能选 agent 那 3 个」
+     * 要按 `account.type` 判，放在 service（docs/truth/backend/identity.md）。
+     */
+    public record AvatarRequest(
+            @Pattern(regexp = "female_0[1-3]|male_0[1-3]|agent_(blue|pink|gold)",
+                    message = "avatar 只能是平台默认头像 key")
+            String avatar) {
+    }
+
     private static String normalizeEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }

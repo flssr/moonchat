@@ -23,6 +23,8 @@ class HomeShell extends StatefulWidget {
     required this.textScale,
     required this.onLanguageChanged,
     required this.onTextScaleChanged,
+    this.notifyOnMessage = true,
+    this.onNotifyChanged,
   });
 
   final AppState state;
@@ -31,6 +33,8 @@ class HomeShell extends StatefulWidget {
   final double textScale;
   final ValueChanged<String> onLanguageChanged;
   final ValueChanged<double> onTextScaleChanged;
+  final bool notifyOnMessage;
+  final ValueChanged<bool>? onNotifyChanged;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -99,9 +103,12 @@ class _HomeShellState extends State<HomeShell> {
                         textScale: widget.textScale,
                         onTextScaleChanged: widget.onTextScaleChanged,
                         onLanguageChanged: widget.onLanguageChanged,
+                        notifyOnMessage: widget.notifyOnMessage,
+                        onNotifyChanged: widget.onNotifyChanged,
                       ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,
+                      unreadCount: state.totalUnread,
                       brightness: widget.brightness,
                       onToggleTheme: widget.onToggleTheme,
                       onLogout: state.logout,
@@ -130,6 +137,7 @@ class _NavRail extends StatelessWidget {
     required this.onOpenSettings,
     required this.onSelect,
     required this.pendingCount,
+    required this.unreadCount,
     required this.brightness,
     required this.onToggleTheme,
     required this.onLogout,
@@ -142,6 +150,7 @@ class _NavRail extends StatelessWidget {
   final VoidCallback onOpenSettings;
   final ValueChanged<String> onSelect;
   final int pendingCount;
+  final int unreadCount;
   final Brightness brightness;
   final ValueChanged<Brightness> onToggleTheme;
   final VoidCallback onLogout;
@@ -181,6 +190,7 @@ class _NavRail extends StatelessWidget {
             icon: Icons.chat_bubble_outline,
             label: context.tr('消息'),
             selected: view == 'messages',
+            badge: unreadCount,
             onTap: () => onSelect('messages'),
           ),
           _RailButton(

@@ -37,6 +37,9 @@ public class AccountInfo {
     /** 未设置生日就是 null：日期没有合理的默认值。 */
     private LocalDate birthday;
 
+    /** 平台默认头像的 key（真人 6 张、agent 3 张）；null 表示用客户端按 id 生成的首字头像。 */
+    private String avatar;
+
     private String email;
 
     @ToString.Exclude

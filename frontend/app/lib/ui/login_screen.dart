@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../i18n/context_tr.dart';
+import '../i18n/moon_strings.dart';
+import '../session/session_store.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_quotes.dart';
@@ -11,12 +14,24 @@ import 'widgets.dart';
 /// S1 登录 / 注册 + S2 登舱过渡（`docs/truth/frontend/README.md`）。
 /// 表单在左，右侧是月面舞台；登录成功后播一次短促离场，再交给外壳换屏。
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.state, this.onArrived});
+  const LoginScreen({
+    super.key,
+    required this.state,
+    this.onArrived,
+    this.edgeToEdge = false,
+    this.languageCode = 'zh',
+    this.onLanguageChanged,
+  });
 
   final AppState state;
+  final String languageCode;
+  final ValueChanged<String>? onLanguageChanged;
 
   /// 登舱过渡播完（或减少动态时直接跳过）后回调；外壳据此切到主界面。
   final VoidCallback? onArrived;
+
+  /// 桌面壳把登录页铺满整个窗口：去掉居中卡片的外边距与圆角，表单和舞台顶到窗口边缘。
+  final bool edgeToEdge;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -37,11 +52,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   /// 过渡已经开始：表单淡出并停用，避免用户在这 800ms 里继续操作。
   bool _arriving = false;
 
+  /// 「记住我」卡片恢复会话中：按钮转忙碌，别让它被连点。
+  bool _restoring = false;
+
   /// 每次进入登录页取一句：State 只在进出登录页时重建，切主题或切注册模式都不会换。
   late final LoginQuote _quote = nextLoginQuote();
 
   bool _registerMode = false;
   bool _submitting = false;
+  bool _remember = true;
+  bool _showForm = false;
+  bool _leftDark = false;
+  bool _leftDarkReady = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_leftDarkReady) {
+      _leftDarkReady = true;
+      _leftDark = Theme.of(context).brightness == Brightness.dark;
+    }
+  }
   String? _emailError;
   String? _passwordError;
   String? _nameError;
@@ -97,7 +128,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         );
         registered = true;
       }
-      await widget.state.login(email: _email.text.trim(), password: _password.text);
+      await widget.state.login(
+        email: _email.text.trim(),
+        password: _password.text,
+        remember: _remember,
+      );
       await _playArrival();
     } on ApiException catch (e) {
       if (!mounted) {
@@ -143,26 +178,91 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     }
   }
 
+  /// 「记住我」卡片：恢复本机会话后同样播一次登舱过渡，出口和表单登录一致。
+  Future<void> _restoreRemembered() async {
+    if (_restoring || _arriving) {
+      return;
+    }
+    setState(() => _restoring = true);
+    await widget.state.restore();
+    if (!mounted) {
+      return;
+    }
+    setState(() => _restoring = false);
+    if (!widget.state.isReady) {
+      return;
+    }
+    await _playArrival();
+  }
+
+  /// 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
+  Widget _fade(Widget child) {
+    return IgnorePointer(
+      ignoring: _arriving,
+      child: AnimatedOpacity(
+        opacity: _arriving ? 0 : 1,
+        duration: const Duration(milliseconds: 420),
+        curve: Curves.easeOutCubic,
+        child: child,
+      ),
+    );
+  }
+
+  /// 桌面无边框窗口的登录页：表单与舞台直接铺满可用区域，不留居中的卡片边距。
+  Widget _buildEdgeToEdge(BuildContext context) {
+    final MoonPalette p = context.moon;
+    final Widget stage = _buildStage(context);
+    return Scaffold(
+      backgroundColor: p.bg,
+      body: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints c) {
+          final Widget form = _buildLeft(context);
+          if (c.maxWidth < 900) {
+            return Column(
+              children: <Widget>[
+                Expanded(flex: 3, child: SingleChildScrollView(child: _fade(form))),
+                Expanded(flex: 2, child: stage),
+              ],
+            );
+          }
+          return Row(
+            children: <Widget>[
+              Expanded(
+                flex: 44,
+                child: ColoredBox(
+                  color: _leftDark ? MoonPalette.dark.surface : MoonPalette.light.surface,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: _fade(form),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(flex: 56, child: stage),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
+    if (widget.edgeToEdge) {
+      return _buildEdgeToEdge(context);
+    }
     return Scaffold(
       backgroundColor: p.bg,
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
-          // 表单先淡出，舞台的关门/离地才开始；过渡期间点击不再落到表单上。
-          final Widget formBody = _buildForm(context);
-          final Widget form = IgnorePointer(
-            ignoring: _arriving,
-            child: AnimatedOpacity(
-              opacity: _arriving ? 0 : 1,
-              duration: const Duration(milliseconds: 420),
-              curve: Curves.easeOutCubic,
-              // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
-              child: narrow ? formBody : SingleChildScrollView(child: formBody),
-            ),
-          );
+          final Widget formBody = _buildLeft(context);
+          // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
+          final Widget form = _fade(narrow ? formBody : SingleChildScrollView(child: formBody));
           final Widget stage = _buildStage(context);
           return Center(
             child: SingleChildScrollView(
@@ -202,9 +302,131 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
+  Widget _quoteBlock(MoonPalette p) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 84),
+      child: Container(
+        padding: const EdgeInsets.only(left: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: p.accent.withValues(alpha: 0.55), width: 2),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '“${context.tr(_quote.text)}”',
+              style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '— ${context.tr(_quote.author)}',
+              style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLeft(BuildContext context) {
+    final StoredSession? saved = widget.state.rememberedSession;
+    if (saved != null && !_showForm) {
+      return _buildRemembered(context, saved);
+    }
+    return _buildForm(context);
+  }
+
+  Widget _buildRemembered(BuildContext context, StoredSession saved) {
+    final bool dark = _leftDark;
+    final MoonPalette p = dark ? MoonPalette.dark : MoonPalette.light;
+    final String name = saved.displayName ?? '#${shortAccountId(saved.accountId)}';
+    return Theme(
+      data: buildMoonTheme(dark ? Brightness.dark : Brightness.light),
+      child: Container(
+        color: p.surface,
+        padding: const EdgeInsets.fromLTRB(44, 40, 44, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Image.asset(
+                    'assets/mondchat-logo.png',
+                    width: 30,
+                    height: 30,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'MondChat',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: -0.8,
+                    color: p.ink,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            _quoteBlock(p),
+            const SizedBox(height: 24),
+            Row(
+              children: <Widget>[
+                MoonAvatar(
+                  name: name,
+                  seed: saved.accountId,
+                  avatar: widget.state.avatarOf(saved.accountId),
+                  size: 56,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        name,
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: p.ink),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '#${shortAccountId(saved.accountId)}',
+                        style: TextStyle(fontSize: 12, color: p.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            MoonButton(
+              label: context.tr('登录'),
+              onPressed: _restoreRemembered,
+              busy: _restoring,
+            ),
+            const SizedBox(height: 8),
+            MoonButton(
+              label: context.tr('切换账号'),
+              kind: MoonButtonKind.text,
+              onPressed: () => setState(() => _showForm = true),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildForm(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return Container(
+    final MoonPalette p = _leftDark ? MoonPalette.dark : MoonPalette.light;
+    return Theme(
+      data: buildMoonTheme(_leftDark ? Brightness.dark : Brightness.light),
+      child: Container(
       color: p.surface,
       padding: const EdgeInsets.fromLTRB(44, 40, 44, 32),
       child: Column(
@@ -239,35 +461,47 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                 ),
               ),
+              IconButton(
+                tooltip: context.tr(_leftDark ? '切到亮色' : '切到暗色'),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _leftDark = !_leftDark),
+                icon: Icon(
+                  _leftDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                  size: 18,
+                  color: p.ink3,
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: context.tr('语言'),
+                initialValue: widget.languageCode,
+                onSelected: widget.onLanguageChanged,
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  for (final (String code, String label) in kMoonLanguages)
+                    PopupMenuItem<String>(
+                      value: code,
+                      child: Text(label, style: const TextStyle(fontSize: 13)),
+                    ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.language, size: 18, color: p.ink3),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.languageCode.toUpperCase(),
+                        style: TextStyle(fontSize: 11, color: p.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 84),
-            child: Container(
-              padding: const EdgeInsets.only(left: 12),
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: p.accent.withValues(alpha: 0.55), width: 2),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '“${context.tr(_quote.text)}”',
-                    style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '— ${context.tr(_quote.author)}',
-                    style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _quoteBlock(p),
           const SizedBox(height: 24),
           if (_registerMode) ...<Widget>[
             MoonField(label: context.tr('名字'), controller: _name, errorText: _nameError == null ? null : context.tr(_nameError!), hint: context.tr('1–20 字')),
@@ -317,7 +551,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Checkbox(
+                value: _remember,
+                onChanged: (bool? value) => setState(() => _remember = value ?? true),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              Text(
+                context.tr('记住我'),
+                style: TextStyle(fontSize: 12, color: p.ink3),
+              ),
+            ],
+          ),
         ],
+      ),
       ),
     );
   }

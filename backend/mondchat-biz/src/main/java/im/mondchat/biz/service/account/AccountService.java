@@ -27,6 +27,9 @@ public interface AccountService {
     AccountResponses.AccountProfileResponse updateProfile(CurrentAccount me,
             AccountRequests.UpdateProfileRequest request);
 
+    /** 改本账号头像（PUT 语义：整枚替换，`null` = 清回生成的首字头像）。 */
+    AccountResponses.AvatarResponse updateAvatar(CurrentAccount me, AccountRequests.AvatarRequest request);
+
     /** #24 本人完整资料：编辑页回填用，与 #6 的响应同形。 */
     AccountResponses.AccountProfileResponse myProfile(CurrentAccount me);
 

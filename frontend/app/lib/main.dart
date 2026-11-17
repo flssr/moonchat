@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -18,11 +16,25 @@ void main() {
 
 class MondChatApp extends StatefulWidget {
   /// [state] 只给测试注入；生产入口不传，由外壳自己持有并负责释放。
-  const MondChatApp({super.key, this.state, this.settings, this.store});
+  const MondChatApp({
+    super.key,
+    this.state,
+    this.settings,
+    this.store,
+    this.chrome,
+    this.edgeToEdge = false,
+  });
 
   final AppState? state;
   final MoonSettings? settings;
   final SettingsStore? store;
+
+  /// 桌面壳用它在 `MaterialApp` 内插一条自定义标题栏；Web 传 null。
+  /// 放在 builder 里才能拿到应用自己的主题（标题栏跟随亮/暗色）。
+  final Widget Function(BuildContext context, Widget child)? chrome;
+
+  /// 登录页铺满可用区域（桌面无边框窗口）；Web 保持居中的卡片。
+  final bool edgeToEdge;
 
   @override
   State<MondChatApp> createState() => _MondChatAppState();
@@ -37,6 +49,7 @@ class _MondChatAppState extends State<MondChatApp> {
   late ThemeMode _mode;
   late double _textScale;
   late Locale _locale;
+  late bool _notify;
 
   /// `?theme=` 是预览参数，不能把被强制的值写回用户偏好。
   bool _themeForced = false;
@@ -58,8 +71,9 @@ class _MondChatAppState extends State<MondChatApp> {
     };
     _textScale = _initial.textScale;
     _locale = _localeFor(_initial.languageCode);
-    // 刷新页面时先试本机凭据：有就恢复会话，没有就留在登录页（issue #24）。
-    unawaited(_state.restore());
+    _notify = _initial.notifyOnMessage;
+    _state.setNotifyOnMessage(_notify);
+    // 本机记住的账号由登录页的“记住我”卡片显示，点登录再恢复；不再自动跳过登录页。
   }
 
   @override
@@ -75,7 +89,14 @@ class _MondChatAppState extends State<MondChatApp> {
       textScale: _textScale,
       languageCode: _locale.languageCode,
       themeMode: _themeForced ? _initial.themeMode : _mode,
+      notifyOnMessage: _notify,
     ));
+  }
+
+  void _setNotify(bool value) {
+    setState(() => _notify = value);
+    _state.setNotifyOnMessage(value);
+    _persist();
   }
 
   void _toggleTheme(Brightness current) {
@@ -107,7 +128,6 @@ class _MondChatAppState extends State<MondChatApp> {
   /// 否则每次 notifyListeners 都会把整棵树重建一遍（并触发 didUpdateWidget）。
   Widget? _gate;
   bool? _gateHome;
-  bool? _gateRestoring;
   Brightness? _gateBrightness;
   double? _gateTextScale;
   Locale? _gateLocale;
@@ -128,10 +148,11 @@ class _MondChatAppState extends State<MondChatApp> {
         final MediaQueryData data = MediaQuery.of(context);
         // 保留系统字号档位，再叠应用内的小/中/大。
         final double systemScale = data.textScaler.scale(1);
-        return MediaQuery(
+        final Widget content = MediaQuery(
           data: data.copyWith(textScaler: TextScaler.linear(systemScale * _textScale)),
           child: child!,
         );
+        return widget.chrome == null ? content : widget.chrome!(context, content);
       },
       home: ListenableBuilder(
         listenable: _state,
@@ -141,19 +162,15 @@ class _MondChatAppState extends State<MondChatApp> {
           if (!ready) {
             _arrived = false;
           }
-          // 恢复会话期间不渲染登录表单：否则刷新会先闪一下「要登录」，再跳进主界面。
-          final bool restoring = _state.restoring;
-          // 从本机凭据恢复的会话没有登舱过渡可播，`_arrived` 永远不会置位，得单独放行。
-          final bool showHome = ready && (_arrived || _state.restored);
+          // 两条入口（密码登录 / 「记住我」卡片）都由登录页播完登舱过渡再置 `_arrived`。
+          final bool showHome = ready && _arrived;
           final Brightness brightness = Theme.of(context).brightness;
           if (_gate == null ||
               showHome != _gateHome ||
-              restoring != _gateRestoring ||
               brightness != _gateBrightness ||
               _textScale != _gateTextScale ||
               _locale != _gateLocale) {
             _gateHome = showHome;
-            _gateRestoring = restoring;
             _gateBrightness = brightness;
             _gateTextScale = _textScale;
             _gateLocale = _locale;
@@ -165,10 +182,16 @@ class _MondChatAppState extends State<MondChatApp> {
                     textScale: _textScale,
                     onLanguageChanged: _setLanguage,
                     onTextScaleChanged: _setTextScale,
+                    notifyOnMessage: _notify,
+                    onNotifyChanged: _setNotify,
                   )
-                : restoring
-                    ? const _StartupSplash()
-                    : LoginScreen(state: _state, onArrived: _onArrived);
+                : LoginScreen(
+                    state: _state,
+                    onArrived: _onArrived,
+                    edgeToEdge: widget.edgeToEdge,
+                    languageCode: _locale.languageCode,
+                    onLanguageChanged: _setLanguage,
+                  );
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
           return AnimatedSwitcher(
@@ -178,27 +201,6 @@ class _MondChatAppState extends State<MondChatApp> {
             child: KeyedSubtree(key: ValueKey<bool>(showHome), child: _gate!),
           );
         },
-      ),
-    );
-  }
-}
-
-/// 恢复会话时的启动页：只放标，不放表单。
-class _StartupSplash extends StatelessWidget {
-  const _StartupSplash();
-
-  @override
-  Widget build(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return Scaffold(
-      backgroundColor: p.bg,
-      body: Center(
-        child: Image.asset(
-          'assets/mondchat-logo.png',
-          width: 44,
-          height: 44,
-          filterQuality: FilterQuality.high,
-        ),
       ),
     );
   }

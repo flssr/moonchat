@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'friend_picker.dart';
 import 'profile_panel.dart';
 import 'widgets.dart';
 
@@ -25,12 +27,7 @@ class ContactsView extends StatefulWidget {
 
 class _ContactsViewState extends State<ContactsView> {
   final TextEditingController _lookup = TextEditingController();
-  final TextEditingController _roomName = TextEditingController();
   String? _lookupError;
-
-  /// 建群表单自己的错误，别借搜索框下面那行显示。
-  String? _roomError;
-  bool _showRoomForm = false;
   bool _busy = false;
 
   /// 页签与选中项都在状态层（`docs/truth/frontend/README.md` 的 `friendsTab` / `selectedContact`）。
@@ -40,7 +37,6 @@ class _ContactsViewState extends State<ContactsView> {
   @override
   void dispose() {
     _lookup.dispose();
-    _roomName.dispose();
     super.dispose();
   }
 
@@ -48,9 +44,9 @@ class _ContactsViewState extends State<ContactsView> {
     if (_busy) {
       return;
     }
-    final int? id = int.tryParse(_lookup.text.trim());
+    final int? id = accountIdFromInput(_lookup.text);
     if (id == null) {
-      setState(() => _lookupError = '需要数字账号 ID');
+      setState(() => _lookupError = '需要短号或完整账号 ID');
       return;
     }
     setState(() {
@@ -90,36 +86,127 @@ class _ContactsViewState extends State<ContactsView> {
     }
   }
 
-  Future<void> _createRoom() async {
-    if (_busy) {
-      return;
-    }
-    final String name = _roomName.text.trim();
-    if (name.isEmpty || name.length > 20) {
-      setState(() => _roomError = '群名 1–20 字');
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _roomError = null;
-    });
-    try {
-      final Room room = await widget.state.createRoom(name);
-      if (!mounted) {
-        return;
-      }
-      _roomName.clear();
-      setState(() => _showRoomForm = false);
-      widget.state.selectConversation('room:${room.roomId}');
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _roomError = e.displayText);
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _busy = false);
-      }
-    }
+  Future<void> _openCreateRoom() async {
+    final TextEditingController name = TextEditingController();
+    final Set<int> selected = <int>{};
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        String? error;
+        bool busy = false;
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            Future<void> create() async {
+              final String value = name.text.trim();
+              if (value.isEmpty || value.length > 20) {
+                setDialogState(() => error = '群名 1–20 字');
+                return;
+              }
+              setDialogState(() {
+                busy = true;
+                error = null;
+              });
+              try {
+                final Room room = await widget.state.createRoom(value);
+                for (final int id in selected) {
+                  try {
+                    await widget.state.addMember(room.roomId, id);
+                  } catch (_) {
+                    // 群已经建好，单个邀请失败不回头。
+                  }
+                }
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  widget.state.selectConversation('room:${room.roomId}');
+                }
+              } on ApiException catch (e) {
+                if (context.mounted) {
+                  setDialogState(() => error = e.displayText);
+                }
+              } finally {
+                if (context.mounted) {
+                  setDialogState(() => busy = false);
+                }
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: context.moon.surface,
+              title: Text(context.tr('建群'), style: TextStyle(fontSize: 16, color: context.moon.ink)),
+              content: SizedBox(
+                width: 380,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    TextField(
+                      controller: name,
+                      maxLength: 20,
+                      style: TextStyle(fontSize: 13, color: context.moon.ink),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: context.tr('群名 1–20 字'),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            selected.isEmpty
+                                ? context.tr('邀请好友')
+                                : trArgs(context, '已选 {n} 位好友', <String, String>{
+                                    'n': '${selected.length}',
+                                  }),
+                            style: TextStyle(fontSize: 12.5, color: context.moon.ink3),
+                          ),
+                        ),
+                        MoonButton(
+                          label: context.tr('邀请'),
+                          kind: MoonButtonKind.secondary,
+                          small: true,
+                          onPressed: () async {
+                            final List<int>? picked = await showFriendPicker(
+                              context,
+                              state: widget.state,
+                              multi: true,
+                            );
+                            if (picked != null) {
+                              setDialogState(() => selected
+                                ..clear()
+                                ..addAll(picked));
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    if (error != null) ...<Widget>[
+                      const SizedBox(height: 8),
+                      Text(context.tr(error!), style: TextStyle(fontSize: 11, color: context.moon.accent)),
+                    ],
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                MoonButton(
+                  label: context.tr('取消'),
+                  kind: MoonButtonKind.text,
+                  small: true,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                MoonButton(
+                  label: context.tr('创建'),
+                  small: true,
+                  busy: busy,
+                  onPressed: create,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    name.dispose();
   }
 
   @override
@@ -169,7 +256,7 @@ class _ContactsViewState extends State<ContactsView> {
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
-                                  hintText: context.tr('按账号 ID 查找'),
+                                  hintText: context.tr('按短号查找'),
                                   hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _find(),
@@ -197,52 +284,14 @@ class _ContactsViewState extends State<ContactsView> {
                 child: Row(
                   children: <Widget>[
                     MoonButton(
-                      label: _showRoomForm ? context.tr('取消建群') : context.tr('建群'),
+                      label: context.tr('建群'),
                       kind: MoonButtonKind.secondary,
                       small: true,
-                      onPressed: () => setState(() {
-                        _showRoomForm = !_showRoomForm;
-                        _lookupError = null;
-                      }),
+                      onPressed: _openCreateRoom,
                     ),
                   ],
                 ),
               ),
-              if (_showRoomForm)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(color: p.line),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: TextField(
-                          controller: _roomName,
-                          maxLength: 20,
-                          style: TextStyle(fontSize: 12.5, color: p.ink),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            border: InputBorder.none,
-                            counterText: '',
-                            hintText: context.tr('群名（1–20 字）'),
-                            hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
-                          ),
-                          onSubmitted: (_) => _createRoom(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      MoonButton(label: context.tr('创建'), small: true, busy: _busy, onPressed: _createRoom),
-                      if (_roomError != null) ...<Widget>[
-                        const SizedBox(height: 6),
-                        Text(context.tr(_roomError!), style: TextStyle(fontSize: 11, color: p.accent)),
-                      ],
-                    ],
-                  ),
-                ),
               SizedBox(
                 height: 36,
                 child: Row(
@@ -282,7 +331,7 @@ class _ContactsViewState extends State<ContactsView> {
                     ? (friends.isEmpty
                         ? MoonEmpty(
                             title: context.tr('还没有好友'),
-                            hint: context.tr('加好友需要对方的账号 ID 或主页链接。'),
+                            hint: context.tr('加好友需要对方的短号或账号 ID。'),
                           )
                         : ListView.builder(
                             shrinkWrap: narrow,
@@ -393,7 +442,7 @@ class _ContactsViewState extends State<ContactsView> {
       child: _selectedId == null
           ? MoonEmpty(
               title: context.tr('选一个人'),
-              hint: context.tr('群成员、好友、按账号 ID 查找的结果都在这里打开资料页。'),
+              hint: context.tr('群成员、好友、按短号查找的结果都在这里打开资料页。'),
             )
           : SingleChildScrollView(
               child: Align(

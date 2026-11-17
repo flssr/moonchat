@@ -46,6 +46,7 @@ class Account {
     required this.accountId,
     required this.type,
     required this.displayName,
+    this.avatar,
     this.gender,
     this.birthday,
   });
@@ -54,6 +55,7 @@ class Account {
         accountId: _int(j['account_id']),
         type: _str(j['type']),
         displayName: _str(j['display_name']),
+        avatar: _strOrNull(j['avatar']),
         gender: _strOrNull(j['gender']),
         birthday: _dateOnly(j['birthday']),
       );
@@ -61,6 +63,9 @@ class Account {
   final int accountId;
   final String type;
   final String displayName;
+
+  /// 平台默认头像 key；null 表示客户端按 id 生成首字头像（服务端头像列见 issue #10）。
+  final String? avatar;
 
   /// `male` / `female` / `other` / `private`；后端未上线时为空。
   final String? gender;
@@ -78,6 +83,7 @@ class MyProfile {
     required this.displayName,
     required this.gender,
     required this.birthday,
+    this.avatar,
   });
 
   factory MyProfile.fromJson(Map<String, dynamic> j) => MyProfile(
@@ -85,12 +91,14 @@ class MyProfile {
         displayName: j['display_name'] is String ? j['display_name'] as String : '',
         gender: j['gender'] is String ? j['gender'] as String : null,
         birthday: _dateOnly(j['birthday']),
+        avatar: j['avatar'] is String ? j['avatar'] as String : null,
       );
 
   final int accountId;
   final String displayName;
   final String? gender;
   final DateTime? birthday;
+  final String? avatar;
 }
 
 /// #2 登录 / #20 续期：登录 JWT 与它归属的账号。
@@ -182,17 +190,20 @@ class Profile {
     required this.accountId,
     required this.displayName,
     required this.isFriend,
+    this.avatar,
   });
 
   factory Profile.fromJson(Map<String, dynamic> j) => Profile(
         accountId: _int(j['account_id']),
         displayName: _str(j['display_name']),
         isFriend: _bool(j['is_friend']),
+        avatar: _strOrNull(j['avatar']),
       );
 
   final int accountId;
   final String displayName;
   final bool isFriend;
+  final String? avatar;
 }
 
 class Friendship {
@@ -202,6 +213,7 @@ class Friendship {
     required this.status,
     required this.incoming,
     required this.requestedAt,
+    this.avatar,
   });
 
   factory Friendship.fromJson(Map<String, dynamic> j) => Friendship(
@@ -210,6 +222,7 @@ class Friendship {
         status: _str(j['status']),
         incoming: _bool(j['incoming']),
         requestedAt: _date(j['requested_at']),
+        avatar: _strOrNull(j['avatar']),
       );
 
   final int peerAccountId;
@@ -217,6 +230,7 @@ class Friendship {
   final String status;
   final bool incoming;
   final DateTime? requestedAt;
+  final String? avatar;
 }
 
 class Room {
@@ -275,6 +289,7 @@ class RoomMember {
     required this.displayName,
     required this.isFriend,
     required this.joinedAt,
+    this.avatar,
   });
 
   factory RoomMember.fromJson(Map<String, dynamic> j) => RoomMember(
@@ -282,12 +297,14 @@ class RoomMember {
         displayName: _str(j['display_name']),
         isFriend: _bool(j['is_friend']),
         joinedAt: _date(j['joined_at']),
+        avatar: _strOrNull(j['avatar']),
       );
 
   final int accountId;
   final String displayName;
   final bool isFriend;
   final DateTime? joinedAt;
+  final String? avatar;
 }
 
 /// 唯一分页的接口（群成员）额外的三个字段。
@@ -301,6 +318,41 @@ class Paged<T> {
 }
 
 /// #19 发言的响应：201 只表示 Turms 已落库并接下投递。
+class BlocklistItem {
+  const BlocklistItem({
+    required this.accountId,
+    required this.displayName,
+    this.createdAt,
+  });
+
+  factory BlocklistItem.fromJson(Map<String, dynamic> j) => BlocklistItem(
+        accountId: _int(j['account_id']),
+        displayName: _str(j['display_name']),
+        createdAt: _date(j['created_at']),
+      );
+
+  final int accountId;
+  final String displayName;
+  final DateTime? createdAt;
+}
+
+class BlocklistPage {
+  const BlocklistPage({required this.items, required this.total});
+
+  factory BlocklistPage.fromJson(Map<String, dynamic> j) {
+    final List<dynamic> raw = (j['items'] as List<dynamic>?) ?? const <dynamic>[];
+    return BlocklistPage(
+      items: raw
+          .map((dynamic e) => BlocklistItem.fromJson(e as Map<String, dynamic>))
+          .toList(growable: false),
+      total: _intOrNull(j['total']) ?? 0,
+    );
+  }
+
+  final List<BlocklistItem> items;
+  final int total;
+}
+
 class SentMessage {
   const SentMessage({
     required this.messageId,

@@ -10,6 +10,7 @@ import 'package:mondchat/api/api_client.dart';
 import 'package:mondchat/api/models.dart';
 import 'package:mondchat/main.dart';
 import 'package:mondchat/session/session_store.dart';
+import 'package:mondchat/message_cache.dart';
 import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
 import 'package:mondchat/turms/realtime.dart';
@@ -184,13 +185,31 @@ MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
   });
 }
 
-AppState _newState({int sendStatus = 201, int Function()? statusOf, _FakeRealtime? realtime}) {
+class _FakeCache implements MessageCacheStore {
+  final Map<int, Map<String, dynamic>> saved = <int, Map<String, dynamic>>{};
+
+  @override
+  Map<String, dynamic>? load(int accountId) => saved[accountId];
+
+  @override
+  void save(int accountId, Map<String, dynamic> data) => saved[accountId] = data;
+}
+
+AppState _newState({
+  int sendStatus = 201,
+  int Function()? statusOf,
+  _FakeRealtime? realtime,
+  MessageCacheStore? cache,
+  bool primeOnLogin = false,
+}) {
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
       client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf),
     ),
     realtime: realtime ?? _FakeRealtime(),
+    cache: cache,
+    primeOnLogin: primeOnLogin,
   );
 }
 
@@ -347,6 +366,12 @@ void main() {
     expect(state.pending, isEmpty);
     expect(biz.friends.map((Map<String, Object?> f) => f['peer_account_id']), contains(4));
     expect(state.friends.length, 2);
+
+    // 被加的一方同意后，客户端自动发一句欢迎语（本地先落气泡）。
+    final List<ChatMessage> greeting = state.messagesOf('dm:4');
+    final ChatMessage message =
+        greeting.firstWhere((ChatMessage m) => m.text == '我们已经是好友啦，一起来聊天吧OWO');
+    expect(message.mine, isTrue);
   });
 
   test('删好友：写 tombstone 后从列表消失', () async {
@@ -647,6 +672,138 @@ void main() {
     expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
   });
 
+  test('重登先从本机缓存恢复上次会话与最后一条消息', () async {
+    final _FakeCache cache = _FakeCache();
+    final AppState first = _newState(cache: cache);
+    await first.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = first.conversations.first;
+    first.selectConversation(dm.key);
+    await first.sendMessage(dm, '缓存这条');
+    first.flushCache();
+    first.dispose();
+
+    final AppState second = _newState(cache: cache);
+    addTearDown(second.dispose);
+    await second.login(email: 'a@b.c', password: 'password1');
+
+    expect(second.activeConversationKey, dm.key);
+    expect(second.messagesOf(dm.key).single.text, '缓存这条');
+    expect(second.lastMessage(dm.key)?.text, '缓存这条');
+  });
+
+  test('登录补拉每个会话最新一页：预览和离线未读', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final _FakeCache cache = _FakeCache();
+    cache.saved[1] = <String, dynamic>{
+      'saved_at': '2026-11-10T09:00:00Z',
+      'messages': <String, dynamic>{},
+    };
+    rt.pages.add(<IncomingMessage>[
+      IncomingMessage(
+        id: '901',
+        text: '离线来的',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T09:01:00Z'),
+      ),
+    ]);
+    final AppState state = _newState(realtime: rt, cache: cache, primeOnLogin: true);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    for (int i = 0; i < 100 && state.lastMessage(dm.key) == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(state.lastMessage(dm.key)?.text, '离线来的');
+    expect(state.unreadFor(dm.key), 1);
+  });
+
+  test('删好友后非好友的历史私聊仍保留在会话列表', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000099',
+      text: '旧消息',
+      senderId: 99,
+      recipientId: 1,
+      sentAt: null,
+    ));
+
+    final Conversation orphan = state.conversations.firstWhere((Conversation c) => c.key == 'dm:99');
+    expect(orphan.title, isNotEmpty);
+    expect(state.messagesOf(orphan.key).single.text, '旧消息');
+  });
+
+  test('草稿按会话保存，发送后清掉', () async {
+    final AppState state = _newState();
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    state.setDraft(dm.key, '没发完');
+    expect(state.draftFor(dm.key), '没发完');
+
+    await state.sendMessage(dm, '没发完');
+    expect(state.draftFor(dm.key), isEmpty);
+  });
+
+  test('后台收到消息累计未读，打开会话清零', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000003',
+      text: '在吗',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    expect(state.unreadFor(dm.key), 1);
+    expect(state.lastMessage(dm.key)?.text, '在吗');
+
+    state.selectConversation(dm.key);
+    expect(state.unreadFor(dm.key), 0);
+  });
+
+  test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    // 我已经发了一条 666（REST 回执有 id，但精确去重键要等 Turms 推送）。
+    await state.sendMessage(dm, '666');
+    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+
+    // 对端也发了 666。它只能作为新消息插入，不能被认领成我那条待回声的消息。
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000002',
+      text: '666',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+
+    final List<ChatMessage> list = state.messagesOf(dm.key);
+    expect(list, hasLength(2));
+    expect(list.where((ChatMessage m) => m.mine), hasLength(1));
+    expect(list.where((ChatMessage m) => !m.mine), hasLength(1));
+    expect(
+      list.firstWhere((ChatMessage m) => !m.mine).serverIdText,
+      '1881590000000000002',
+    );
+    // 我那条仍在等自己的回声，不能安上对端的 id。
+    expect(list.firstWhere((ChatMessage m) => m.mine).serverIdText, isNull);
+  });
+
   test('切进 agent 后还能切回真人：账号列表用归属者 token 查', () async {
     final AppState state = _stateOn(_FakeBiz());
     addTearDown(state.dispose);
@@ -713,21 +870,27 @@ void main() {
     expect(restored.account?.accountId, 1);
   });
 
-  testWidgets('刷新后恢复会话直接进主界面，不再闪登录表单', (WidgetTester tester) async {
+  testWidgets('刷新后登录页显示记住的账号，点登录恢复会话', (WidgetTester tester) async {
     final _MemorySessionStore session = _MemorySessionStore()
-      ..session = const StoredSession(token: 'login-jwt', accountId: 1);
+      ..session = const StoredSession(token: 'login-jwt', accountId: 1, displayName: '阿星');
     final AppState state = _stateOn(_FakeBiz(), session: session);
     addTearDown(state.dispose);
 
-    // 外壳自己在 initState 里调 restore()：没有登舱过渡可播，恢复完就得直接交棒。
     await tester.pumpWidget(MondChatApp(state: state));
-    for (int i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(find.text('登录'), findsNothing, reason: '恢复会话期间不能闪登录表单');
-    }
     await tester.pumpAndSettle();
+    expect(find.text('阿星'), findsOneWidget, reason: '记住我卡片要显示昵称');
+    expect(find.byType(HomeShell), findsNothing);
 
+    await tester.tap(find.text('登录'));
+    // 等恢复链路跑完：会话已经 ready，但登舱过渡还没播完，不能同帧换屏。
+    for (int i = 0; i < 20 && !state.isReady; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
     expect(state.isReady, isTrue);
+    expect(find.byType(HomeShell), findsNothing, reason: '记住我恢复会话也要先播登舱过渡');
+    expect(find.text('MondChat'), findsOneWidget);
+
+    await tester.pumpAndSettle();
     expect(find.byType(HomeShell), findsOneWidget);
     state.dispose();
   });
@@ -830,6 +993,7 @@ AppState _stateOn(_FakeBiz biz, {_FakeRealtime? realtime, SessionStore? session}
       api: ApiClient(baseUrl: 'http://mock.local', client: biz.client),
       realtime: realtime ?? _FakeRealtime(),
       session: session,
+      primeOnLogin: false,
     );
 
 /// 假的会话存储：只在本测试进程里记住一份。

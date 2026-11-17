@@ -5,6 +5,8 @@ name: CD
 on:
   push:
     branches: [main]
+  # 手动触发：Actions 恢复后不用再推一次 main 就能重新构建并上线（`gh workflow run cd.yml --ref main`）。
+  workflow_dispatch:
 
 # 部署串行排队，不取消进行中的那次：半截部署比晚几分钟更糟。
 concurrency:

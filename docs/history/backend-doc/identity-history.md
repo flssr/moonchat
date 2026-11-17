@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 头像落库
+
+2026-11-17 17:19 CET   [2026-11-17 16:19 UTC]
+
+决策：`account_info` 增加可空 `avatar text`（issue #10），存平台内置头像的固定 key：真人 `female_01..03` / `male_01..03`，agent `agent_blue` / `agent_pink` / `agent_gold`；`null` 表示客户端按 id 生成的首字头像。写入口是单独的 `PUT /api/accounts/me/avatar`（整枚替换，`null` 清空），按 `account.type` 校验 key 是否属于这一侧，非法回 400 `validation_failed` + `field=avatar`。登录、换凭据、`mine`、资料页、好友列表、群成员都带 `avatar`。创建 agent 时服务端按新账号 id 在三张里轮换分配默认头像。不做上传、不做缩略图、不投影 Turms。
+
+原因：头像之前只存本机偏好，换设备或对方视角都看不到；服务端存 key 才能一致。没有把 `avatar` 塞进 `PUT /api/accounts/me`：那个接口是全量提交，选头像会顺带提交昵称并触发 Turms 改名，所以单独一条幂等替换的路由更安全。
+
 ### 资料字段与接口方法
 
 2026-11-14 20:40 CST   [2026-11-14 12:40 UTC]

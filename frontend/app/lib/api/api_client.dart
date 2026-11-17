@@ -74,7 +74,7 @@ class ApiException implements Exception {
 /// 24 条 `/api/*` 路由的唯一调用点，前端目前用到 21 条（黑名单三条未接）。
 /// 路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
-  ApiClient({String? baseUrl, http.Client? client})
+  ApiClient({String? baseUrl, http.Client? client, this.deviceType = 'browser'})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -86,8 +86,8 @@ class ApiClient {
   );
 
   /// 写入网关只认这几个取值（`ConversationController.java:31-37`），其余返回 400。
-  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的 `WEB` 在 `realtime_web.dart`。
-  static const String deviceType = 'browser';
+  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的设备类型在各自的 realtime 实现里。
+  final String deviceType;
 
   final String _base;
   final http.Client _client;
@@ -256,6 +256,15 @@ class ApiClient {
     return MyProfile.fromJson(json);
   }
 
+  /// 改本账号头像：`PUT` 是整枚替换，`null` 表示清回客户端生成的首字头像；响应回显最终值。
+  Future<String?> updateAvatar({required String token, required String? avatar}) async {
+    final json = await _send('PUT', '/api/accounts/me/avatar', token: token, body: {
+      'avatar': avatar,
+    });
+    final Object? value = json['avatar'];
+    return value is String ? value : null;
+  }
+
   /// #7 资料页。
   Future<Profile> profile({required String token, required int accountId}) async {
     final json = await _send('GET', '/api/accounts/$accountId', token: token);
@@ -338,6 +347,31 @@ class ApiClient {
     required int accountId,
   }) async {
     await _send('POST', '/api/rooms/$roomId/members', token: token, body: {'account_id': accountId});
+  }
+
+  /// #21 黑名单列表（任意来源可读）。
+  Future<BlocklistPage> blocklist({
+    required String token,
+    int page = 1,
+    int size = 50,
+  }) async {
+    final Map<String, dynamic> json = await _send(
+      'GET',
+      '/api/blocklist',
+      token: token,
+      query: <String, String>{'page': '$page', 'size': '$size'},
+    );
+    return BlocklistPage.fromJson(json);
+  }
+
+  /// #22 拉黑（只给真人）。
+  Future<void> blockAccount({required String token, required int accountId}) async {
+    await _send('POST', '/api/blocklist', token: token, body: <String, Object?>{'account_id': accountId});
+  }
+
+  /// #23 取消拉黑。
+  Future<void> unblockAccount({required String token, required int accountId}) async {
+    await _send('DELETE', '/api/blocklist/$accountId', token: token);
   }
 
   /// #17 退群。

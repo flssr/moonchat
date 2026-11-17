@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
@@ -31,6 +32,7 @@ class ProfilePanel extends StatefulWidget {
 class _ProfilePanelState extends State<ProfilePanel> {
   String? _error;
   bool _busy = false;
+  bool _requested = false;
 
   @override
   void initState() {
@@ -43,6 +45,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.accountId != widget.accountId) {
       _error = null;
+      _requested = false;
       _load();
     }
   }
@@ -57,12 +60,13 @@ class _ProfilePanelState extends State<ProfilePanel> {
     }
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<bool> _run(Future<void> Function() action) async {
     setState(() => _busy = true);
     try {
       await action();
       // 关系动作会让状态层清掉资料页缓存，重新拉一次拿最新的 is_friend。
       await _load();
+      return true;
     } on ApiException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -72,6 +76,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
           ),
         );
       }
+      return false;
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -118,7 +123,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
                     Text(profile.displayName,
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink)),
                     const SizedBox(height: 2),
-                    MonoText('#${profile.accountId}', selectable: true),
+                    MonoText('#${shortAccountId(profile.accountId)}', selectable: true),
                   ],
                 ),
               ),
@@ -143,6 +148,14 @@ class _ProfilePanelState extends State<ProfilePanel> {
                   kind: MoonButtonKind.danger,
                   small: true,
                   onPressed: _busy ? null : () => _confirmDelete(profile),
+                ),
+                MoonButton(
+                  label: context.tr(widget.state.isBlocked(profile.accountId) ? '取消黑名单' : '黑名单'),
+                  kind: MoonButtonKind.secondary,
+                  small: true,
+                  onPressed: _busy
+                      ? null
+                      : () => _run(() => widget.state.toggleBlock(profile.accountId)),
                 ),
               ],
             ),
@@ -170,9 +183,17 @@ class _ProfilePanelState extends State<ProfilePanel> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 MoonButton(
-                  label: context.tr('加好友'),
+                  label: context.tr(_requested ? '已申请' : '加好友'),
                   small: true,
-                  onPressed: _busy ? null : () => _run(() => widget.state.requestFriend(profile.accountId)),
+                  onPressed: _busy || _requested
+                      ? null
+                      : () async {
+                          if (await _run(() => widget.state.requestFriend(profile.accountId))) {
+                            if (mounted) {
+                              setState(() => _requested = true);
+                            }
+                          }
+                        },
                 ),
                 const SizedBox(height: 8),
                 Text(context.tr('非好友看不到发消息入口：私聊只从好友列表进入。'), style: TextStyle(fontSize: 11.5, color: p.ink3)),
@@ -184,7 +205,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
   }
 
   Future<void> _confirmDelete(Profile profile) async {
-    final bool? ok = await showDialog<bool>(
+    final String? action = await showDialog<String>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         backgroundColor: context.moon.surface,
@@ -200,19 +221,27 @@ class _ProfilePanelState extends State<ProfilePanel> {
             label: context.tr('取消'),
             kind: MoonButtonKind.text,
             small: true,
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          MoonButton(
+            label: context.tr('删除并拉黑'),
+            kind: MoonButtonKind.danger,
+            small: true,
+            onPressed: () => Navigator.of(context).pop('block'),
           ),
           MoonButton(
             label: context.tr('删除'),
             kind: MoonButtonKind.danger,
             small: true,
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(context).pop('delete'),
           ),
         ],
       ),
     );
-    if (ok == true) {
+    if (action == 'delete') {
       await _run(() => widget.state.deleteFriend(profile.accountId));
+    } else if (action == 'block') {
+      await _run(() => widget.state.deleteFriendAndBlock(profile.accountId));
     }
   }
 }

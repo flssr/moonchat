@@ -1,6 +1,6 @@
 # 持久层与数据
 
-PostgreSQL 当前有八张表，Flyway 五个迁移文件，持久层统一使用 MyBatis-Plus。
+PostgreSQL 当前有八张表，Flyway 六个迁移文件，持久层统一使用 MyBatis-Plus。
 
 | 迁移 | 表 |
 | --- | --- |
@@ -9,6 +9,7 @@ PostgreSQL 当前有八张表，Flyway 五个迁移文件，持久层统一使�
 | `V3__biz_room.sql` | `room_info`、`room_member`、`account_room` |
 | `V4__biz_blocklist.sql` | `blocklist` |
 | `V5__biz_account_profile.sql` | 不建表：`account_info` 增加 `gender`（`text not null default 'private'`，枚举 male/female/other/private）与 `birthday`（`date` 可空） |
+| `V6__biz_account_avatar.sql` | 不建表：`account_info` 增加 `avatar`（`text` 可空，平台默认头像 key，null = 客户端生成首字头像） |
 
 ## 共同约定
 

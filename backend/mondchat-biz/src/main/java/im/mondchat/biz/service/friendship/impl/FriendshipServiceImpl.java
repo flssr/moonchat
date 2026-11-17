@@ -69,10 +69,15 @@ public class FriendshipServiceImpl implements FriendshipService {
             rows.removeIf(row -> row.requestedBy() == meId);
         }
 
-        Map<Long, String> names = displayNames(rows.stream().map(Row::peerAccountId).toList());
+        Map<Long, AccountInfo> infos = infos(rows.stream().map(Row::peerAccountId).toList());
         List<FriendshipResponses.Item> items = rows.stream()
-                .map(row -> new FriendshipResponses.Item(row.peerAccountId(), names.get(row.peerAccountId()),
-                        wanted, PENDING.equals(wanted), row.requestedAt().toInstant()))
+                .map(row -> {
+                    AccountInfo peer = infos.get(row.peerAccountId());
+                    return new FriendshipResponses.Item(row.peerAccountId(),
+                            peer == null ? null : peer.getDisplayName(),
+                            peer == null ? null : peer.getAvatar(),
+                            wanted, PENDING.equals(wanted), row.requestedAt().toInstant());
+                })
                 .toList();
         return new FriendshipResponses.ListResponse(items);
     }
@@ -269,14 +274,14 @@ public class FriendshipServiceImpl implements FriendshipService {
         }
     }
 
-    private Map<Long, String> displayNames(List<Long> accountIds) {
+    private Map<Long, AccountInfo> infos(List<Long> accountIds) {
         if (accountIds.isEmpty()) {
             return Map.of();
         }
         return accountInfoMapper.selectList(new LambdaQueryWrapper<AccountInfo>()
                         .in(AccountInfo::getAccountId, accountIds))
                 .stream()
-                .collect(Collectors.toMap(AccountInfo::getAccountId, AccountInfo::getDisplayName));
+                .collect(Collectors.toMap(AccountInfo::getAccountId, info -> info));
     }
 
     /** 两侧表取出来后摊平成同一个形状：对端、谁发起的、什么时候。 */

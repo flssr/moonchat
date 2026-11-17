@@ -30,20 +30,31 @@ class _MemoryStore implements SettingsStore {
   void saveAvatars(Map<int, String> next) => avatars = next;
 }
 
-AppState _state(_MemoryStore store) {
+http.Response _ok(String body) => http.Response(
+      body,
+      200,
+      headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
+    );
+
+AppState _state(_MemoryStore store, {List<String>? requests}) {
   final Account account = Account(accountId: 1, type: 'human', displayName: '阿月');
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
       client: MockClient((http.Request req) async {
+        requests?.add('${req.method} ${req.url.path}');
         // 资料编辑打开时会先 GET 完整资料，其余接口这个测试不关心。
         if (req.method == 'GET' && req.url.path == '/api/accounts/me') {
-          return http.Response(
-            '{"account_id":1,"display_name":"阿月","gender":"private","birthday":null,'
-            '"updated_at":"2026-11-12T00:00:00Z"}',
-            200,
-            headers: <String, String>{'content-type': 'application/json; charset=utf-8'},
-          );
+          return _ok('{"account_id":1,"display_name":"阿月","gender":"private",'
+              '"birthday":null,"avatar":null,"updated_at":"2026-11-12T00:00:00Z"}');
+        }
+        if (req.method == 'GET' && req.url.path == '/api/accounts/2') {
+          return _ok('{"account_id":2,"display_name":"小助手","avatar":"agent_gold","is_friend":false}');
+        }
+        // 头像走服务端：回显请求里的 key，null 原样回 null。
+        if (req.method == 'PUT' && req.url.path == '/api/accounts/me/avatar') {
+          final Object? value = (jsonBody(req.body) as Map<String, dynamic>)['avatar'];
+          return _ok('{"avatar":${value == null ? 'null' : '"$value"'}}');
         }
         return http.Response('{}', 404);
       }),
@@ -55,6 +66,15 @@ AppState _state(_MemoryStore store) {
     ..phase = AuthPhase.ready
     ..account = account
     ..accounts = <Account>[account];
+}
+
+Object? jsonBody(String body) {
+  // 只用来拆测试里的假请求体，不值得引入 dart:convert 的完整解析语义。
+  if (body.contains('"avatar":null')) {
+    return <String, dynamic>{'avatar': null};
+  }
+  final RegExpMatch? match = RegExp(r'"avatar":"([^"]*)"').firstMatch(body);
+  return <String, dynamic>{'avatar': match?.group(1)};
 }
 
 Future<void> _pumpShell(WidgetTester tester, AppState state) async {
@@ -94,26 +114,70 @@ void main() {
     expect(isKnownAvatar('uploaded.png'), isFalse);
   });
 
-  test('选头像按账号落本机偏好，清掉回默认', () {
+  test('新建 agent 的默认头像跟着 mine 回显进本机缓存', () async {
+    final _MemoryStore store = _MemoryStore();
+    final AppState state = AppState(
+      api: ApiClient(
+        baseUrl: 'http://mock.local',
+        client: MockClient((http.Request req) async {
+          if (req.method == 'POST' && req.url.path == '/api/agent-accounts') {
+            return _ok('{"account_id":100000003,"display_name":"小帮手","account_key":"key-1"}');
+          }
+          if (req.method == 'GET' && req.url.path == '/api/accounts/mine') {
+            // 默认头像由服务端在创建时分配，这里是回显。
+            return _ok('{"items":[{"account_id":100000001,"display_name":"阿月","type":"human",'
+                '"avatar":null},{"account_id":100000003,"display_name":"小帮手","type":"agent",'
+                '"avatar":"agent_pink"}]}');
+          }
+          return http.Response('{}', 404);
+        }),
+      ),
+      store: store,
+    )
+      ..loginToken = 'login-jwt'
+      ..identityToken = 'login-jwt'
+      ..phase = AuthPhase.ready;
+    addTearDown(state.dispose);
+
+    final CreatedAgent created = await state.createAgent('小帮手');
+
+    expect(state.avatarOf(created.accountId), 'agent_pink');
+    expect(store.avatars[created.accountId], 'agent_pink');
+    expect(kAgentAvatars, contains(state.avatarOf(created.accountId)));
+  });
+
+  test('选头像走服务端，回显写回本机缓存；清空也走服务端', () async {
+    final _MemoryStore store = _MemoryStore();
+    final List<String> requests = <String>[];
+    final AppState state = _state(store, requests: requests);
+    addTearDown(state.dispose);
+    expect(state.avatarOf(1), isNull);
+
+    await state.updateAvatar('female_02');
+    expect(requests, contains('PUT /api/accounts/me/avatar'));
+    expect(state.avatarOf(1), 'female_02');
+    expect(store.avatars[1], 'female_02');
+
+    await state.updateAvatar(null);
+    expect(state.avatarOf(1), isNull);
+    expect(store.avatars.containsKey(1), isFalse);
+  });
+
+  test('资料页拿到的头像也进本机缓存', () async {
     final _MemoryStore store = _MemoryStore();
     final AppState state = _state(store);
     addTearDown(state.dispose);
 
-    state.setAvatar(7, 'agent_gold');
-    expect(state.avatarOf(7), 'agent_gold');
-    expect(store.avatars[7], 'agent_gold');
+    await state.loadProfile(2);
 
-    state.setAvatar(7, 'not_a_key');
-    expect(state.avatarOf(7), 'agent_gold');
-
-    state.setAvatar(7, null);
-    expect(state.avatarOf(7), isNull);
-    expect(store.avatars.containsKey(7), isFalse);
+    expect(state.avatarOf(2), 'agent_gold');
+    expect(store.avatars[2], 'agent_gold');
   });
 
-  testWidgets('资料编辑里点一张默认头像就按账号存下', (WidgetTester tester) async {
+  testWidgets('资料编辑里点一张默认头像就存到服务端', (WidgetTester tester) async {
     final _MemoryStore store = _MemoryStore();
-    final AppState state = _state(store);
+    final List<String> requests = <String>[];
+    final AppState state = _state(store, requests: requests);
     addTearDown(state.dispose);
     await _pumpShell(tester, state);
 
@@ -122,7 +186,9 @@ void main() {
     expect(find.text('选择默认头像'), findsOneWidget);
 
     await tester.tap(find.bySemanticsLabel('头像 2'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(requests, contains('PUT /api/accounts/me/avatar'));
     expect(state.avatarOf(1), 'female_02');
     expect(store.avatars[1], 'female_02');
   });

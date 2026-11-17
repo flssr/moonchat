@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
@@ -135,7 +136,7 @@ class _AccountViewState extends State<AccountView> {
                                     MoonTag(text: a.isAgent ? 'agent' : context.tr('真人')),
                                   ],
                                 ),
-                                MonoText('#${a.accountId}'),
+                                MonoText('#${shortAccountId(a.accountId)}'),
                               ],
                             ),
                           ),
@@ -204,7 +205,10 @@ class _AccountViewState extends State<AccountView> {
                               me?.displayName ?? '',
                               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: p.ink),
                             ),
-                            MonoText('#${me?.accountId ?? ''}', selectable: true),
+                            MonoText(
+                              me == null ? '' : '#${shortAccountId(me.accountId)}',
+                              selectable: true,
+                            ),
                           ],
                         ),
                       ],

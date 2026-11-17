@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../api/models.dart';
 import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'friend_picker.dart';
 import 'profile_panel.dart';
 import 'widgets.dart';
 
@@ -57,11 +59,18 @@ class _MessagesViewState extends State<MessagesView> {
     super.dispose();
   }
 
-  TextEditingController _draftFor(String key) => _drafts.putIfAbsent(key, TextEditingController.new);
+  TextEditingController _draftFor(String key) => _drafts.putIfAbsent(
+        key,
+        () => TextEditingController(text: widget.state.draftFor(key)),
+      );
+
+  /// 上一次看到的资料浮层账号；用来识别「浮层刚关掉」。
+  int? _profileSeen;
 
   @override
   void initState() {
     super.initState();
+    _profileSeen = widget.state.profileAccountId;
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadActive());
   }
 
@@ -71,9 +80,22 @@ class _MessagesViewState extends State<MessagesView> {
     // 外壳每次 notifyListeners 都会重建这个 widget；只有「换了个会话」才该拉历史，
     // 否则新消息/筛选/资料页加载都会触发一次翻页，历史会被无声地整段抽干。
     final String? key = widget.state.activeConversationKey;
-    if (key != _loadedKey) {
+    final bool switched = key != _loadedKey;
+    if (switched) {
       _loadedKey = key;
       _loadActive();
+    }
+    // 资料浮层是全屏遮罩：用户在浮层里点「发消息」或点遮罩关掉后，
+    // 焦点要交还输入框；否则他以为能直接打字，输入其实还停在别处。
+    final int? profile = widget.state.profileAccountId;
+    final bool profileClosed = _profileSeen != null && profile == null;
+    _profileSeen = profile;
+    if (profileClosed || (switched && key != null)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _composerFocus.requestFocus();
+        }
+      });
     }
   }
 
@@ -96,13 +118,27 @@ class _MessagesViewState extends State<MessagesView> {
 
   List<Conversation> get _filtered {
     final List<Conversation> all = widget.state.conversations;
-    if (widget.state.filter == 'dm') {
-      return all.where((Conversation c) => c.type == 'dm').toList();
-    }
-    if (widget.state.filter == 'room') {
-      return all.where((Conversation c) => c.isRoom).toList();
-    }
-    return all;
+    final List<Conversation> list = widget.state.filter == 'dm'
+        ? all.where((Conversation c) => c.type == 'dm').toList()
+        : widget.state.filter == 'room'
+            ? all.where((Conversation c) => c.isRoom).toList()
+            : List<Conversation>.of(all);
+    // 有新消息的会话排到最前，按最后一条消息时间倒序；没有消息的留在后面。
+    list.sort((Conversation a, Conversation b) {
+      final DateTime? ta = widget.state.lastMessage(a.key)?.sentAt;
+      final DateTime? tb = widget.state.lastMessage(b.key)?.sentAt;
+      if (ta == null && tb == null) {
+        return a.title.compareTo(b.title);
+      }
+      if (ta == null) {
+        return 1;
+      }
+      if (tb == null) {
+        return -1;
+      }
+      return tb.compareTo(ta);
+    });
+    return list;
   }
 
   /// 输入框里的 Enter：直接发送；Shift+Enter 交给默认行为换行（issue #24）。
@@ -127,6 +163,30 @@ class _MessagesViewState extends State<MessagesView> {
     final TextEditingController composer = _draftFor(conv.key);
     final String text = composer.text;
     if (text.trim().isEmpty || _sending) {
+      return;
+    }
+    // 删好友后历史会话还在，但私聊必须仍是好友；后端也会拒，先在客户端给出提示。
+    if (!conv.isRoom &&
+        !widget.state.friends.any((Friendship f) => f.peerAccountId == conv.targetId)) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            backgroundColor: context.moon.surface,
+            content: Text(
+              context.tr('当前不是对方好友，请添加后再进行会话'),
+              style: TextStyle(fontSize: 13, color: context.moon.ink),
+            ),
+            actions: <Widget>[
+              MoonButton(
+                label: context.tr('知道了'),
+                small: true,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      }
       return;
     }
     setState(() {
@@ -253,11 +313,16 @@ class _MessagesViewState extends State<MessagesView> {
                               ),
                               child: Row(
                                 children: <Widget>[
-                                  MoonAvatar(
-                                    name: c.title,
-                                    seed: c.targetId,
-                                    avatar: c.isRoom ? null : widget.state.avatarOf(c.targetId),
-                                    size: 34,
+                                  GestureDetector(
+                                    onTap: c.isRoom
+                                        ? null
+                                        : () => widget.state.openProfileById(c.targetId),
+                                    child: MoonAvatar(
+                                      name: c.title,
+                                      seed: c.targetId,
+                                      avatar: c.isRoom ? null : widget.state.avatarOf(c.targetId),
+                                      size: 34,
+                                    ),
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
@@ -271,21 +336,65 @@ class _MessagesViewState extends State<MessagesView> {
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(fontSize: 13, color: p.ink),
                                         ),
-                                        Text(
-                                          c.isRoom
-                                              ? (c.memberCount == null
-                                                  ? context.tr('群聊')
-                                                  : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                                      'm': '${c.memberCount}',
-                                                    }))
-                                              : context.tr('私聊'),
-                                          style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                        Builder(
+                                          builder: (BuildContext context) {
+                                            final String draft = widget.state.draftFor(c.key);
+                                            if (draft.trim().isNotEmpty) {
+                                              return Text.rich(
+                                                TextSpan(children: <InlineSpan>[
+                                                  TextSpan(
+                                                    text: context.tr('【草稿】'),
+                                                    style: const TextStyle(
+                                                      fontSize: 11.5,
+                                                      color: Color(0xFFE81123),
+                                                    ),
+                                                  ),
+                                                  TextSpan(
+                                                    text: draft,
+                                                    style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                                  ),
+                                                ]),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              );
+                                            }
+                                            return Text(
+                                              widget.state.lastMessage(c.key)?.text ??
+                                                  (c.isRoom
+                                                      ? (c.memberCount == null
+                                                          ? context.tr('群聊')
+                                                          : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                              'm': '${c.memberCount}',
+                                                            }))
+                                                      : context.tr('私聊')),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
                                   ),
                                   if (c.isRoom && c.ownerAccountId == widget.state.account?.accountId)
                                     MoonTag(text: context.tr('群主')),
+                                  if (widget.state.unreadFor(c.key) > 0)
+                                    Container(
+                                      margin: const EdgeInsets.only(left: 6),
+                                      constraints: const BoxConstraints(minWidth: 18),
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: p.accent,
+                                        borderRadius: BorderRadius.circular(9),
+                                      ),
+                                      child: Text(
+                                        widget.state.unreadFor(c.key) > 99
+                                            ? '99+'
+                                            : '${widget.state.unreadFor(c.key)}',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(fontSize: 10, color: p.accentInk),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -317,7 +426,11 @@ class _MessagesViewState extends State<MessagesView> {
                             widget.state.account?.displayName ?? '',
                             style: TextStyle(fontSize: 12.5, color: p.ink),
                           ),
-                          MonoText('#${widget.state.account?.accountId ?? ''}'),
+                          MonoText(
+                            widget.state.account == null
+                                ? ''
+                                : '#${shortAccountId(widget.state.account!.accountId)}',
+                          ),
                         ],
                       ),
                     ),
@@ -429,6 +542,8 @@ class _MessagesViewState extends State<MessagesView> {
                                 child: TextField(
                                   controller: _draftFor(active.key),
                                   focusNode: _composerFocus,
+                                  onChanged: (String value) =>
+                                      widget.state.setDraft(active.key, value),
                                   minLines: 1,
                                   maxLines: 4,
                                   maxLength: 500,
@@ -531,10 +646,7 @@ class _MessageListState extends State<_MessageList> {
   Widget build(BuildContext context) {
     final List<ChatMessage> messages = widget.state.messagesOf(widget.conversation.key);
     if (messages.isEmpty) {
-      return MoonEmpty(
-        title: context.tr('关系已经成立，发第一句话吧'),
-        hint: context.tr('历史消息由客户端持 Turms 凭据直接查，Biz 不在读路径上。'),
-      );
+      return const SizedBox.shrink();
     }
     final bool loadingOlder = widget.state.isHistoryLoading(widget.conversation.key);
     final Map<int, RoomMember> members = <int, RoomMember>{
@@ -655,7 +767,8 @@ class _MessageGroup extends StatelessWidget {
       return state.account?.displayName ?? '';
     }
     if (conversation.isRoom) {
-      return members[first.senderAccountId]?.displayName ?? '#${first.senderAccountId}';
+      return members[first.senderAccountId]?.displayName ??
+          '#${shortAccountId(first.senderAccountId)}';
     }
     return conversation.title;
   }
@@ -682,11 +795,14 @@ class _MessageGroup extends StatelessWidget {
         mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: <Widget>[
           if (!mine) ...<Widget>[
-            MoonAvatar(
-              name: name,
-              seed: first.senderAccountId,
-              avatar: _avatar(),
-              size: 26,
+            GestureDetector(
+              onTap: () => state.openProfileById(first.senderAccountId),
+              child: MoonAvatar(
+                name: name,
+                seed: first.senderAccountId,
+                avatar: _avatar(),
+                size: 26,
+              ),
             ),
             const SizedBox(width: 10),
           ],
@@ -770,10 +886,9 @@ class _RoomInfo extends StatefulWidget {
 }
 
 class _RoomInfoState extends State<_RoomInfo> {
-  final TextEditingController _invite = TextEditingController();
   String? _inviteError;
 
-  /// 成员行上的错误（移除失败），与邀请输入框的错误分开显示。
+  /// 成员行上的错误（移除/邀请失败）。
   String? _memberError;
   bool _busy = false;
 
@@ -781,12 +896,6 @@ class _RoomInfoState extends State<_RoomInfo> {
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _invite.dispose();
-    super.dispose();
   }
 
   /// 数据都由状态层持有：这里只触发加载，不在视图里存第二份。
@@ -802,23 +911,29 @@ class _RoomInfoState extends State<_RoomInfo> {
     }
   }
 
-  Future<void> _inviteById() async {
-    final int? id = int.tryParse(_invite.text.trim());
-    if (id == null) {
-      setState(() => _inviteError = '需要数字账号 ID');
+  Future<void> _openInvite() async {
+    final Set<int> memberIds = (widget.state.membersOf(widget.roomId)?.items ?? const <RoomMember>[])
+        .map((RoomMember m) => m.accountId)
+        .toSet();
+    final List<int>? picked = await showFriendPicker(
+      context,
+      state: widget.state,
+      exclude: memberIds,
+      multi: false,
+    );
+    if (picked == null || picked.isEmpty || !mounted) {
       return;
     }
     setState(() {
       _busy = true;
-      _inviteError = null;
+      _memberError = null;
     });
     try {
       // `addMember` 已经把成员刷新过了，这里不再整群重拉。
-      await widget.state.addMember(widget.roomId, id);
-      _invite.clear();
+      await widget.state.addMember(widget.roomId, picked.first);
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _inviteError = e.displayText);
+        setState(() => _memberError = e.displayText);
       }
     } finally {
       if (mounted) {
@@ -927,43 +1042,40 @@ class _RoomInfoState extends State<_RoomInfo> {
               'm': '${members.total}',
             })),
           ),
+        InkWell(
+          onTap: _busy ? null : _openInvite,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: p.line),
+                  ),
+                  child: Icon(Icons.add, size: 14, color: p.ink3),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  context.tr('邀请'),
+                  style: TextStyle(fontSize: 12.5, color: p.ink3),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         if (_memberError != null) ...<Widget>[
           Text(context.tr(_memberError!), style: TextStyle(fontSize: 11, color: p.accent)),
           const SizedBox(height: 8),
         ],
-        Text(context.tr('邀请'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
-        const SizedBox(height: 6),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: p.line),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TextField(
-                  controller: _invite,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
-                  style: TextStyle(fontSize: 12.5, color: p.ink),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: context.tr('账号 ID'),
-                    hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            MoonButton(label: context.tr('邀请'), small: true, onPressed: _busy ? null : _inviteById),
-          ],
-        ),
         if (_inviteError != null) ...<Widget>[
-          const SizedBox(height: 6),
           Text(context.tr(_inviteError!), style: TextStyle(fontSize: 11, color: p.accent)),
+          const SizedBox(height: 8),
         ],
         const SizedBox(height: 16),
         if (isOwner)
@@ -1011,11 +1123,14 @@ class _ConversationMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
     if (!conversation.isRoom) {
-      return MoonAvatar(
-        name: conversation.title,
-        seed: conversation.targetId,
-        avatar: state.avatarOf(conversation.targetId),
-        size: 30,
+      return GestureDetector(
+        onTap: () => state.openProfileById(conversation.targetId),
+        child: MoonAvatar(
+          name: conversation.title,
+          seed: conversation.targetId,
+          avatar: state.avatarOf(conversation.targetId),
+          size: 30,
+        ),
       );
     }
     final Paged<RoomMember>? page = state.membersOf(conversation.targetId);

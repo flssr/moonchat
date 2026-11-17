@@ -26,6 +26,7 @@ class MoonSettings {
     this.textScale = 1.0,
     this.languageCode = 'zh',
     this.themeMode = ThemeMode.system,
+    this.notifyOnMessage = true,
   });
 
   static const MoonSettings defaults = MoonSettings();
@@ -33,6 +34,9 @@ class MoonSettings {
   final double textScale;
   final String languageCode;
   final ThemeMode themeMode;
+
+  /// 收到消息时是否弹桌面通知；列表里的未读/预览不受这个开关影响。
+  final bool notifyOnMessage;
 
   /// 本地偏好是信任边界：只接受三档字号、四门语言和三种主题，其他值回默认。
   factory MoonSettings.fromJson(Map<String, dynamic> json) {
@@ -53,7 +57,12 @@ class MoonSettings {
       'dark' => ThemeMode.dark,
       _ => ThemeMode.system,
     };
-    return MoonSettings(textScale: scale, languageCode: language, themeMode: theme);
+    return MoonSettings(
+      textScale: scale,
+      languageCode: language,
+      themeMode: theme,
+      notifyOnMessage: json['notify'] != false,
+    );
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -64,6 +73,7 @@ class MoonSettings {
           ThemeMode.dark => 'dark',
           ThemeMode.system => 'system',
         },
+        'notify': notifyOnMessage,
       };
 }
 
