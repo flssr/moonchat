@@ -20,6 +20,10 @@
 
 ## 目录
 
+- [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
+- [Turms 容器限额提到 1280m](#turms-容器限额提到-1280m)
+- [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
+- [Mongo 改最小分片集群](#mongo-改最小分片集群)
 - [生产部署与 CD](#生产部署与-cd)
 - [文档体系](#文档体系)
 - [架构骨架](#架构骨架)
@@ -33,6 +37,38 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### biz 镜像补 logs 目录
+
+2026-11-17 01:20 CST   [2026-11-16 17:20 UTC]
+
+决策：`backend/mondchat-biz/Dockerfile` 在 `useradd` 之后加一步 `mkdir -p /opt/mondchat/logs && chown -R 10001:10001 /opt/mondchat`，`COPY app.jar` 与 `USER mondchat` 位置不动。用数字 uid:gid 而不是 `mondchat:mondchat`，因为 `useradd --system` 不保证建同名的组，写组名有构建期失败的风险。
+
+原因：分片与内存两个问题修完后，`mondchat-biz` 起来就退出，日志是 `Logback configuration error: Failed to create parent directories for [/opt/mondchat/logs/...]`。`logback-spring.xml` 的滚动文件用相对路径 `logs/`，基准是 `WORKDIR /opt/mondchat`，而镜像里这个目录是 root 所有且根本不存在，`USER mondchat` 之后 uid 10001 建不出来，Spring Boot 判定日志初始化失败直接退出。容器内 `logs/` 不挂宿主卷，容器重建即丢，排障走 `docker logs`，这一点也写进了 `docs/truth/deployment.md` 的运维边界。
+
+### Turms 容器限额提到 1280m
+
+2026-11-17 01:10 CST   [2026-11-16 17:10 UTC]
+
+决策：`turms-service` 的 `mem_limit` 从 800m、`turms-gateway` 从 576m 都提到 1280m，`-Xmx448m` / `-Xmx320m` 与 metaspace 不动。常驻 `mem_limit` 合计因此变成 4288m，比物理 3.66G 还大，这是有意的：`mem_limit` 是上限不是预留，实际用量由 `-Xmx` 与缓存决定，稳态预估 2.8–3.3G，尖峰靠 2G swap。文档里写清了这一点，免得下次有人看到总和比机器大就当配置错误。
+
+原因：mongo 分片层起来后，`turms-service` 在启动阶段抛 `IncompatibleJvmException: The max available memory is too small to run. Expected: >= 1000MB. Actual: 760MB`。Root cause 在 `turms-server-common/.../healthcheck/MemoryHealthChecker.java` 132–142 行：它拿 cgroup 限额 × 95%（`MemoryHealthCheckProperties.maxAvailableMemoryPercentage` 默认 95）跟自己写死的 1000MB 下限比，低于就走人。800m × 0.95 = 760MB，正好卡死；换算下来容器限额至少约 1053m，取 1280m 留余量。这是继「Mongo 缓存 0.25G 下限」之后第二个只有真机才暴露的组件硬下限，两处都写进了 `docs/truth/deployment.md`。
+
+### Mongo 缓存下限改成 0.25G
+
+2026-11-17 00:45 CST   [2026-11-16 16:45 UTC]
+
+决策：两个 `mongod` 的 `--wiredTigerCacheSizeGB` 都从 0.12 / 0.2 改成 0.25，`mongo-config` 的 `mem_limit` 从 224m 提到 320m；常驻 `mem_limit` 合计从 3008m 变成 3104m，其余容器不动。
+
+原因：第一次真机部署时 `mongo-config` 一直 unhealthy，日志是 `storage.wiredTiger.engineConfig.cacheSizeGB must be greater than or equal to 0.25`——MongoDB 的 WiredTiger 缓存有 0.25G 下限，低于它 mongod 拒绝启动并进重启循环，`docker compose up -d --wait` 因此整单失败。这也是「配置参数必须先在真机上验一次」的实例：分片拓扑本身是对的，栽在一个库下限上。
+
+### Mongo 改最小分片集群
+
+2026-11-17 00:55 CST   [2026-11-16 16:55 UTC]
+
+决策：Mongo 从单节点副本集改成最小分片集群：`mongo-config`（`rs-config`，缓存 0.12G，限制 224m）、`mongo-shard`（`rs0`，缓存 0.2G，限制 384m）、`mongos`（限制 128m），加两个一次性初始化容器 `mongo-rs-init`（发起两个副本集并等 primary）与 `mongo-shard-init`（`sh.addShard`）；所有 Turms 的 Mongo URI 改成 `mongodb://mongos:27017/turms`，不带 `?replicaSet`。为腾出内存，`postgres` 384→320m、`redis` 128→96m、`turms-service` 832→800m（`-Xmx448m`）、`turms-gateway` 640→576m（`-Xmx320m`）、`mondchat-biz` 512→480m（`-Xmx256m`），常驻 `mem_limit` 合计仍是 3008m。
+
+原因：Turms 的 Mongo 客户端只接受 `SHARDED` / `LOAD_BALANCED`（`turms-service` 与 `turms-gateway` 的 `MongoConfig` 都写死，`TurmsMongoClient.verifyServers` 直接抛 `IncompatibleMongoException`），判定来自 Mongodb 驱动读 `hello` 得到的集群类型，副本集一律是 `REPLICA_SET`，没有任何配置项能绕过，`loadBalanced=true` 也不行——LB 模式要求对端是 mongos。实测这个版本在服务器上启动约 4 秒后自行退出，是方案设计问题不是内存问题。选最小分片而不是降 Turms 版本：`vendor/turms` 子模块与 `infra/turms/pinned-images.compose.yaml` 都钉在当前提交，降版本要换 digest 并重验冒烟，而数据全落一个 shard 时不需要分片键与 balancer，代价只是多两个进程和一层启动顺序。
 
 ### 生产部署与 CD
 

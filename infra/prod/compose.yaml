@@ -3,7 +3,9 @@
 # /im 转到 127.0.0.1:10510。只把这两个端口绑回环，其余一律不出容器网络。
 # 宿主上要预置的东西（.env、HMAC 密钥、docker login、2G swap）见 docs/truth/deployment.md。
 #
-# 用法：这套编排与 vendor/turms 那套冒烟编排同源但独立，别混着起。
+# Mongo 是最小分片集群（config 副本集 + 单 shard 副本集 + mongos）：Turms 的 Mongo 客户端
+# 只接受 SHARDED / LOAD_BALANCED，普通副本集会在启动约 4 秒后被 IncompatibleMongoException 拒绝退出。
+# 数据全落在一个 shard 里，不用分片键、不用 balancer；Turms 首次启动自己 enableSharding 与建索引。
 
 x-logging: &logging
   driver: json-file
@@ -23,7 +25,7 @@ services:
       POSTGRES_DB: mondchat
       POSTGRES_USER: mondchat
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
-    mem_limit: 384m
+    mem_limit: 320m
     volumes:
       - pg-data:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +37,7 @@ services:
   redis:
     <<: *service
     image: redis:8.0.3-alpine
-    mem_limit: 128m
+    mem_limit: 96m
     volumes:
       - redis-data:/data
     healthcheck:
@@ -44,43 +46,130 @@ services:
       timeout: 5s
       retries: 10
 
-  # 单节点副本集：Turms 要事务；vendor/turms 那套 config+shard+router 光内存上限就 6G，2C4G 起不来。
-  mongodb:
+  # 分片集群的三块：config 副本集、单 shard 副本集、mongos 路由。
+  mongo-config:
     <<: *service
     image: mongo:8.0.12-noble
-    command: ["mongod", "--bind_ip_all", "--replSet", "rs0", "--wiredTigerCacheSizeGB", "0.25"]
-    mem_limit: 512m
+    command:
+      - mongod
+      - --configsvr
+      - --replSet
+      - rs-config
+      - --port
+      - "27017"
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+    mem_limit: 320m
     volumes:
-      - mongo-data:/data/db
+      - mongo-config-data:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  # 一次性容器：发起副本集并等到选出 primary。重跑安全：rs.status() 通了就跳过 initiate。
-  mongodb-init:
+  mongo-shard:
+    <<: *service
+    image: mongo:8.0.12-noble
+    command:
+      - mongod
+      - --shardsvr
+      - --replSet
+      - rs0
+      - --port
+      - "27017"
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "0.25"
+    mem_limit: 384m
+    volumes:
+      - mongo-shard-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性：发起两个副本集并等到各自选出 primary。重跑安全，rs.status() 通了就跳过 initiate。
+  mongo-rs-init:
     image: mongo:8.0.12-noble
     restart: "no"
     mem_limit: 96m
     depends_on:
-      mongodb:
+      mongo-config:
+        condition: service_healthy
+      mongo-shard:
         condition: service_healthy
     entrypoint:
       - bash
       - -c
       - |
-        mongosh --host mongodb:27017 --quiet --eval '
+        wait_primary() {
+          for _ in $(seq 1 60); do
+            if mongosh --host "$1" --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+              return 0
+            fi
+            sleep 1
+          done
+          return 1
+        }
+
+        mongosh --host mongo-config:27017 --quiet --eval '
           try { rs.status() } catch (e) {
-            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongodb:27017" }] })
+            rs.initiate({ _id: "rs-config", configsvr: true, members: [{ _id: 0, host: "mongo-config:27017" }] })
           }'
+        wait_primary mongo-config:27017 || { echo "config 副本集没有选出 primary"; exit 1; }
+
+        mongosh --host mongo-shard:27017 --quiet --eval '
+          try { rs.status() } catch (e) {
+            rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "mongo-shard:27017" }] })
+          }'
+        wait_primary mongo-shard:27017 || { echo "shard 副本集没有选出 primary"; exit 1; }
+
+  # mongos 要 config 副本集有 primary 才肯启动，所以排在 rs-init 之后，不给它崩溃重启的机会。
+  mongos:
+    <<: *service
+    image: mongo:8.0.12-noble
+    command:
+      - mongos
+      - --configdb
+      - rs-config/mongo-config:27017
+      - --port
+      - "27017"
+      - --bind_ip_all
+    mem_limit: 128m
+    depends_on:
+      mongo-rs-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # 一次性：把 shard 接进集群。重跑安全，已经接上就直接退出。
+  mongo-shard-init:
+    image: mongo:8.0.12-noble
+    restart: "no"
+    mem_limit: 96m
+    depends_on:
+      mongos:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -c
+      - |
         for _ in $(seq 1 30); do
-          if mongosh --host mongodb:27017 --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+          if mongosh --host mongos:27017 --quiet \
+            --eval 'db.adminCommand({ listShards: 1 }).shards.map(s => s._id).join()' 2>/dev/null |
+            grep -q rs0; then
             exit 0
           fi
-          sleep 1
+          mongosh --host mongos:27017 --quiet --eval 'sh.addShard("rs0/mongo-shard:27017")' >/dev/null 2>&1 || true
+          sleep 2
         done
-        echo "mongodb 副本集没有选出 primary"
+        echo "mongos 没有接上 shard"
         exit 1
 
   # 集群与数据源配置走 -D（照 vendor/turms/docker-compose.standalone.yml 的写法），
@@ -88,27 +177,27 @@ services:
   turms-service:
     <<: *service
     image: ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c
-    mem_limit: 832m
+    mem_limit: 1280m
     depends_on:
-      mongodb:
-        condition: service_healthy
-      mongodb-init:
+      mongo-shard-init:
         condition: service_completed_successfully
+      mongos:
+        condition: service_healthy
       redis:
         condition: service_healthy
     environment:
       TURMS_SERVICE_JVM_OPTS: >-
-        -Xmx512m -XX:MaxMetaspaceSize=160m
+        -Xmx448m -XX:MaxMetaspaceSize=160m
         -Dturms.security.password.initial-root-password=${MONDCHAT_TURMS_ADMIN_PASSWORD:?请在 .env 设置 MONDCHAT_TURMS_ADMIN_PASSWORD}
         -Dturms.cluster.discovery.address.advertise-strategy=advertise_address
         -Dturms.cluster.discovery.address.advertise-host=turms-service
-        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.admin.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.user.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.group.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.conversation.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.message.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.service.mongo.conference.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.admin.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.user.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.group.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.conversation.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.message.uri=mongodb://mongos:27017/turms
+        -Dturms.service.mongo.conference.uri=mongodb://mongos:27017/turms
         -Dturms.service.redis.sequence-id.uri-list[0]=redis://redis:6379
         -Dturms.service.redis.session.uri-list[0]=redis://redis:6379
         -Dturms.service.redis.location.uri-list[0]=redis://redis:6379
@@ -122,17 +211,17 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 90s
 
   turms-gateway:
     <<: *service
     image: ghcr.io/turms-im/turms-gateway@sha256:99f51a29c23dff5590c6a71191b571d002a377afd161f29d5b500b188b0a42b6
-    mem_limit: 640m
+    mem_limit: 1280m
     depends_on:
-      mongodb:
-        condition: service_healthy
-      mongodb-init:
+      mongo-shard-init:
         condition: service_completed_successfully
+      mongos:
+        condition: service_healthy
       redis:
         condition: service_healthy
       turms-service:
@@ -142,14 +231,14 @@ services:
       - "127.0.0.1:10510:10510"
     environment:
       TURMS_GATEWAY_JVM_OPTS: >-
-        -Xmx384m -XX:MaxMetaspaceSize=128m
+        -Xmx320m -XX:MaxMetaspaceSize=128m
         -Dturms.cluster.connection.server.port=7610
         -Dturms.cluster.connection.server.port-auto-increment=false
         -Dturms.cluster.discovery.address.advertise-strategy=advertise_address
         -Dturms.cluster.discovery.address.advertise-host=turms-gateway
-        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.gateway.mongo.admin.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
-        -Dturms.gateway.mongo.user.uri=mongodb://mongodb:27017/turms?replicaSet=rs0
+        -Dturms.cluster.shared-config.mongo.uri=mongodb://mongos:27017/turms
+        -Dturms.gateway.mongo.admin.uri=mongodb://mongos:27017/turms
+        -Dturms.gateway.mongo.user.uri=mongodb://mongos:27017/turms
         -Dturms.gateway.redis.session.uri-list[0]=redis://redis:6379
         -Dturms.gateway.redis.location.uri-list[0]=redis://redis:6379
         -Dturms.gateway.redis.ip-blocklist.uri=redis://redis:6379
@@ -166,12 +255,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 60s
+      start_period: 90s
 
   mondchat-biz:
     <<: *service
     image: ${MONDCHAT_BIZ_IMAGE:?请在 .env 设置 MONDCHAT_BIZ_IMAGE}:${MONDCHAT_BIZ_TAG:-latest}
-    mem_limit: 512m
+    mem_limit: 480m
     depends_on:
       postgres:
         condition: service_healthy
@@ -184,7 +273,7 @@ services:
       - "127.0.0.1:8080:8080"
     environment:
       # JRE 镜像里没有 curl，不为一个探针改镜像；健康检查由 CD 在宿主上打 /actuator/health。
-      JAVA_TOOL_OPTIONS: -Xmx320m -XX:MaxMetaspaceSize=160m
+      JAVA_TOOL_OPTIONS: -Xmx256m -XX:MaxMetaspaceSize=128m
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mondchat
       SPRING_DATASOURCE_USERNAME: mondchat
       SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
@@ -206,4 +295,5 @@ services:
 volumes:
   pg-data:
   redis-data:
-  mongo-data:
+  mongo-config-data:
+  mongo-shard-data:

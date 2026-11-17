@@ -9,26 +9,45 @@
 
 ## 部署单元与内存预算
 
-2 核 4G 单机，PoC 个位数用户。六个常驻容器加一个一次性初始化容器：
+2 核 4G 单机，PoC 个位数用户。八个常驻容器加两个一次性初始化容器：
 
-| 容器 | 镜像 | 宿主端口 | `mem_limit` | JVM |
+| 容器 | 镜像 | 宿主端口 | `mem_limit` | JVM / 缓存 |
 | --- | --- | --- | --- | --- |
-| `postgres` | `postgres:17-alpine` | 无 | 384m | — |
-| `redis` | `redis:8.0.3-alpine` | 无 | 128m | — |
-| `mongodb` | `mongo:8.0.12-noble` | 无 | 512m | WiredTiger 缓存 0.25G |
-| `mongodb-init` | `mongo:8.0.12-noble` | 无 | 96m | 一次性，起完即退 |
-| `turms-service` | 钉 digest `2be538a0…` | 无 | 832m | `-Xmx512m` + metaspace 160m |
-| `turms-gateway` | 钉 digest `99f51a29…` | `127.0.0.1:10510` | 640m | `-Xmx384m` + metaspace 128m |
-| `mondchat-biz` | GHCR `mondchat-biz` | `127.0.0.1:8080` | 512m | `-Xmx320m` + metaspace 160m |
+| `postgres` | `postgres:17-alpine` | 无 | 320m | — |
+| `redis` | `redis:8.0.3-alpine` | 无 | 96m | — |
+| `mongo-config` | `mongo:8.0.12-noble` | 无 | 320m | config 副本集 `rs-config`，WiredTiger 缓存 0.25G |
+| `mongo-shard` | `mongo:8.0.12-noble` | 无 | 384m | shard 副本集 `rs0`，WiredTiger 缓存 0.25G |
+| `mongos` | `mongo:8.0.12-noble` | 无 | 128m | 路由，无缓存 |
+| `mongo-rs-init` | `mongo:8.0.12-noble` | 无 | 96m | 一次性，发起两个副本集 |
+| `mongo-shard-init` | `mongo:8.0.12-noble` | 无 | 96m | 一次性，`sh.addShard` |
+| `turms-service` | 钉 digest `2be538a0…` | 无 | 1280m | `-Xmx448m` + metaspace 160m |
+| `turms-gateway` | 钉 digest `99f51a29…` | `127.0.0.1:10510` | 1280m | `-Xmx320m` + metaspace 128m |
+| `mondchat-biz` | GHCR `mondchat-biz` | `127.0.0.1:8080` | 480m | `-Xmx256m` + metaspace 128m |
 
-常驻 `mem_limit` 合计 3008m ≈ 2.94G，加上一次性初始化的 96m 也不到 3.1G；宿主给 1Panel、OpenResty、dockerd 留约 1G，另配 **2G swap** 兜 JVM 启动尖峰。
+常驻 `mem_limit` 合计 **4288m ≈ 4.19G，比物理 3.66G 还大**，这不是笔误：`mem_limit` 是上限不是预留，实际用量由各容器的 `-Xmx` 与缓存决定。之所以给两个 Turms 容器 1280m，是因为 Turms 启动时自己校验「容器限额 × 0.95 ≥ 1000MB」（`MemoryHealthChecker`），低于约 1053m 直接抛 `IncompatibleJvmException` 退出；1280m × 0.95 = 1216MB 才算过关。稳态预估 2.8–3.3G，宿主给 1Panel、OpenResty、dockerd 留约 1G，尖峰靠 **2G swap**。容器只设 `mem_limit`、不设 `memswap_limit`，所以单个容器到顶时先被压进等量 swap 而不是立刻被 OOM kill，表现出来是变慢而不是崩。
 
-- 只有 `mondchat-biz` 的 8080 与 `turms-gateway` 的 10510 绑回环，给宿主上的 OpenResty 用；PostgreSQL、Redis、MongoDB、`turms-service` 的端口都不出容器网络。
+真觉得 swap 抖得太频繁时，第一个该调的旋钮是给两个 Turms 容器加 `-XX:MaxDirectMemorySize=128m`：`-XX:MaxDirectMemorySize` 不写时等于 `-Xmx`，Netty 的直连内存会再占一份和堆一样大的上限，PoC 的流量用不到那么多。
+
+- 只有 `mondchat-biz` 的 8080 与 `turms-gateway` 的 10510 绑回环，给宿主上的 OpenResty 用；PostgreSQL、Redis、MongoDB 三件套、`turms-service` 的端口都不出容器网络。
 - 不开 turms-admin。
-- MongoDB 是单节点副本集 `rs0`（Turms 要事务），由一次性容器 `mongodb-init` 发起并等到选出 primary，重跑安全。不用 `vendor/turms` 那套 config + shard + router：光内存上限就 6G，2C4G 起不来。
+- MongoDB 必须是分片集群，不是副本集：Turms 的 Mongo 客户端只接受 `SHARDED` / `LOAD_BALANCED`，把单节点副本集 URI（`?replicaSet=rs0`）交给它会抛 `IncompatibleMongoException` 并在启动约 4 秒后退出，没有配置项能绕过——判定来自驱动读 `hello` 得到的集群类型。所以用最小分片：config 副本集 + 单个 shard 副本集 + mongos，数据全落一个 shard，不用分片键、不用 balancer，URI 统一 `mongodb://mongos:27017/turms`。
+- 启动顺序由依赖锁住：两个 `mongod` 健康 → `mongo-rs-init` 发起两个副本集并等到各自 primary → `mongos` 才能起（config 副本集没 primary 时 mongos 会直接退出）→ `mongo-shard-init` 把 shard 接进集群 → Turms 两个进程。两个初始化容器都可重跑：副本集已发起、shard 已接上就直接退出。
+- `--wiredTigerCacheSizeGB` 的下限是 0.25G，低于它 mongod 直接拒绝启动（`storage.wiredTiger.engineConfig.cacheSizeGB must be greater than or equal to 0.25`），容器会一直 unhealthy，`up -d --wait` 直接失败。两个 `mongod` 都钉 0.25G；`mongo-config` 的 `mem_limit` 因此是 320m 而不是 224m。
+- 不在初始化里做 `enableSharding` / `shardCollection`：Turms 首次启动自己 `enableSharding` 并按实体上的 `@Sharded` 建分片键与索引，重复做会撞索引未就绪。
 - Redis 分库：Turms 用 DB0，Biz 的限流桶用 DB1。
 - Turms 的集群与数据源配置走 `TURMS_SERVICE_JVM_OPTS` / `TURMS_GATEWAY_JVM_OPTS` 里的 `-D`（与 `vendor/turms/docker-compose.standalone.yml` 同源），身份模式与密钥路径用环境变量。
 - 日志收敛到每容器 3 × 10MB 的 json-file，不占满 4G 机器的盘。
+
+### 从单节点副本集编排升级
+
+跑过旧编排的机器上留着 `mondchat_mongo-data` 卷，里面是按普通副本集初始化的 `rs0`，不能直接当 shard 用（没按 `--shardsvr` 建过），`mongo-shard` 会起不来。切到分片编排前删掉这一个卷即可，PG 与 Redis 的卷不动：
+
+```bash
+cd /opt/mondchat && docker compose down
+docker volume rm mondchat_mongo-data
+```
+
+Turms 的数据是可重建投影，账号真相在 PG，所以这里不需要备份。
 
 ## 反向代理（1Panel OpenResty）
 
@@ -129,4 +148,4 @@ server {
 
 ## 运维边界
 
-V1 单实例起步，不引入消息队列。日志使用控制台与滚动文件双输出；容器是否挂载 `logs/` 由部署决定，日志不是业务真相。健康检查由 Spring Boot Actuator 提供，不进入业务接口契约。
+V1 单实例起步，不引入消息队列。日志使用控制台与滚动文件双输出；滚动文件写在容器内 `/opt/mondchat/logs`，目录由镜像在 `useradd` 之后建好并交给 uid 10001，**不挂宿主卷**，容器重建即丢，日志不是业务真相——排障先看 `docker logs`。健康检查由 Spring Boot Actuator 提供，不进入业务接口契约。

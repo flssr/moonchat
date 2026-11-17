@@ -291,12 +291,13 @@ html.js .reveal {
   opacity: 0;
   transform: translateY(16px);
 }
-.reveal.is-in { opacity: 1; transform: none; }
+/* 选择器必须带上 html.js，否则压不过上面那条，正文会一直透明。 */
+html.js .reveal.is-in { opacity: 1; transform: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
-  .reveal { opacity: 1; transform: none; }
+  html.js .reveal { opacity: 1; transform: none; }
 }
 
 /* ---------- responsive ---------- */
