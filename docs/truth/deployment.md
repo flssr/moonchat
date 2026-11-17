@@ -124,7 +124,15 @@ CI 与 CD 都支持手动触发：`gh workflow run ci.yml --ref <分支>` 跑接
 
 PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之间 `pull_request` 事件整段不创建 workflow run（`workflow_dispatch` 与 push 到 main 正常），之后自行恢复；过程和证据见 #42。
 
-官网静态页不在 CD 里：`site/` 改动要手工铺到 80 端口站点的根目录，线上文件与仓库不一致时（今天的 #39 修复）用哈希对一下就知道（见 #43）。
+## 官网静态页
+
+[`.github/workflows/site.yml`](../../.github/workflows/site.yml) 单独发 80 端口的官网，不进后端 CD：`site/**` 推到 `main` 时触发，也可以 `gh workflow run site.yml --ref main` 手动发。
+
+1. 站点根目录不写死：用 `styles.css` 里的固定标语在 `/site`、`/opt/1panel/www`、`/www`、`/var/www` 里找，找到的那一层就是根；要覆盖就配仓库变量 `SITE_ROOT`。
+2. `tar` 打包 `site/` 经 SSH 解到站点根目录，只覆盖同名文件，不删站点目录里的其它东西。
+3. 冒烟：逐个 `curl -fsS "https://mondchat.com/<文件>?t=<时间戳>"` 与仓库文件比 SHA256，不一致就失败。
+
+它复用 CD 的 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_KNOWN_HOSTS`；部署账号要对站点根目录有写权限。
 
 需要用户配的 GitHub Secrets：
 

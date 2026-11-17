@@ -1,0 +1,83 @@
+name: Site
+
+# 官网静态页：site/ 推到 main 就铺到服务器 80 端口站点的根目录。
+# CD 只做后端镜像；这一条只动 site/，也能手动触发（合并前先试发一次）。
+on:
+  push:
+    branches: [main]
+    paths: ['site/**']
+  workflow_dispatch:
+
+# 静态页部署很快，串行排队、不取消进行中的那次：半截替换比晚几秒更糟。
+concurrency:
+  group: site-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 配置 SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      # 站点根目录不写死：用 styles.css 里的固定标语在候选目录里找，找到就说明是同一份官网。
+      # 要覆盖就配仓库变量 SITE_ROOT（Settings → Variables）。
+      - name: 找站点根目录
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SITE_ROOT_HINT: ${{ vars.SITE_ROOT }}
+        run: |
+          cat > /tmp/find-root.sh <<'EOF'
+          set -eu
+          for d in "${SITE_ROOT_HINT:-}" /site /opt/1panel/www /www /var/www; do
+            [ -n "$d" ] || continue
+            [ -d "$d" ] || continue
+            hit=$(grep -rls --include=styles.css 'MondChat official site' "$d" 2>/dev/null | head -n1 || true)
+            if [ -n "$hit" ]; then dirname "$hit"; exit 0; fi
+          done
+          echo '找不到线上 site 根目录；候选目录：' >&2
+          ls -la /site 2>/dev/null || true
+          ls -la /opt/1panel/www/sites 2>/dev/null || true
+          ls -la /www 2>/dev/null || true
+          exit 1
+          EOF
+          ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "SITE_ROOT_HINT='$SITE_ROOT_HINT' bash -s" < /tmp/find-root.sh \
+            | tee /tmp/site-root
+          test -s /tmp/site-root
+          echo "SITE_ROOT=$(cat /tmp/site-root)" >> "$GITHUB_ENV"
+
+      # 只覆盖 site/ 里有的文件：不删站点目录里的其它东西（1Panel 自己的入口文件等）。
+      - name: 同步 site/
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          tar -C site -czf - . \
+            | ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$SITE_ROOT'"
+          echo "已铺到 $SITE_ROOT"
+
+      - name: 冒烟：线上文件与仓库逐字节一致
+        run: |
+          for f in styles.css index.html app.js sky.js; do
+            want=$(sha256sum "site/$f" | awk '{print $1}')
+            got=$(curl -fsS "https://mondchat.com/$f?t=$(date +%s)" | sha256sum | awk '{print $1}')
+            if [ "$want" != "$got" ]; then
+              echo "线上 $f 与仓库不一致：$got != $want"
+              exit 1
+            fi
+            echo "$f OK"
+          done
