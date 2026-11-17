@@ -120,6 +120,12 @@ server {
 
 部署串行排队，不取消进行中的那一次。回滚：把 `/opt/mondchat/.env` 的 `MONDCHAT_BIZ_TAG` 改成要回退的 sha，再执行一次 `docker compose up -d`。
 
+CI 与 CD 都支持手动触发：`gh workflow run ci.yml --ref <分支>` 跑接口 / 前端 / 桌面三条检查，`gh workflow run cd.yml --ref main` 重新构建并上线（等价于 push 一次 main）。
+
+仓库的 `pull_request` 事件当前不创建 workflow run（2026-11-17 12:17 UTC 起，push 到 main 与 `workflow_dispatch` 正常，见 #42）：PR 合并前至少手动跑一次 CI，别指望 PR 页上的自动检查。
+
+官网静态页不在 CD 里：`site/` 改动要手工铺到 80 端口站点的根目录，线上文件与仓库不一致时（今天的 #39 修复）用哈希对一下就知道（见 #43）。
+
 需要用户配的 GitHub Secrets：
 
 | Secret | 用途 |
