@@ -176,6 +176,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '【草稿】': '[Draft]',
     '当前不是对方好友，请添加后再进行会话': 'You are not friends anymore. Add them back to chat.',
     '知道了': 'OK',
+    '搜索好友短号': 'Search friend number',
+    '无此好友': 'No such friend',
+    '选择好友': 'Select a friend',
+    '邀请好友': 'Invite friends',
+    '已选 {n} 位好友': 'Selected {n} friends',
+    '确认': 'Confirm',
     '删除后会话保留、历史只读，不能再发新消息。':
         'After deletion the conversation remains, history is read-only, no new messages.',
     '这是你自己。': 'This is you.',
@@ -417,6 +423,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '【草稿】': '【下書き】',
     '当前不是对方好友，请添加后再进行会话': 'もう友達ではありません。追加してから会話してください。',
     '知道了': 'OK',
+    '搜索好友短号': '友達の短番号で検索',
+    '无此好友': '友達が見つかりません',
+    '选择好友': '友達を選択',
+    '邀请好友': '友達を招待',
+    '已选 {n} 位好友': '友達を {n} 人選択',
+    '确认': '確認',
     '删除后会话保留、历史只读，不能再发新消息。':
         '削除後も会話は残り、履歴は読み取り専用で新規送信不可。',
     '这是你自己。': 'あなた自身です。',
@@ -656,6 +668,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '当前不是对方好友，请添加后再进行会话':
         'Ihr seid keine Freunde mehr. Fügt euch wieder hinzu, um zu chatten.',
     '知道了': 'OK',
+    '搜索好友短号': 'Freundesnummer suchen',
+    '无此好友': 'Kein solcher Freund',
+    '选择好友': 'Freund auswählen',
+    '邀请好友': 'Freunde einladen',
+    '已选 {n} 位好友': '{n} Freunde ausgewählt',
+    '确认': 'Bestätigen',
     '删除后会话保留、历史只读，不能再发新消息。':
         'Nach dem Löschen bleibt die Unterhaltung, der Verlauf ist schreibgeschützt, keine neuen Nachrichten.',
     '这是你自己。': 'Das bist du.',

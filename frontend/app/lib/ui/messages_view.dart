@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'friend_picker.dart';
 import 'profile_panel.dart';
 import 'widgets.dart';
 
@@ -885,10 +886,9 @@ class _RoomInfo extends StatefulWidget {
 }
 
 class _RoomInfoState extends State<_RoomInfo> {
-  final TextEditingController _invite = TextEditingController();
   String? _inviteError;
 
-  /// 成员行上的错误（移除失败），与邀请输入框的错误分开显示。
+  /// 成员行上的错误（移除/邀请失败）。
   String? _memberError;
   bool _busy = false;
 
@@ -896,12 +896,6 @@ class _RoomInfoState extends State<_RoomInfo> {
   void initState() {
     super.initState();
     _load();
-  }
-
-  @override
-  void dispose() {
-    _invite.dispose();
-    super.dispose();
   }
 
   /// 数据都由状态层持有：这里只触发加载，不在视图里存第二份。
@@ -917,23 +911,29 @@ class _RoomInfoState extends State<_RoomInfo> {
     }
   }
 
-  Future<void> _inviteById() async {
-    final int? id = accountIdFromInput(_invite.text);
-    if (id == null) {
-      setState(() => _inviteError = '需要短号或完整账号 ID');
+  Future<void> _openInvite() async {
+    final Set<int> memberIds = (widget.state.membersOf(widget.roomId)?.items ?? const <RoomMember>[])
+        .map((RoomMember m) => m.accountId)
+        .toSet();
+    final List<int>? picked = await showFriendPicker(
+      context,
+      state: widget.state,
+      exclude: memberIds,
+      multi: false,
+    );
+    if (picked == null || picked.isEmpty || !mounted) {
       return;
     }
     setState(() {
       _busy = true;
-      _inviteError = null;
+      _memberError = null;
     });
     try {
       // `addMember` 已经把成员刷新过了，这里不再整群重拉。
-      await widget.state.addMember(widget.roomId, id);
-      _invite.clear();
+      await widget.state.addMember(widget.roomId, picked.first);
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _inviteError = e.displayText);
+        setState(() => _memberError = e.displayText);
       }
     } finally {
       if (mounted) {
@@ -1042,43 +1042,40 @@ class _RoomInfoState extends State<_RoomInfo> {
               'm': '${members.total}',
             })),
           ),
+        InkWell(
+          onTap: _busy ? null : _openInvite,
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: <Widget>[
+                Container(
+                  width: 24,
+                  height: 24,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: p.line),
+                  ),
+                  child: Icon(Icons.add, size: 14, color: p.ink3),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  context.tr('邀请'),
+                  style: TextStyle(fontSize: 12.5, color: p.ink3),
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 16),
         if (_memberError != null) ...<Widget>[
           Text(context.tr(_memberError!), style: TextStyle(fontSize: 11, color: p.accent)),
           const SizedBox(height: 8),
         ],
-        Text(context.tr('邀请'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
-        const SizedBox(height: 6),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(color: p.line),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: TextField(
-                  controller: _invite,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
-                  style: TextStyle(fontSize: 12.5, color: p.ink),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    border: InputBorder.none,
-                    hintText: context.tr('短号或账号 ID'),
-                    hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            MoonButton(label: context.tr('邀请'), small: true, onPressed: _busy ? null : _inviteById),
-          ],
-        ),
         if (_inviteError != null) ...<Widget>[
-          const SizedBox(height: 6),
           Text(context.tr(_inviteError!), style: TextStyle(fontSize: 11, color: p.accent)),
+          const SizedBox(height: 8),
         ],
         const SizedBox(height: 16),
         if (isOwner)
