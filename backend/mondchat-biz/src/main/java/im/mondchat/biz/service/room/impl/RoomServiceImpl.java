@@ -126,11 +126,16 @@ public class RoomServiceImpl implements RoomService {
                 .orderByAsc(RoomMember::getJoinedAt)
                 .orderByAsc(RoomMember::getAccountId)
                 .last("limit " + size + " offset " + ((long) (page - 1) * size)));
-        Map<Long, String> names = displayNames(rows.stream().map(RoomMember::getAccountId).toList());
+        Map<Long, AccountInfo> infos = infos(rows.stream().map(RoomMember::getAccountId).toList());
         Set<Long> friends = acceptedFriendIds(me.accountId());
         List<RoomResponses.MemberItem> items = rows.stream()
-                .map(row -> new RoomResponses.MemberItem(row.getAccountId(), names.get(row.getAccountId()),
-                        friends.contains(row.getAccountId()), row.getJoinedAt().toInstant()))
+                .map(row -> {
+                    AccountInfo member = infos.get(row.getAccountId());
+                    return new RoomResponses.MemberItem(row.getAccountId(),
+                            member == null ? null : member.getDisplayName(),
+                            member == null ? null : member.getAvatar(),
+                            friends.contains(row.getAccountId()), row.getJoinedAt().toInstant());
+                })
                 .toList();
         return new RoomResponses.MembersResponse(items, page, size, total);
     }
@@ -315,14 +320,14 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
-    private Map<Long, String> displayNames(List<Long> accountIds) {
+    private Map<Long, AccountInfo> infos(List<Long> accountIds) {
         if (accountIds.isEmpty()) {
             return Map.of();
         }
         return accountInfoMapper.selectList(new LambdaQueryWrapper<AccountInfo>()
                         .in(AccountInfo::getAccountId, accountIds))
                 .stream()
-                .collect(Collectors.toMap(AccountInfo::getAccountId, AccountInfo::getDisplayName));
+                .collect(Collectors.toMap(AccountInfo::getAccountId, info -> info));
     }
 
     /** 成员列表里的 `is_friend`：一次取到我的好友集合，省掉每行一次查询。 */

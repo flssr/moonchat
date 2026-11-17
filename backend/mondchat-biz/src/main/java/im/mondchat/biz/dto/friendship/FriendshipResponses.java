@@ -15,8 +15,8 @@ public final class FriendshipResponses {
     }
 
     @Schema(name = "FriendshipItem")
-    public record Item(long peerAccountId, String displayName, String status, boolean incoming,
-            Instant requestedAt) {
+    public record Item(long peerAccountId, String displayName, String avatar, String status,
+            boolean incoming, Instant requestedAt) {
     }
 
     @Schema(name = "FriendshipListResponse")

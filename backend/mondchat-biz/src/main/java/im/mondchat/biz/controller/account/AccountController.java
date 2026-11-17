@@ -38,6 +38,13 @@ public class AccountController {
         return accountService.updateProfile(me, request);
     }
 
+    /** 头像单独一条路由：资料保存是全量 `PUT`，把头像塞进去会让选头像顺带提交昵称（触发 Turms 改名）。 */
+    @PutMapping("/me/avatar")
+    public AccountResponses.AvatarResponse updateAvatar(CurrentAccount me,
+            @Valid @RequestBody AccountRequests.AvatarRequest request) {
+        return accountService.updateAvatar(me, request);
+    }
+
     @GetMapping("/{accountId}")
     public AccountResponses.ProfileResponse profile(CurrentAccount me,
             @PathVariable("accountId") long accountId) {

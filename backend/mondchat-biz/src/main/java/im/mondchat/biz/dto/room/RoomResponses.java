@@ -31,7 +31,8 @@ public final class RoomResponses {
             Instant createdAt) {
     }
 
-    public record MemberItem(long accountId, String displayName, boolean isFriend, Instant joinedAt) {
+    public record MemberItem(long accountId, String displayName, String avatar, boolean isFriend,
+            Instant joinedAt) {
     }
 
     /** 唯一分页的接口：群规模没有上限，其余列表 V1 一次返回全量。 */

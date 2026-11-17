@@ -8,13 +8,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 /**
  * #1 #2 #3 #4 #5 #6 #7 #20 的响应体。这里是一张白名单：只放契约里写过的字段，
  * 实体（`email` / `credential_hash` / `status` / 时间列）一律不出现在响应里。
+ *
+ * <p>`avatar` 是平台默认头像的 key（真人 6 张、agent 3 张），null 表示客户端按账号 id 生成首字头像；
+ * 它是可空列，所以跟其它字段一样直接出现，不靠 `@JsonInclude` 省略。
  */
 public final class AccountResponses {
 
     private AccountResponses() {
     }
 
-    public record AccountSummary(long accountId, String type, String displayName) {
+    public record AccountSummary(long accountId, String type, String displayName, String avatar) {
     }
 
     public record RegisterResponse(long accountId, String displayName, String type) {
@@ -29,8 +32,8 @@ public final class AccountResponses {
      * 调 `/api`（来源是 `owner`，不是 `agent`）。密钥形态不发登录 JWT：agent 端点不应该有能力以 owner 来源写入。
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    public record SessionResponse(long accountId, String displayName, String type, String loginToken,
-            Instant loginExpiresAt, Turms turms, Instant expiresAt) {
+    public record SessionResponse(long accountId, String displayName, String type, String avatar,
+            String loginToken, Instant loginExpiresAt, Turms turms, Instant expiresAt) {
 
         /** `userId` 就是 `account_id`；`credential` 是 Turms 能验的 JWT，客户端当 password 传给 SDK。 */
         public record Turms(long userId, String credential, String gatewayUrl) {
@@ -46,10 +49,14 @@ public final class AccountResponses {
 
     /** #6 与 #24 同形：本人完整资料，编辑页回填与保存回显用它。 */
     public record AccountProfileResponse(long accountId, String displayName, String gender,
-            LocalDate birthday, Instant updatedAt) {
+            LocalDate birthday, String avatar, Instant updatedAt) {
     }
 
-    /** #7 资料页：只有名字、账号 id、是否已是好友；非好友也看得到，但里面没有「发消息」。 */
-    public record ProfileResponse(long accountId, String displayName, boolean isFriend) {
+    /** #7 资料页：只有名字、账号 id、头像与是否已是好友；非好友也看得到，但里面没有「发消息」。 */
+    public record ProfileResponse(long accountId, String displayName, String avatar, boolean isFriend) {
+    }
+
+    /** 改头像的响应：整枚替换后回显，null 就是清回生成的首字头像。 */
+    public record AvatarResponse(String avatar) {
     }
 }

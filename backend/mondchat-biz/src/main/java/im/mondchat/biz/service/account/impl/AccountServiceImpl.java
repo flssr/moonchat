@@ -41,6 +41,11 @@ public class AccountServiceImpl implements AccountService {
     private static final String AGENT = "agent";
     private static final String FROZEN = "frozen";
 
+    /** 平台默认头像：真人 6 张、agent 3 张（issue #10）。key 与客户端资源同名，存 key 不存 URL。 */
+    private static final List<String> HUMAN_AVATARS = List.of(
+            "female_01", "female_02", "female_03", "male_01", "male_02", "male_03");
+    private static final List<String> AGENT_AVATARS = List.of("agent_blue", "agent_pink", "agent_gold");
+
     private final AccountMapper accountMapper;
     private final AccountInfoMapper accountInfoMapper;
     private final CredentialHasher hasher;
@@ -83,6 +88,12 @@ public class AccountServiceImpl implements AccountService {
         String accountKey = UUID.randomUUID().toString();
         Account account = createAccount(AGENT, me.accountId(), null, request.displayName(),
                 hasher.hashAccountKey(accountKey));
+        // 新 agent 自带一枚默认 agent 头像：按账号 id 在三张里轮换，号段固定所以结果稳定；
+        // 不落一枚的话，列表与资料页只剩客户端按 id 生成的首字头像（issue #10）。
+        String avatar = AGENT_AVATARS.get((int) (account.getId() % AGENT_AVATARS.size()));
+        accountInfoMapper.update(null, new LambdaUpdateWrapper<AccountInfo>()
+                .eq(AccountInfo::getAccountId, account.getId())
+                .set(AccountInfo::getAvatar, avatar));
         // 归属者与这个 agent 创建即好友：同一事务，Turms 建用户失败就连好友两行一起回滚
         friendships.createAccepted(me.accountId(), account.getId());
         return new AccountResponses.AgentAccountResponse(account.getId(), request.displayName(), accountKey);
@@ -97,7 +108,7 @@ public class AccountServiceImpl implements AccountService {
             throw ApiException.unauthenticated();
         }
         Account account = accountMapper.selectById(info.getAccountId());
-        return tokenResponse(account.getId(), account.getType(), info.getDisplayName());
+        return tokenResponse(account.getId(), account.getType(), info.getDisplayName(), info.getAvatar());
     }
 
     /** 归属关系本身就是授权：没有授权表，也没有临时凭据。账号密钥形态只换密钥所属账号的凭据。 */
@@ -127,6 +138,7 @@ public class AccountServiceImpl implements AccountService {
         // 归属者切账号时顺带签一份该账号的登录 JWT：没有它，切进去之后连 /api 都调不了
         LoginTokenService.Issued loginToken = keyShape ? null : loginTokens.issue(account.getId());
         return new AccountResponses.SessionResponse(account.getId(), info.getDisplayName(), account.getType(),
+                info.getAvatar(),
                 loginToken == null ? null : loginToken.token(),
                 loginToken == null ? null : loginToken.expiresAt(),
                 new AccountResponses.SessionResponse.Turms(account.getId(), credential.token(),
@@ -168,7 +180,7 @@ public class AccountServiceImpl implements AccountService {
         }
 
         return new AccountResponses.AccountProfileResponse(me.accountId(), request.displayName(),
-                request.gender(), birthday, now.toInstant());
+                request.gender(), birthday, info.getAvatar(), now.toInstant());
     }
 
     /** #24 只读自己那一行：不碰 `account` 表、不查好友关系。 */
@@ -176,7 +188,38 @@ public class AccountServiceImpl implements AccountService {
     public AccountResponses.AccountProfileResponse myProfile(CurrentAccount me) {
         AccountInfo info = accountInfoMapper.selectById(me.accountId());
         return new AccountResponses.AccountProfileResponse(info.getAccountId(), info.getDisplayName(),
-                info.getGender(), info.getBirthday(), info.getUpdatedAt().toInstant());
+                info.getGender(), info.getBirthday(), info.getAvatar(), info.getUpdatedAt().toInstant());
+    }
+
+    /**
+     * 改头像：`PUT` 语义（整枚替换），`null` = 清回生成的首字头像。
+     * 合法 key 按账号类型分：真人 6 张、agent 3 张，跨表由应用层守（issue #10）。
+     */
+    @Override
+    @Transactional
+    public AccountResponses.AvatarResponse updateAvatar(CurrentAccount me,
+            AccountRequests.AvatarRequest request) {
+        Account account = accountMapper.selectById(me.accountId());
+        AccountInfo info = accountInfoMapper.selectById(me.accountId());
+        if (FROZEN.equals(info.getStatus())) {
+            throw ApiException.accountFrozen();
+        }
+        String avatar = request.avatar();
+        if (avatar != null) {
+            List<String> allowed = AGENT.equals(account.getType()) ? AGENT_AVATARS : HUMAN_AVATARS;
+            if (!allowed.contains(avatar)) {
+                throw ApiException.validationFailed("avatar",
+                        AGENT.equals(account.getType())
+                                ? "agent 只能用 agent 的默认头像"
+                                : "真人只能用真人的默认头像");
+            }
+        }
+        // avatar 是可空列，清空时必须显式写 null：updateById 会跳过 null 字段
+        accountInfoMapper.update(null, new LambdaUpdateWrapper<AccountInfo>()
+                .eq(AccountInfo::getAccountId, me.accountId())
+                .set(AccountInfo::getAvatar, avatar)
+                .set(AccountInfo::getUpdatedAt, OffsetDateTime.now()));
+        return new AccountResponses.AvatarResponse(avatar);
     }
 
     /** 正则只挡形状：日历上不存在的日期与未来日期都在这里挡，`field` 始终指回 `birthday`。 */
@@ -196,14 +239,14 @@ public class AccountServiceImpl implements AccountService {
         return parsed;
     }
 
-    /** 资料页只返回名字、账号 id、是否已是好友；`type`、`email`、归属与时间列一概不出门。 */
+    /** 资料页只返回名字、账号 id、头像与是否已是好友；`type`、`email`、归属与时间列一概不出门。 */
     @Override
     public AccountResponses.ProfileResponse profile(CurrentAccount me, long accountId) {
         AccountInfo info = accountInfoMapper.selectById(accountId);
         if (info == null) {
             throw ApiException.notFound("账号不存在");
         }
-        return new AccountResponses.ProfileResponse(accountId, info.getDisplayName(),
+        return new AccountResponses.ProfileResponse(accountId, info.getDisplayName(), info.getAvatar(),
                 friendships.areFriends(me.accountId(), accountId));
     }
 
@@ -217,19 +260,19 @@ public class AccountServiceImpl implements AccountService {
                 .eq(Account::getOwnerAccountId, meId)
                 .orderByAsc(Account::getCreatedAt));
 
-        Map<Long, String> names = accountInfoMapper
+        Map<Long, AccountInfo> infos = accountInfoMapper
                 .selectList(new LambdaQueryWrapper<AccountInfo>()
                         .in(AccountInfo::getAccountId, accounts.stream().map(Account::getId).toList()))
                 .stream()
-                .collect(Collectors.toMap(AccountInfo::getAccountId, AccountInfo::getDisplayName));
+                .collect(Collectors.toMap(AccountInfo::getAccountId, info -> info));
 
         List<AccountResponses.AccountSummary> items = new ArrayList<>(accounts.size());
         accounts.stream()
                 .filter(account -> account.getId() == meId)
-                .forEach(account -> items.add(summary(account, names)));
+                .forEach(account -> items.add(summary(account, infos)));
         accounts.stream()
                 .filter(account -> account.getId() != meId)
-                .forEach(account -> items.add(summary(account, names)));
+                .forEach(account -> items.add(summary(account, infos)));
         return new AccountResponses.MineResponse(items);
     }
 
@@ -244,7 +287,7 @@ public class AccountServiceImpl implements AccountService {
         if (FROZEN.equals(info.getStatus())) {
             throw ApiException.accountFrozen();
         }
-        return tokenResponse(account.getId(), account.getType(), info.getDisplayName());
+        return tokenResponse(account.getId(), account.getType(), info.getDisplayName(), info.getAvatar());
     }
 
     /**
@@ -289,13 +332,16 @@ public class AccountServiceImpl implements AccountService {
         return account;
     }
 
-    private AccountResponses.TokenResponse tokenResponse(long accountId, String type, String displayName) {        LoginTokenService.Issued token = loginTokens.issue(accountId);
+    private AccountResponses.TokenResponse tokenResponse(long accountId, String type, String displayName,
+            String avatar) {
+        LoginTokenService.Issued token = loginTokens.issue(accountId);
         return new AccountResponses.TokenResponse(token.token(), token.expiresAt(),
-                new AccountResponses.AccountSummary(accountId, type, displayName));
+                new AccountResponses.AccountSummary(accountId, type, displayName, avatar));
     }
 
-    private static AccountResponses.AccountSummary summary(Account account, Map<Long, String> names) {
+    private static AccountResponses.AccountSummary summary(Account account, Map<Long, AccountInfo> infos) {
+        AccountInfo info = infos.get(account.getId());
         return new AccountResponses.AccountSummary(account.getId(), account.getType(),
-                names.get(account.getId()));
+                info == null ? null : info.getDisplayName(), info == null ? null : info.getAvatar());
     }
 }
