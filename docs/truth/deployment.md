@@ -122,7 +122,7 @@ server {
 
 CI 与 CD 都支持手动触发：`gh workflow run ci.yml --ref <分支>` 跑接口 / 前端 / 桌面三条检查，`gh workflow run cd.yml --ref main` 重新构建并上线（等价于 push 一次 main）。
 
-仓库的 `pull_request` 事件当前不创建 workflow run（2026-11-17 12:17 UTC 起，push 到 main 与 `workflow_dispatch` 正常，见 #42）：PR 合并前至少手动跑一次 CI，别指望 PR 页上的自动检查。
+PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之间 `pull_request` 事件整段不创建 workflow run（`workflow_dispatch` 与 push 到 main 正常），之后自行恢复；过程和证据见 #42。
 
 官网静态页不在 CD 里：`site/` 改动要手工铺到 80 端口站点的根目录，线上文件与仓库不一致时（今天的 #39 修复）用哈希对一下就知道（见 #43）。
 
