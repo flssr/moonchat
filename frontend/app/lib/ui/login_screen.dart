@@ -282,6 +282,34 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
+  Widget _quoteBlock(MoonPalette p) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 84),
+      child: Container(
+        padding: const EdgeInsets.only(left: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: p.accent.withValues(alpha: 0.55), width: 2),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              '“${context.tr(_quote.text)}”',
+              style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '— ${context.tr(_quote.author)}',
+              style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLeft(BuildContext context) {
     final StoredSession? saved = widget.state.rememberedSession;
     if (saved != null && !_showForm) {
@@ -326,7 +354,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 ),
               ],
             ),
-            const SizedBox(height: 36),
+            const SizedBox(height: 18),
+            _quoteBlock(p),
+            const SizedBox(height: 24),
             Row(
               children: <Widget>[
                 MoonAvatar(
@@ -450,31 +480,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           ),
           const SizedBox(height: 12),
           // 固定最小高度：引言长短不一，不能让下面的字段每次进入都跟着跳。
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 84),
-            child: Container(
-              padding: const EdgeInsets.only(left: 12),
-              decoration: BoxDecoration(
-                border: Border(
-                  left: BorderSide(color: p.accent.withValues(alpha: 0.55), width: 2),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    '“${context.tr(_quote.text)}”',
-                    style: TextStyle(fontSize: 13, height: 1.7, color: p.ink2),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '— ${context.tr(_quote.author)}',
-                    style: TextStyle(fontSize: 11, letterSpacing: 0.4, color: p.ink3),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _quoteBlock(p),
           const SizedBox(height: 24),
           if (_registerMode) ...<Widget>[
             MoonField(label: context.tr('名字'), controller: _name, errorText: _nameError == null ? null : context.tr(_nameError!), hint: context.tr('1–20 字')),
