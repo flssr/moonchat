@@ -204,9 +204,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'Avatar',
     '选择默认头像': 'Choose a default avatar',
     '默认': 'Default',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'Default avatars come from the platform; uploads are not supported. '
-            'A tap applies it right away and saves it on this device only.',
+            'A tap saves the choice on the server.',
     '星座': 'Constellation',
     '性别': 'Gender',
     '选择生日': 'Select birthday',
@@ -453,9 +453,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'アバター',
     '选择默认头像': 'デフォルトのアバターを選ぶ',
     '默认': 'デフォルト',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'デフォルトのアバターはプラットフォーム提供です。アップロードは未対応で、'
-            '選ぶとすぐ反映され、この端末にのみ保存されます。',
+            '選ぶとサーバーに保存されます。',
     '星座': '星座',
     '性别': '性別',
     '选择生日': '誕生日を選択',
@@ -700,9 +700,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '头像': 'Avatar',
     '选择默认头像': 'Standard-Avatar wählen',
     '默认': 'Standard',
-    '默认头像由平台提供，暂不支持上传；选中即生效，只保存在这台设备上。':
+    '默认头像由平台提供，暂不支持上传；选中即保存到服务端。':
         'Standard-Avatare stellt die Plattform bereit; Hochladen ist nicht möglich. '
-            'Die Auswahl wirkt sofort und wird nur auf diesem Gerät gespeichert.',
+            'Die Auswahl wird auf dem Server gespeichert.',
     '星座': 'Sternzeichen',
     '性别': 'Geschlecht',
     '选择生日': 'Geburtstag wählen',

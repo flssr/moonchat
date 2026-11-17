@@ -256,6 +256,15 @@ class ApiClient {
     return MyProfile.fromJson(json);
   }
 
+  /// 改本账号头像：`PUT` 是整枚替换，`null` 表示清回客户端生成的首字头像；响应回显最终值。
+  Future<String?> updateAvatar({required String token, required String? avatar}) async {
+    final json = await _send('PUT', '/api/accounts/me/avatar', token: token, body: {
+      'avatar': avatar,
+    });
+    final Object? value = json['avatar'];
+    return value is String ? value : null;
+  }
+
   /// #7 资料页。
   Future<Profile> profile({required String token, required int accountId}) async {
     final json = await _send('GET', '/api/accounts/$accountId', token: token);

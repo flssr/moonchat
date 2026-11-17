@@ -322,6 +322,7 @@ class AppState extends ChangeNotifier {
   Future<Profile> loadProfile(int accountId) async {
     final Profile p = await api.profile(token: loginToken!, accountId: accountId);
     _profiles[accountId] = p;
+    _syncAvatars(<(int, String?)>[(accountId, p.avatar)]);
     notifyListeners();
     return p;
   }
@@ -471,6 +472,7 @@ class AppState extends ChangeNotifier {
     // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
     final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);
     account = session.account;
+    _syncAvatars(<(int, String?)>[(session.account.accountId, session.account.avatar)]);
     turms = session.turms;
     if (session.loginToken != null) {
       loginToken = session.loginToken;
@@ -982,6 +984,10 @@ class AppState extends ChangeNotifier {
     ]);
     accounts = results[0] as List<Account>;
     friends = results[1] as List<Friendship>;
+    _syncAvatars(<(int, String?)>[
+      ...accounts.map((Account a) => (a.accountId, a.avatar)),
+      ...friends.map((Friendship f) => (f.peerAccountId, f.avatar)),
+    ]);
     for (final Friendship f in friends) {
       _dmTitles['dm:${f.peerAccountId}'] = f.displayName;
     }
@@ -1044,6 +1050,7 @@ class AppState extends ChangeNotifier {
       friends = nextFriends;
       pending = nextPending;
       rooms = nextRooms;
+      _syncAvatars(nextFriends.map((Friendship f) => (f.peerAccountId, f.avatar)));
       _roomIdByTurmsGroupId
         ..clear()
         ..addEntries(nextRooms.where((Room r) => r.turmsGroupId != null)
@@ -1059,7 +1066,9 @@ class AppState extends ChangeNotifier {
       return false;
     }
     for (int i = 0; i < a.length; i++) {
-      if (a[i].peerAccountId != b[i].peerAccountId || a[i].displayName != b[i].displayName) {
+      if (a[i].peerAccountId != b[i].peerAccountId ||
+          a[i].displayName != b[i].displayName ||
+          a[i].avatar != b[i].avatar) {
         return false;
       }
     }
@@ -1120,7 +1129,9 @@ class AppState extends ChangeNotifier {
     if (token == null) {
       throw ApiException(code: 'unauthenticated', message: 'signed out');
     }
-    return api.myProfile(token);
+    final MyProfile profile = await api.myProfile(token);
+    _syncAvatars(<(int, String?)>[(profile.accountId, profile.avatar)]);
+    return profile;
   }
 
   /// 改当前账号资料：`PUT` 全量提交三个字段，响应与 `GET /api/accounts/me` 同形。
@@ -1154,9 +1165,11 @@ class AppState extends ChangeNotifier {
       accountId: current.accountId,
       type: current.type,
       displayName: updated.displayName,
+      avatar: updated.avatar,
       gender: updated.gender,
       birthday: updated.birthday,
     );
+    _syncAvatars(<(int, String?)>[(current.accountId, updated.avatar)]);
     try {
       // 名字变了，好友 / 群 / 会话列表里的旧名字也要跟着换。
       await refreshAll();
@@ -1174,35 +1187,54 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // —— 头像（本机偏好，服务端还没有这一列，issue #10）——
+  // —— 头像（服务端是真相，本机只做渲染缓存）——
 
   String? avatarOf(int accountId) => avatars[accountId];
 
-  /// 选中即生效、即落本机；`null` 表示回到按账号 id 生成的首字头像。
-  void setAvatar(int accountId, String? key) {
-    if (key != null && !isKnownAvatar(key)) {
-      return;
-    }
+  /// 把服务端 payload 里的头像写进本机缓存：登录、`mine`、好友、群成员、资料页、资料保存都走这里。
+  /// 返回是否有变化，调用方决定要不要 notify。
+  bool _syncAvatars(Iterable<(int, String?)> entries) {
     final Map<int, String> next = Map<int, String>.of(avatars);
-    if (key == null) {
-      next.remove(accountId);
-    } else {
-      next[accountId] = key;
+    bool changed = false;
+    for (final (int accountId, String? key) in entries) {
+      final String? known = key != null && isKnownAvatar(key) ? key : null;
+      if (next[accountId] == known) {
+        continue;
+      }
+      if (known == null) {
+        next.remove(accountId);
+      } else {
+        next[accountId] = known;
+      }
+      changed = true;
     }
-    avatars = next;
-    _store.saveAvatars(next);
+    if (changed) {
+      avatars = next;
+      _store.saveAvatars(next);
+    }
+    return changed;
+  }
+
+  /// 改当前账号头像：`PUT /api/accounts/me/avatar`，`null` = 清回生成的首字头像。
+  /// 服务端是真相，成功后把回显写进本机缓存。
+  Future<void> updateAvatar(String? key) async {
+    final Account? current = account;
+    final String? token = loginToken;
+    if (current == null || token == null) {
+      throw ApiException(code: 'unauthenticated', message: 'signed out');
+    }
+    final String? saved = await api.updateAvatar(token: token, avatar: key);
+    _syncAvatars(<(int, String?)>[(current.accountId, saved)]);
     notifyListeners();
   }
 
   Future<CreatedAgent> createAgent(String displayName) async {
     final CreatedAgent created = await api.createAgent(token: loginToken!, displayName: displayName);
-    // 新 agent 直接给一枚平台 agent 头像：不落一枚的话，账号列表、资料页和会话里都只剩
-    // 按 id 生成的首字头像，看起来像「创建时头像没保存」。按 account_id 在三张里轮换，
-    // 号段固定，同一个账号每次算出来都一样。
-    setAvatar(created.accountId, kAgentAvatars[created.accountId % kAgentAvatars.length]);
     // 密钥只在创建响应里出现一次；列表刷新失败不能把这次响应一起吞掉，否则密钥永久丢失。
     try {
       accounts = await api.mine(identityToken ?? loginToken!);
+      // 新 agent 的默认头像由服务端在创建时分配，跟着 `mine` 回显进本机缓存。
+      _syncAvatars(accounts.map((Account a) => (a.accountId, a.avatar)));
     } catch (_) {
       // 账号列表下次 refreshAll 会补回来；这里保住 created 才是第一优先级。
     }
@@ -1301,6 +1333,7 @@ class AppState extends ChangeNotifier {
     }
     final Paged<RoomMember> page = await api.members(token: loginToken!, roomId: roomId);
     _members[roomId] = page;
+    _syncAvatars(page.items.map((RoomMember m) => (m.accountId, m.avatar)));
     // 视图读 `membersOf`，不通知的话它要等下一次无关的状态变化才会看到这批成员。
     notifyListeners();
     return page;
