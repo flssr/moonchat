@@ -129,10 +129,10 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 [`.github/workflows/site.yml`](../../.github/workflows/site.yml) 单独发 80 端口的官网，不进后端 CD：`site/**` 推到 `main` 时触发，也可以 `gh workflow run site.yml --ref main` 手动发。
 
 1. 站点根目录不写死：用 `styles.css` 里的固定标语在 `/site`、`/opt/1panel/www`、`/www`、`/var/www` 里找，找到的那一层就是根；要覆盖就配仓库变量 `SITE_ROOT`。
-2. `tar` 打包 `site/` 经 SSH 解到站点根目录，只覆盖同名文件，不删站点目录里的其它东西。
+2. `tar` 打包 `site/` 经 SSH 解到站点根目录，只覆盖同名文件，不删站点目录里的其它东西。站点目录归 root、部署账号写不进去时用免密 `sudo` 覆盖；两者都不行就在这一步明确失败，不会动别的目录。
 3. 冒烟：逐个 `curl -fsS "https://mondchat.com/<文件>?t=<时间戳>"` 与仓库文件比 SHA256，不一致就失败。
 
-它复用 CD 的 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_KNOWN_HOSTS`；部署账号要对站点根目录有写权限。
+它复用 CD 的 `SSH_HOST` / `SSH_USER` / `SSH_PRIVATE_KEY` / `SSH_KNOWN_HOSTS`。1Panel 的站点根目录形如 `/opt/1panel/www/sites/<域名>/index`；部署账号要么能写它，要么有免密 sudo。
 
 需要用户配的 GitHub Secrets：
 

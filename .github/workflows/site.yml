@@ -61,13 +61,22 @@ jobs:
           echo "SITE_ROOT=$(cat /tmp/site-root)" >> "$GITHUB_ENV"
 
       # 只覆盖 site/ 里有的文件：不删站点目录里的其它东西（1Panel 自己的入口文件等）。
+      # 站点目录是 1Panel 建的、多半归 root；部署账号没有写权限时用免密 sudo 覆盖（没有就明确失败）。
       - name: 同步 site/
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
           tar -C site -czf - . \
-            | ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "tar -xzf - -C '$SITE_ROOT'"
+            | ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "set -eu
+                if sudo -n true >/dev/null 2>&1; then
+                  exec sudo -n tar -xzf - -C '$SITE_ROOT'
+                elif [ -w '$SITE_ROOT' ]; then
+                  exec tar -xzf - -C '$SITE_ROOT'
+                else
+                  echo '$SITE_ROOT 不可写，且部署账号没有免密 sudo' >&2
+                  exit 1
+                fi"
           echo "已铺到 $SITE_ROOT"
 
       - name: 冒烟：线上文件与仓库逐字节一致
