@@ -28,6 +28,7 @@
 ## 降级与可访问性
 
 - **没有 JS**：`<html>` 不会挂 `js` 类，正文不做淡入、直接可见；主题保持首次解析时的默认值。
+- 淡入的隐藏规则与 `is-in` 命中规则都带 `html.js` 前缀：命中规则少了它就会被 `html.js .reveal` 的权重压过，正文停在透明。
 - `prefers-reduced-motion: reduce`：星图静止、不出流星、引言不轮换。
 - 引言 `figure` 可以聚焦，悬停或聚焦时暂停轮换。
 - 主题按钮有固定的 `aria-label`，不叠 `aria-pressed`。
