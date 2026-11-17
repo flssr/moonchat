@@ -8,6 +8,7 @@ import '../avatars.dart';
 import '../session/session_store.dart';
 import '../settings/settings.dart';
 import '../settings/settings_store.dart';
+import '../account_id.dart';
 import '../message_cache.dart';
 import '../notify.dart';
 import '../turms/realtime.dart';
@@ -111,6 +112,7 @@ class AppState extends ChangeNotifier {
   final Map<String, int> _unread = <String, int>{};
   final Set<int> _blocked = <int>{};
   final Map<String, String> _drafts = <String, String>{};
+  final Map<String, String> _dmTitles = <String, String>{};
 
   String draftFor(String key) => _drafts[key] ?? '';
 
@@ -355,6 +357,23 @@ class AppState extends ChangeNotifier {
           turmsGroupId: r.turmsGroupId,
         ),
     ];
+    // 删好友后历史私聊仍然保留：被删的一方不会收到通知，下一次刷新好友列表后就靠
+    // 本地消息把会话补回来，发送时再提示“不是好友”。
+    final Set<String> known = out.map((Conversation c) => c.key).toSet();
+    for (final String key in _messages.keys) {
+      if (!key.startsWith('dm:') || known.contains(key)) {
+        continue;
+      }
+      final int? id = int.tryParse(key.substring(3));
+      if (id == null) {
+        continue;
+      }
+      out.add(Conversation(
+        type: 'dm',
+        targetId: id,
+        title: _dmTitles[key] ?? '#${shortAccountId(id)}',
+      ));
+    }
     return out;
   }
 
@@ -467,6 +486,15 @@ class AppState extends ChangeNotifier {
     }
     _cacheRestored = true;
     _cacheSavedAt = DateTime.tryParse(data['saved_at'] as String? ?? '');
+    final Object? rawTitles = data['dm_titles'];
+    if (rawTitles is Map<String, dynamic>) {
+      _dmTitles.clear();
+      rawTitles.forEach((String key, Object? value) {
+        if (value is String && value.isNotEmpty) {
+          _dmTitles[key] = value;
+        }
+      });
+    }
     final Object? rawDrafts = data['drafts'];
     if (rawDrafts is Map<String, dynamic>) {
       _drafts.clear();
@@ -619,6 +647,7 @@ class AppState extends ChangeNotifier {
       'saved_at': DateTime.now().toUtc().toIso8601String(),
       'unread': _unread,
       'drafts': _drafts,
+      'dm_titles': _dmTitles,
       'messages': messages,
     };
   }
@@ -947,6 +976,9 @@ class AppState extends ChangeNotifier {
     ]);
     accounts = results[0] as List<Account>;
     friends = results[1] as List<Friendship>;
+    for (final Friendship f in friends) {
+      _dmTitles['dm:${f.peerAccountId}'] = f.displayName;
+    }
     pending = (results[2] as List<Friendship>).where((Friendship f) => f.incoming).toList();
     rooms = results[3] as List<Room>;
     _roomIdByTurmsGroupId

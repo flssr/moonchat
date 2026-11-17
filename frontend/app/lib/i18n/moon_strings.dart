@@ -174,6 +174,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '删除好友': 'Delete friend',
     '删除并拉黑': 'Delete and block',
     '【草稿】': '[Draft]',
+    '当前不是对方好友，请添加后再进行会话': 'You are not friends anymore. Add them back to chat.',
+    '知道了': 'OK',
     '删除后会话保留、历史只读，不能再发新消息。':
         'After deletion the conversation remains, history is read-only, no new messages.',
     '这是你自己。': 'This is you.',
@@ -413,6 +415,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '删除好友': '友達を削除',
     '删除并拉黑': '削除してブロック',
     '【草稿】': '【下書き】',
+    '当前不是对方好友，请添加后再进行会话': 'もう友達ではありません。追加してから会話してください。',
+    '知道了': 'OK',
     '删除后会话保留、历史只读，不能再发新消息。':
         '削除後も会話は残り、履歴は読み取り専用で新規送信不可。',
     '这是你自己。': 'あなた自身です。',
@@ -649,6 +653,9 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '删除好友': 'Freund entfernen',
     '删除并拉黑': 'Löschen und blockieren',
     '【草稿】': '[Entwurf]',
+    '当前不是对方好友，请添加后再进行会话':
+        'Ihr seid keine Freunde mehr. Fügt euch wieder hinzu, um zu chatten.',
+    '知道了': 'OK',
     '删除后会话保留、历史只读，不能再发新消息。':
         'Nach dem Löschen bleibt die Unterhaltung, der Verlauf ist schreibgeschützt, keine neuen Nachrichten.',
     '这是你自己。': 'Das bist du.',

@@ -719,6 +719,25 @@ void main() {
     expect(state.unreadFor(dm.key), 1);
   });
 
+  test('删好友后非好友的历史私聊仍保留在会话列表', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000099',
+      text: '旧消息',
+      senderId: 99,
+      recipientId: 1,
+      sentAt: null,
+    ));
+
+    final Conversation orphan = state.conversations.firstWhere((Conversation c) => c.key == 'dm:99');
+    expect(orphan.title, isNotEmpty);
+    expect(state.messagesOf(orphan.key).single.text, '旧消息');
+  });
+
   test('草稿按会话保存，发送后清掉', () async {
     final AppState state = _newState();
     addTearDown(state.dispose);

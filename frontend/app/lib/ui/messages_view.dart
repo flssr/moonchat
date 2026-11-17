@@ -164,6 +164,30 @@ class _MessagesViewState extends State<MessagesView> {
     if (text.trim().isEmpty || _sending) {
       return;
     }
+    // 删好友后历史会话还在，但私聊必须仍是好友；后端也会拒，先在客户端给出提示。
+    if (!conv.isRoom &&
+        !widget.state.friends.any((Friendship f) => f.peerAccountId == conv.targetId)) {
+      if (mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            backgroundColor: context.moon.surface,
+            content: Text(
+              context.tr('当前不是对方好友，请添加后再进行会话'),
+              style: TextStyle(fontSize: 13, color: context.moon.ink),
+            ),
+            actions: <Widget>[
+              MoonButton(
+                label: context.tr('知道了'),
+                small: true,
+                onPressed: () => Navigator.of(context).pop(),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
     setState(() {
       _sending = true;
       _sendErrors.remove(conv.key);
