@@ -55,3 +55,14 @@ flutter test
 
 `test/realtime_test.dart` 用一个本地 WebSocket 冒充 Turms 网关，校验登录、查历史与推送映射；
 `test/storage_test.dart` 校验本机文件里的设置、头像与登录态往返。
+
+没开 Windows 开发者模式（不允许建符号链接）时，`flutter pub get` 会卡在建插件符号链接上。
+纯 Dart 测试不编译原生插件，把 `windows/` 临时挪开再跑就行：
+
+```powershell
+cd desktop
+Rename-Item windows windows.__hidden
+flutter pub get; flutter analyze; flutter test
+Rename-Item windows.__hidden windows
+```
+

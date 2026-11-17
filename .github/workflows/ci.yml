@@ -4,6 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # 手动触发：Actions 停过一段时间后不必为跑一次再推空提交，PR 分支或 main 都能手点。
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
