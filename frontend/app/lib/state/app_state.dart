@@ -397,7 +397,11 @@ class AppState extends ChangeNotifier {
     await api.register(email: email, password: password, displayName: displayName);
   }
 
-  Future<void> login({required String email, required String password}) async {
+  Future<void> login({
+    required String email,
+    required String password,
+    bool remember = true,
+  }) async {
     phase = AuthPhase.busy;
     notifyListeners();
     try {
@@ -409,7 +413,7 @@ class AppState extends ChangeNotifier {
       await _openSession(result.account.accountId);
       phase = AuthPhase.ready;
       _scheduleLoginRenewal();
-      _persistSession();
+      _persistSession(remember: remember);
       _startPolling();
     } catch (e) {
       // 会话可能已经建了一半（token、读通道、推送订阅）：清干净再回登录页。
@@ -450,14 +454,25 @@ class AppState extends ChangeNotifier {
   }
 
   /// 记住当前登录态：归属者 JWT + 最后用的账号 id（切号后是 agent 的 id）。
-  void _persistSession() {
+  void _persistSession({bool remember = true}) {
+    if (!remember) {
+      _session.clear();
+      return;
+    }
     final String? token = identityToken;
     final Account? me = account;
     if (token == null || me == null) {
       return;
     }
-    _session.save(StoredSession(token: token, accountId: me.accountId));
+    _session.save(StoredSession(
+      token: token,
+      accountId: me.accountId,
+      displayName: me.displayName,
+    ));
   }
+
+  /// 登录页“记住我”用的本机会话；没有就还是账号密码表单。
+  StoredSession? get rememberedSession => _session.load();
 
   /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`docs/truth/frontend/README.md`）。
   Future<void> _openSession(int accountId) async {

@@ -870,17 +870,20 @@ void main() {
     expect(restored.account?.accountId, 1);
   });
 
-  testWidgets('刷新后恢复会话直接进主界面，不再闪登录表单', (WidgetTester tester) async {
+  testWidgets('刷新后登录页显示记住的账号，点登录恢复会话', (WidgetTester tester) async {
     final _MemorySessionStore session = _MemorySessionStore()
-      ..session = const StoredSession(token: 'login-jwt', accountId: 1);
+      ..session = const StoredSession(token: 'login-jwt', accountId: 1, displayName: '阿星');
     final AppState state = _stateOn(_FakeBiz(), session: session);
     addTearDown(state.dispose);
 
-    // 外壳自己在 initState 里调 restore()：没有登舱过渡可播，恢复完就得直接交棒。
     await tester.pumpWidget(MondChatApp(state: state));
-    for (int i = 0; i < 10; i++) {
-      await tester.pump(const Duration(milliseconds: 20));
-      expect(find.text('登录'), findsNothing, reason: '恢复会话期间不能闪登录表单');
+    await tester.pumpAndSettle();
+    expect(find.text('阿星'), findsOneWidget, reason: '记住我卡片要显示昵称');
+    expect(find.byType(HomeShell), findsNothing);
+
+    await tester.tap(find.text('登录'));
+    for (int i = 0; i < 20; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.pumpAndSettle();
 

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -75,8 +73,7 @@ class _MondChatAppState extends State<MondChatApp> {
     _locale = _localeFor(_initial.languageCode);
     _notify = _initial.notifyOnMessage;
     _state.setNotifyOnMessage(_notify);
-    // 刷新页面时先试本机凭据：有就恢复会话，没有就留在登录页（issue #24）。
-    unawaited(_state.restore());
+    // 本机记住的账号由登录页的“记住我”卡片显示，点登录再恢复；不再自动跳过登录页。
   }
 
   @override

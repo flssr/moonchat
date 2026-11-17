@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../account_id.dart';
 import '../api/api_client.dart';
 import '../i18n/context_tr.dart';
 import '../i18n/moon_strings.dart';
+import '../session/session_store.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_quotes.dart';
@@ -55,6 +57,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   bool _registerMode = false;
   bool _submitting = false;
+  bool _remember = true;
+  bool _showForm = false;
   bool _leftDark = false;
   bool _leftDarkReady = false;
 
@@ -121,7 +125,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         );
         registered = true;
       }
-      await widget.state.login(email: _email.text.trim(), password: _password.text);
+      await widget.state.login(
+        email: _email.text.trim(),
+        password: _password.text,
+        remember: _remember,
+      );
       await _playArrival();
     } on ApiException catch (e) {
       if (!mounted) {
@@ -188,7 +196,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       backgroundColor: p.bg,
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
-          final Widget form = _buildForm(context);
+          final Widget form = _buildLeft(context);
           if (c.maxWidth < 900) {
             return Column(
               children: <Widget>[
@@ -232,7 +240,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       body: LayoutBuilder(
         builder: (BuildContext context, BoxConstraints c) {
           final bool narrow = c.maxWidth < 900;
-          final Widget formBody = _buildForm(context);
+          final Widget formBody = _buildLeft(context);
           // 宽屏表单区被 540 高度钉死；注册模式叠上字段错误会超出，给一个只在该分支生效的滚动。
           final Widget form = _fade(narrow ? formBody : SingleChildScrollView(child: formBody));
           final Widget stage = _buildStage(context);
@@ -270,6 +278,95 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildLeft(BuildContext context) {
+    final StoredSession? saved = widget.state.rememberedSession;
+    if (saved != null && !_showForm) {
+      return _buildRemembered(context, saved);
+    }
+    return _buildForm(context);
+  }
+
+  Widget _buildRemembered(BuildContext context, StoredSession saved) {
+    final bool dark = _leftDark;
+    final MoonPalette p = dark ? MoonPalette.dark : MoonPalette.light;
+    final String name = saved.displayName ?? '#${shortAccountId(saved.accountId)}';
+    return Theme(
+      data: buildMoonTheme(dark ? Brightness.dark : Brightness.light),
+      child: Container(
+        color: p.surface,
+        padding: const EdgeInsets.fromLTRB(44, 40, 44, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: Image.asset(
+                    'assets/mondchat-logo.png',
+                    width: 30,
+                    height: 30,
+                    filterQuality: FilterQuality.high,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'MondChat',
+                  style: TextStyle(
+                    fontSize: 30,
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: -0.8,
+                    color: p.ink,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 36),
+            Row(
+              children: <Widget>[
+                MoonAvatar(
+                  name: name,
+                  seed: saved.accountId,
+                  avatar: widget.state.avatarOf(saved.accountId),
+                  size: 56,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        name,
+                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: p.ink),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '#${shortAccountId(saved.accountId)}',
+                        style: TextStyle(fontSize: 12, color: p.ink3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 28),
+            MoonButton(
+              label: context.tr('登录'),
+              onPressed: () => widget.state.restore(),
+            ),
+            const SizedBox(height: 8),
+            MoonButton(
+              label: context.tr('切换账号'),
+              kind: MoonButtonKind.text,
+              onPressed: () => setState(() => _showForm = true),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -424,6 +521,21 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           _formError = null;
                           _nameError = null;
                         }),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: <Widget>[
+              Checkbox(
+                value: _remember,
+                onChanged: (bool? value) => setState(() => _remember = value ?? true),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              Text(
+                context.tr('记住我'),
+                style: TextStyle(fontSize: 12, color: p.ink3),
               ),
             ],
           ),

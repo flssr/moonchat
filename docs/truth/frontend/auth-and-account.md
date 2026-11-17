@@ -13,7 +13,7 @@
 
 ## 刷新与登录态
 
-登录成功后，归属者 JWT 与最后使用的账号 id 存进本机：Web 是浏览器 `localStorage` 的 `mondchat.session.v1`，Windows 是本机 `MondChat\session.json`（根目录依次取 `APPDATA`、`LOCALAPPDATA`、用户 Roaming、exe 同目录里第一个可写的，避免某些启动方式下 `%APPDATA%` 为空导致不落盘）。刷新页面或重开客户端时先用它调 `POST /api/sessions` 恢复会话，期间显示启动页而不是登录表单；令牌被服务端拒掉时清掉本机副本并回登录页，登出与 401 也同样清副本。账号列表、好友、群的变动由客户端每 15 秒重拉一次。
+登录成功后，归属者 JWT 与最后使用的账号 id 存进本机：Web 是浏览器 `localStorage` 的 `mondchat.session.v1`，Windows 是本机 `MondChat\session.json`（根目录依次取 `APPDATA`、`LOCALAPPDATA`、用户 Roaming、exe 同目录里第一个可写的，避免某些启动方式下 `%APPDATA%` 为空导致不落盘）。登录页勾选「记住我」（默认勾选）时保存归属者 JWT、账号 id 和昵称；下次打开登录页显示记住账号的昵称/头像，点「登录」调 `POST /api/sessions` 恢复，期间显示启动页；取消勾选则登录后清掉本机副本。启动时不再自动跳过登录页。令牌被服务端拒掉时清掉本机副本并回登录页，登出与 401 也同样清副本。账号列表、好友、群的变动由客户端每 15 秒重拉一次。
 
 ## 登录页
 

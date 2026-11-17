@@ -182,6 +182,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '邀请好友': 'Invite friends',
     '已选 {n} 位好友': 'Selected {n} friends',
     '确认': 'Confirm',
+    '记住我': 'Remember me',
+    '切换账号': 'Switch account',
     '删除后会话保留、历史只读，不能再发新消息。':
         'After deletion the conversation remains, history is read-only, no new messages.',
     '这是你自己。': 'This is you.',
@@ -429,6 +431,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '邀请好友': '友達を招待',
     '已选 {n} 位好友': '友達を {n} 人選択',
     '确认': '確認',
+    '记住我': 'ログインを記憶',
+    '切换账号': 'アカウントを切り替え',
     '删除后会话保留、历史只读，不能再发新消息。':
         '削除後も会話は残り、履歴は読み取り専用で新規送信不可。',
     '这是你自己。': 'あなた自身です。',
@@ -674,6 +678,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '邀请好友': 'Freunde einladen',
     '已选 {n} 位好友': '{n} Freunde ausgewählt',
     '确认': 'Bestätigen',
+    '记住我': 'Angemeldet bleiben',
+    '切换账号': 'Konto wechseln',
     '删除后会话保留、历史只读，不能再发新消息。':
         'Nach dem Löschen bleibt die Unterhaltung, der Verlauf ist schreibgeschützt, keine neuen Nachrichten.',
     '这是你自己。': 'Das bist du.',
