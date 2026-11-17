@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/api_client.dart';
 import '../i18n/context_tr.dart';
+import '../i18n/moon_strings.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'login_quotes.dart';
@@ -16,9 +17,13 @@ class LoginScreen extends StatefulWidget {
     required this.state,
     this.onArrived,
     this.edgeToEdge = false,
+    this.languageCode = 'zh',
+    this.onLanguageChanged,
   });
 
   final AppState state;
+  final String languageCode;
+  final ValueChanged<String>? onLanguageChanged;
 
   /// 登舱过渡播完（或减少动态时直接跳过）后回调；外壳据此切到主界面。
   final VoidCallback? onArrived;
@@ -50,6 +55,17 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
   bool _registerMode = false;
   bool _submitting = false;
+  bool _leftDark = false;
+  bool _leftDarkReady = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_leftDarkReady) {
+      _leftDarkReady = true;
+      _leftDark = Theme.of(context).brightness == Brightness.dark;
+    }
+  }
   String? _emailError;
   String? _passwordError;
   String? _nameError;
@@ -186,7 +202,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
               Expanded(
                 flex: 44,
                 child: ColoredBox(
-                  color: p.surface,
+                  color: _leftDark ? MoonPalette.dark.surface : MoonPalette.light.surface,
                   child: Center(
                     child: SingleChildScrollView(
                       child: ConstrainedBox(
@@ -259,8 +275,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Widget _buildForm(BuildContext context) {
-    final MoonPalette p = context.moon;
-    return Container(
+    final MoonPalette p = _leftDark ? MoonPalette.dark : MoonPalette.light;
+    return Theme(
+      data: buildMoonTheme(_leftDark ? Brightness.dark : Brightness.light),
+      child: Container(
       color: p.surface,
       padding: const EdgeInsets.fromLTRB(44, 40, 44, 32),
       child: Column(
@@ -292,6 +310,42 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       letterSpacing: -0.8,
                       color: p.ink,
                     ),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: context.tr(_leftDark ? '切到亮色' : '切到暗色'),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => setState(() => _leftDark = !_leftDark),
+                icon: Icon(
+                  _leftDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                  size: 18,
+                  color: p.ink3,
+                ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: context.tr('语言'),
+                initialValue: widget.languageCode,
+                onSelected: widget.onLanguageChanged,
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  for (final (String code, String label) in kMoonLanguages)
+                    PopupMenuItem<String>(
+                      value: code,
+                      child: Text(label, style: const TextStyle(fontSize: 13)),
+                    ),
+                ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Icon(Icons.language, size: 18, color: p.ink3),
+                      const SizedBox(width: 4),
+                      Text(
+                        widget.languageCode.toUpperCase(),
+                        style: TextStyle(fontSize: 11, color: p.ink3),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -374,6 +428,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             ],
           ),
         ],
+      ),
       ),
     );
   }

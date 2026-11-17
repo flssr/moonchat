@@ -15,6 +15,10 @@
 
 登录成功后，归属者 JWT 与最后使用的账号 id 存进本机：Web 是浏览器 `localStorage` 的 `mondchat.session.v1`，Windows 是本机 `MondChat\session.json`（根目录依次取 `APPDATA`、`LOCALAPPDATA`、用户 Roaming、exe 同目录里第一个可写的，避免某些启动方式下 `%APPDATA%` 为空导致不落盘）。刷新页面或重开客户端时先用它调 `POST /api/sessions` 恢复会话，期间显示启动页而不是登录表单；令牌被服务端拒掉时清掉本机副本并回登录页，登出与 401 也同样清副本。账号列表、好友、群的变动由客户端每 15 秒重拉一次。
 
+## 登录页
+
+登录页的左上角有语言菜单和暗/亮切换：语言可选中文、English、日本語、Deutsch（按各自语言显示），选择立即同步到登录页和登录后的聊天页；暗/亮只切换左边表单区，右侧发射台不变。
+
 ## 账号页
 
 `GET /api/accounts/mine` 返回当前真人与名下 agent。切换账号会重新请求会话凭据、重连 Turms，并清空上一个账号的页面状态。

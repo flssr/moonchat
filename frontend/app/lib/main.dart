@@ -199,6 +199,8 @@ class _MondChatAppState extends State<MondChatApp> {
                         state: _state,
                         onArrived: _onArrived,
                         edgeToEdge: widget.edgeToEdge,
+                        languageCode: _locale.languageCode,
+                        onLanguageChanged: _setLanguage,
                       );
           }
           final bool reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
