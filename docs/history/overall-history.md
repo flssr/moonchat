@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [头像上线与流水线手动触发](#头像上线与流水线手动触发)
 - [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
 - [Turms 容器限额提到 1280m](#turms-容器限额提到-1280m)
 - [Mongo 缓存下限改成 0.25G](#mongo-缓存下限改成-025g)
@@ -37,6 +38,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### 头像上线与流水线手动触发
+
+2026-11-17 18:24 CET   [2026-11-17 17:24 UTC]
+
+决策：把头像落库（#10）连同今天的客户端改动一起合入 main（PR #30，`a30a2a3`）并走 CD 上线。CI 与 CD 两个 workflow 都加 `workflow_dispatch`：CI 按分支手动跑接口 / 前端 / 桌面三条检查，CD 按 main 重新构建上线。合并前用 `gh workflow run ci.yml --ref feat/desktop-client` 手动跑过一轮全绿（test / frontend / desktop），合并后 GitHub 侧 merge push 触发的 CI 与 CD 也都成功。上线前把两枚只存本机的头像回填进服务端（Regen → `male_01`，我的机器 → `agent_pink`），避免服务端 null 让它们变回首字头像；生产验证：`GET /api/accounts/mine` 带 `avatar`，`PUT /api/accounts/me/avatar` 传非法 key 回 400 `validation_failed`。
+
+原因：2026-11-17 12:17 UTC 之后仓库的 `pull_request` 事件不再创建 workflow run（push 到 main 与 dispatch 正常），PR 上没有任何检查；既要保证合进 main 的东西真的跑过，又要在事件投递恢复前能人工跑通流水线，所以加了手动触发并写进部署文档（#42）。桌面端本机没有 VS2022，这轮 exe 用 CI `desktop` job 的 artifact；本地重编 `app.so` 的手工流程与 artifact 逐字节一致，说明值得固化成脚本（#44）。官网静态页仍不在 CD 里，线上还是旧 CSS（#43）。
 
 ### biz 镜像补 logs 目录
 
