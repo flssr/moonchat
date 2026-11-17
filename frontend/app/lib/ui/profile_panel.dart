@@ -205,7 +205,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
   }
 
   Future<void> _confirmDelete(Profile profile) async {
-    final bool? ok = await showDialog<bool>(
+    final String? action = await showDialog<String>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
         backgroundColor: context.moon.surface,
@@ -221,19 +221,27 @@ class _ProfilePanelState extends State<ProfilePanel> {
             label: context.tr('取消'),
             kind: MoonButtonKind.text,
             small: true,
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          MoonButton(
+            label: context.tr('删除并拉黑'),
+            kind: MoonButtonKind.danger,
+            small: true,
+            onPressed: () => Navigator.of(context).pop('block'),
           ),
           MoonButton(
             label: context.tr('删除'),
             kind: MoonButtonKind.danger,
             small: true,
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(context).pop('delete'),
           ),
         ],
       ),
     );
-    if (ok == true) {
+    if (action == 'delete') {
       await _run(() => widget.state.deleteFriend(profile.accountId));
+    } else if (action == 'block') {
+      await _run(() => widget.state.deleteFriendAndBlock(profile.accountId));
     }
   }
 }

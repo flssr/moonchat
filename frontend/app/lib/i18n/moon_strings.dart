@@ -172,6 +172,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         'Delete {name}? The conversation remains, history is read-only.',
     '删除': 'Delete',
     '删除好友': 'Delete friend',
+    '删除并拉黑': 'Delete and block',
+    '【草稿】': '[Draft]',
     '删除后会话保留、历史只读，不能再发新消息。':
         'After deletion the conversation remains, history is read-only, no new messages.',
     '这是你自己。': 'This is you.',
@@ -409,6 +411,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         '{name}を削除しますか？会話は残り、履歴は読み取り専用です。',
     '删除': '削除',
     '删除好友': '友達を削除',
+    '删除并拉黑': '削除してブロック',
+    '【草稿】': '【下書き】',
     '删除后会话保留、历史只读，不能再发新消息。':
         '削除後も会話は残り、履歴は読み取り専用で新規送信不可。',
     '这是你自己。': 'あなた自身です。',
@@ -643,6 +647,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         '{name} löschen? Unterhaltung bleibt, Verlauf schreibgeschützt.',
     '删除': 'Löschen',
     '删除好友': 'Freund entfernen',
+    '删除并拉黑': 'Löschen und blockieren',
+    '【草稿】': '[Entwurf]',
     '删除后会话保留、历史只读，不能再发新消息。':
         'Nach dem Löschen bleibt die Unterhaltung, der Verlauf ist schreibgeschützt, keine neuen Nachrichten.',
     '这是你自己。': 'Das bist du.',

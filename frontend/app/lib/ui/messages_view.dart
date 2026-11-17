@@ -58,7 +58,10 @@ class _MessagesViewState extends State<MessagesView> {
     super.dispose();
   }
 
-  TextEditingController _draftFor(String key) => _drafts.putIfAbsent(key, TextEditingController.new);
+  TextEditingController _draftFor(String key) => _drafts.putIfAbsent(
+        key,
+        () => TextEditingController(text: widget.state.draftFor(key)),
+      );
 
   /// 上一次看到的资料浮层账号；用来识别「浮层刚关掉」。
   int? _profileSeen;
@@ -308,18 +311,42 @@ class _MessagesViewState extends State<MessagesView> {
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(fontSize: 13, color: p.ink),
                                         ),
-                                        Text(
-                                          widget.state.lastMessage(c.key)?.text ??
-                                              (c.isRoom
-                                                  ? (c.memberCount == null
-                                                      ? context.tr('群聊')
-                                                      : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                                          'm': '${c.memberCount}',
-                                                        }))
-                                                  : context.tr('私聊')),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                        Builder(
+                                          builder: (BuildContext context) {
+                                            final String draft = widget.state.draftFor(c.key);
+                                            if (draft.trim().isNotEmpty) {
+                                              return Text.rich(
+                                                TextSpan(children: <InlineSpan>[
+                                                  TextSpan(
+                                                    text: context.tr('【草稿】'),
+                                                    style: const TextStyle(
+                                                      fontSize: 11.5,
+                                                      color: Color(0xFFE81123),
+                                                    ),
+                                                  ),
+                                                  TextSpan(
+                                                    text: draft,
+                                                    style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                                  ),
+                                                ]),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              );
+                                            }
+                                            return Text(
+                                              widget.state.lastMessage(c.key)?.text ??
+                                                  (c.isRoom
+                                                      ? (c.memberCount == null
+                                                          ? context.tr('群聊')
+                                                          : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                              'm': '${c.memberCount}',
+                                                            }))
+                                                      : context.tr('私聊')),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(fontSize: 11.5, color: p.ink3),
+                                            );
+                                          },
                                         ),
                                       ],
                                     ),
@@ -490,6 +517,8 @@ class _MessagesViewState extends State<MessagesView> {
                                 child: TextField(
                                   controller: _draftFor(active.key),
                                   focusNode: _composerFocus,
+                                  onChanged: (String value) =>
+                                      widget.state.setDraft(active.key, value),
                                   minLines: 1,
                                   maxLines: 4,
                                   maxLength: 500,

@@ -110,6 +110,19 @@ class AppState extends ChangeNotifier {
 
   final Map<String, int> _unread = <String, int>{};
   final Set<int> _blocked = <int>{};
+  final Map<String, String> _drafts = <String, String>{};
+
+  String draftFor(String key) => _drafts[key] ?? '';
+
+  void setDraft(String key, String text) {
+    if (text.trim().isEmpty) {
+      _drafts.remove(key);
+    } else {
+      _drafts[key] = text;
+    }
+    _scheduleCacheSave();
+    notifyListeners();
+  }
 
   final SettingsStore _store;
 
@@ -454,6 +467,15 @@ class AppState extends ChangeNotifier {
     }
     _cacheRestored = true;
     _cacheSavedAt = DateTime.tryParse(data['saved_at'] as String? ?? '');
+    final Object? rawDrafts = data['drafts'];
+    if (rawDrafts is Map<String, dynamic>) {
+      _drafts.clear();
+      rawDrafts.forEach((String key, Object? value) {
+        if (value is String && value.trim().isNotEmpty) {
+          _drafts[key] = value;
+        }
+      });
+    }
     final Object? rawUnread = data['unread'];
     if (rawUnread is Map<String, dynamic>) {
       _unread.clear();
@@ -596,6 +618,7 @@ class AppState extends ChangeNotifier {
       'active': activeConversationKey,
       'saved_at': DateTime.now().toUtc().toIso8601String(),
       'unread': _unread,
+      'drafts': _drafts,
       'messages': messages,
     };
   }
@@ -1178,6 +1201,23 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteFriend(int peerAccountId) async {
     await api.deleteFriend(token: loginToken!, peerAccountId: peerAccountId);
+    _drafts.remove('dm:$peerAccountId');
+    if (activeConversationKey == 'dm:$peerAccountId') {
+      activeConversationKey = null;
+    }
+    await refreshAll();
+  }
+
+  /// 删除好友并拉黑：被删的一方无法再主动加回来（后端拉黑拦截好友申请）。
+  Future<void> deleteFriendAndBlock(int peerAccountId) async {
+    await api.deleteFriend(token: loginToken!, peerAccountId: peerAccountId);
+    try {
+      await api.blockAccount(token: loginToken!, accountId: peerAccountId);
+      _blocked.add(peerAccountId);
+    } catch (_) {
+      // 好友已经删了；拉黑失败不回滚。
+    }
+    _drafts.remove('dm:$peerAccountId');
     if (activeConversationKey == 'dm:$peerAccountId') {
       activeConversationKey = null;
     }
@@ -1232,6 +1272,7 @@ class AppState extends ChangeNotifier {
     if (body.isEmpty) {
       return;
     }
+    _drafts.remove(conv.key);
     final ChatMessage local = ChatMessage(
       localId: '${DateTime.now().microsecondsSinceEpoch}-${conv.key}',
       conversationKey: conv.key,

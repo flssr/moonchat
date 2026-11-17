@@ -719,6 +719,19 @@ void main() {
     expect(state.unreadFor(dm.key), 1);
   });
 
+  test('草稿按会话保存，发送后清掉', () async {
+    final AppState state = _newState();
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    state.setDraft(dm.key, '没发完');
+    expect(state.draftFor(dm.key), '没发完');
+
+    await state.sendMessage(dm, '没发完');
+    expect(state.draftFor(dm.key), isEmpty);
+  });
+
   test('后台收到消息累计未读，打开会话清零', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final AppState state = _newState(realtime: rt);
