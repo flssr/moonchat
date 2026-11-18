@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [CI 桌面产物只在 main 出包](#ci-桌面产物只在-main-出包)
 - [CD 自动清理 GHCR 旧镜像版本](#cd-自动清理-ghcr-旧镜像版本)
 - [biz 镜像改分层布局与 alpine JRE](#biz-镜像改分层布局与-alpine-jre)
 - [官网静态页进流水线](#官网静态页进流水线)
@@ -41,6 +42,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### CI 桌面产物只在 main 出包
+
+2026-11-19 00:02 CST   [2026-11-18 16:02 UTC]
+
+决策：`ci.yml` 的 `desktop` job 加 `if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'`，PR 阶段不再跑 Windows 构建；`upload-artifact` 加 `retention-days: 3`，产物只留三天。同时一次性删掉已有的 33 条 `mondchat-windows` 产物（482MB）和非 main 的 14 条缓存（约 4.0GB，其中 `refs/pull/30/merge` 1.95GB、`feat/desktop-client` 1.85GB）。
+
+原因：#49 的 500MB artifacts + Packages 共享池被 artifacts 挤爆——`desktop` 在 `pull_request` 下也跑，每次 push 都留一份 14.7MB 产物，且默认保留 90 天；实测 artifacts 48 条 482MB，其中 33 条是桌面产物。后端侧（#50）已把 GHCR 每次新增压到约 0.2MB，这一条把客户端侧的增长源也收掉。代价是 PR 阶段不再编译 Windows 壳，平台层回归延后到 main；需要时用 `gh workflow run ci.yml --ref <分支>` 手动跑，桌面检查仍留在手动入口里。
 
 ### CD 自动清理 GHCR 旧镜像版本
 
