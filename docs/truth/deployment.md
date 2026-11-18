@@ -117,6 +117,7 @@ server {
 2. `scp` 最新 `compose.yaml` 到 `/opt/mondchat/compose.yaml`。
 3. SSH 上机 `docker compose pull` 与 `docker compose up -d --wait --wait-timeout 300 --remove-orphans`。
 4. 健康检查：宿主上轮询 `curl -fsS http://127.0.0.1:8080/actuator/health` 两分钟，起不来看 `docker compose ps` 并失败。
+5. 部署成功后跑 `prune` job 清理 GHCR 里的旧镜像版本：只留 `latest` 与最近 3 个 `:<sha>`，更旧的删掉。它依赖 Secret `GHCR_PAT`（`read:packages` + `delete:packages`），是独立 job 且 `continue-on-error`，清理失败只红叉，不影响已经上线的部署。
 
 部署串行排队，不取消进行中的那一次。回滚：把 `/opt/mondchat/.env` 的 `MONDCHAT_BIZ_TAG` 改成要回退的 sha，再执行一次 `docker compose up -d`。
 
@@ -142,8 +143,9 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 | `SSH_USER` | 部署用账号 |
 | `SSH_PRIVATE_KEY` | 该账号的私钥 |
 | `SSH_KNOWN_HOSTS` | 服务器主机指纹，严格校验用 |
+| `GHCR_PAT` | 清理 GHCR 旧镜像版本用：`read:packages` + `delete:packages` |
 
-推 GHCR 用仓库自带的 `GITHUB_TOKEN`（`packages: write`），不需要额外 PAT。
+推 GHCR 用仓库自带的 `GITHUB_TOKEN`（`packages: write`）；清理旧版本要删包，`GITHUB_TOKEN` 没有这个权限，所以另配 `GHCR_PAT`。
 
 ## 必要部署前提
 

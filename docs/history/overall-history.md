@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [CD 自动清理 GHCR 旧镜像版本](#cd-自动清理-ghcr-旧镜像版本)
 - [biz 镜像改分层布局与 alpine JRE](#biz-镜像改分层布局与-alpine-jre)
 - [官网静态页进流水线](#官网静态页进流水线)
 - [头像上线与流水线手动触发](#头像上线与流水线手动触发)
@@ -40,6 +41,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### CD 自动清理 GHCR 旧镜像版本
+
+2026-11-18 23:19 CST   [2026-11-18 15:19 UTC]
+
+决策：`cd.yml` 在 `deploy` 之后加独立 `prune` job：用 Secret `GHCR_PAT` 读镜像包的 versions，排除带 `latest` 的那个，按 `created_at` 倒序保留最近 3 个 `:<sha>`，其余 DELETE；包可能挂在账号也可能挂在仓库命名空间下，先探 `/user/packages/container/mondchat-biz` 读不到再换 `/repos/<owner>/<repo>/packages/container/mondchat-biz`。job 用 `needs: deploy` + `continue-on-error: true`。
+
+原因：上一轮只压住了「每次 push 新增多少」，已经存在的旧 sha tag 还在，500MB 池子照样会满；清旧版本必须删包，`GITHUB_TOKEN` 没有这个权限，用户另建了 `GHCR_PAT`（`read:packages` + `delete:packages`）。放进 CD 而不是手动跑，是因为「每次上线顺手留 3 个回滚点」只有跟着部署走才不会被忘掉。独立 job 加 `continue-on-error` 是为了清理失败不把已经成功的部署标成红叉：回滚点数量不是上线正确性的一部分，删不掉包也不该挡部署。
 
 ### biz 镜像改分层布局与 alpine JRE
 
