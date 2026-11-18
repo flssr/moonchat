@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [biz 镜像改分层布局与 alpine JRE](#biz-镜像改分层布局与-alpine-jre)
 - [官网静态页进流水线](#官网静态页进流水线)
 - [头像上线与流水线手动触发](#头像上线与流水线手动触发)
 - [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
@@ -39,6 +40,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### biz 镜像改分层布局与 alpine JRE
+
+2026-11-18 23:02 CST   [2026-11-18 15:02 UTC]
+
+决策：`backend/mondchat-biz/Dockerfile` 在 `package` 之后用 `java -Djarmode=tools -jar ... extract --layers` 拆出 `dependencies/`、`snapshot-dependencies/`、`application/`，依赖层在前、`application/` 最后 COPY；运行镜像从 `eclipse-temurin:21-jre` 换成 `eclipse-temurin:21-jre-alpine`，建用户改用 busybox 的 `adduser -D -u 10001 mondchat`，`logs/` 目录与属主那段照旧。`cd.yml` 的 `cache-to` 去掉 `mode=max`。本机实测镜像 549MB → 378MB，`app.jar` 那一层 48.5MB → 209kB。Spring Boot 4.1 的 tools 提取结果是「瘦 jar + `lib/`」（Main-Class 直接是应用类），不再有 loader 层，所以入口仍是 `java -jar`，不是 `JarLauncher`。
+
+原因：GHCR 500MB 存储池被每次 push 的 46MB fat jar 层吃满（#49），按这个增速约十次 push 就填满。依赖不变时 `lib/` 层命中缓存，一次 push 只有 209kB 的 application 层是新 blob。清理 GHCR 里旧的 `:<sha>` tag 需要带 `delete:packages` 权限的 PAT，`GITHUB_TOKEN` 删不了包，这部分留给用户。
 
 ### 官网静态页进流水线
 

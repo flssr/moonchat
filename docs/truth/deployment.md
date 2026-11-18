@@ -113,7 +113,7 @@ server {
 
 `push` 到 `main` 触发 [`.github/workflows/cd.yml`](../../.github/workflows/cd.yml)（即用户合完 PR 之后），只做后端：
 
-1. 用 `backend/mondchat-biz/Dockerfile`、以仓库根为上下文构建镜像，推 `ghcr.io/<owner>/mondchat-biz:latest` 与 `:<sha>`。
+1. 用 `backend/mondchat-biz/Dockerfile`、以仓库根为上下文构建镜像，推 `ghcr.io/<owner>/mondchat-biz:latest` 与 `:<sha>`。镜像是 Spring Boot 分层布局（第三方 jar 在 `lib/`，每次提交只变 `app.jar`），运行基础镜像 `eclipse-temurin:21-jre-alpine`；一次 push 新增的镜像存储是 application 层，约 0.2MB。
 2. `scp` 最新 `compose.yaml` 到 `/opt/mondchat/compose.yaml`。
 3. SSH 上机 `docker compose pull` 与 `docker compose up -d --wait --wait-timeout 300 --remove-orphans`。
 4. 健康检查：宿主上轮询 `curl -fsS http://127.0.0.1:8080/actuator/health` 两分钟，起不来看 `docker compose ps` 并失败。
