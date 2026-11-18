@@ -47,7 +47,7 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha
 
       - name: 配置 SSH
         env:
@@ -84,3 +84,30 @@ jobs:
             echo "biz 两分钟内没起来"
             docker compose -f /opt/mondchat/compose.yaml ps
             exit 1'
+
+  prune:
+    # 删不了包就别清，清理失败不能挡住已经上线的部署。
+    needs: deploy
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: 只保留 latest 与最近 3 个 sha
+        env:
+          GH_TOKEN: ${{ secrets.GHCR_PAT }}
+        run: |
+          set -eu
+          pkg=mondchat-biz
+          keep=3
+          # 包可能归账号也可能归仓库，哪种能读用哪种
+          base="/user/packages/container/$pkg"
+          if ! gh api "$base/versions?per_page=1" >/dev/null 2>&1; then
+            base="/repos/${GITHUB_REPOSITORY}/packages/container/$pkg"
+          fi
+          echo "using $base"
+          ids=$(gh api "$base/versions?per_page=100" --paginate \
+            --jq "[.[] | select((.metadata.container.tags | index(\"latest\")) | not)]
+                  | sort_by(.created_at) | reverse | .[$keep:] | .[].id")
+          for id in $ids; do
+            gh api -X DELETE "$base/versions/$id" >/dev/null
+            echo "deleted $id"
+          done

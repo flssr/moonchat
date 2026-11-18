@@ -20,6 +20,8 @@
 
 ## 目录
 
+- [CD 自动清理 GHCR 旧镜像版本](#cd-自动清理-ghcr-旧镜像版本)
+- [biz 镜像改分层布局与 alpine JRE](#biz-镜像改分层布局与-alpine-jre)
 - [官网静态页进流水线](#官网静态页进流水线)
 - [头像上线与流水线手动触发](#头像上线与流水线手动触发)
 - [biz 镜像补 logs 目录](#biz-镜像补-logs-目录)
@@ -39,6 +41,22 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### CD 自动清理 GHCR 旧镜像版本
+
+2026-11-18 23:19 CST   [2026-11-18 15:19 UTC]
+
+决策：`cd.yml` 在 `deploy` 之后加独立 `prune` job：用 Secret `GHCR_PAT` 读镜像包的 versions，排除带 `latest` 的那个，按 `created_at` 倒序保留最近 3 个 `:<sha>`，其余 DELETE；包可能挂在账号也可能挂在仓库命名空间下，先探 `/user/packages/container/mondchat-biz` 读不到再换 `/repos/<owner>/<repo>/packages/container/mondchat-biz`。job 用 `needs: deploy` + `continue-on-error: true`。
+
+原因：上一轮只压住了「每次 push 新增多少」，已经存在的旧 sha tag 还在，500MB 池子照样会满；清旧版本必须删包，`GITHUB_TOKEN` 没有这个权限，用户另建了 `GHCR_PAT`（`read:packages` + `delete:packages`）。放进 CD 而不是手动跑，是因为「每次上线顺手留 3 个回滚点」只有跟着部署走才不会被忘掉。独立 job 加 `continue-on-error` 是为了清理失败不把已经成功的部署标成红叉：回滚点数量不是上线正确性的一部分，删不掉包也不该挡部署。
+
+### biz 镜像改分层布局与 alpine JRE
+
+2026-11-18 23:02 CST   [2026-11-18 15:02 UTC]
+
+决策：`backend/mondchat-biz/Dockerfile` 在 `package` 之后用 `java -Djarmode=tools -jar ... extract --layers` 拆出 `dependencies/`、`snapshot-dependencies/`、`application/`，依赖层在前、`application/` 最后 COPY；运行镜像从 `eclipse-temurin:21-jre` 换成 `eclipse-temurin:21-jre-alpine`，建用户改用 busybox 的 `adduser -D -u 10001 mondchat`，`logs/` 目录与属主那段照旧。`cd.yml` 的 `cache-to` 去掉 `mode=max`。本机实测镜像 549MB → 378MB，`app.jar` 那一层 48.5MB → 209kB。Spring Boot 4.1 的 tools 提取结果是「瘦 jar + `lib/`」（Main-Class 直接是应用类），不再有 loader 层，所以入口仍是 `java -jar`，不是 `JarLauncher`。
+
+原因：GHCR 500MB 存储池被每次 push 的 46MB fat jar 层吃满（#49），按这个增速约十次 push 就填满。依赖不变时 `lib/` 层命中缓存，一次 push 只有 209kB 的 application 层是新 blob。清理 GHCR 里旧的 `:<sha>` tag 需要带 `delete:packages` 权限的 PAT，`GITHUB_TOKEN` 删不了包，这部分留给用户。
 
 ### 官网静态页进流水线
 
