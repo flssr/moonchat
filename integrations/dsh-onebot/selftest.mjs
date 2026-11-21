@@ -75,6 +75,8 @@ function makeHost(options = {}) {
                     : { agent: { id, ctx: { tools: toolCtx } } }
             },
             async prompt(request) {
+                state.attempts = (state.attempts ?? 0) + 1
+                if (state.attempts <= (options.promptFails ?? 0)) throw new Error('session/agent-busy')
                 state.prompts.push(request)
                 return { accepted: true }
             },
@@ -95,6 +97,7 @@ function fakeHost(options = {}) {
     const rt = createRuntime(host.ctx, {
         home: process.env.DSH_HOME,
         wakeDebounceMs: 0,
+        retryDelayMs: 0,
         groups: options.groups !== false,
         proactive: { enabled: true, idleMinutes: 1, maxPerHour: 2, quietHours: options.quietHours ?? '' },
     }, { callBridge: host.callBridge })
@@ -208,6 +211,16 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.tick(Date.now() + 10 * 60_000)
     await settle()
     assert.equal(state.prompts.length, 0, '安静时段内不起话头')
+}
+
+// ---- 唤醒失败要补一次重试，别把消息永远留在队列里 ----
+
+{
+    const { rt, state } = fakeHost({ promptFails: 1 })
+    rt.ingest(message())
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    assert.equal(state.attempts, 2, '第一次失败后要重试一次')
+    assert.equal(state.prompts.length, 1, '重试成功才真正唤醒')
 }
 
 // ---- 重启后：冷会话要 resume，不是给同一个私聊再建一个 ----

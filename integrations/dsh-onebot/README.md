@@ -19,6 +19,7 @@ MondChat ── 桥（integrations/onebot）── OneBot 12/WS ── 本插件
 | 权限 | 会话建好后按 `permissionPresets` 里 `sandbox === 'read-only'` 的档位压成只读 |
 | 主动话题 | 只在群里：安静满 `idleMinutes`（默认 60）且不在安静时段，每小时最多 `maxPerHour`（默认 2）次 |
 | 断线 | 桥不可达时指数退避重连（最长 30 秒），期间消息不补（桥本身也不回填历史） |
+| 唤醒失败 | 排队被拒（比如 agent 正忙）时留着手里的消息，15 秒后补一次重试 |
 
 ## 挂载
 

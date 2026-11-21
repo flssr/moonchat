@@ -45,8 +45,9 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   const bridgeUrl = config.bridge ?? 'ws://127.0.0.1:6700'
   const accessToken = config.accessToken ?? ''
   const groupsEnabled = config.groups !== false
-  // 自检要跑得快：默认 3 秒去抖，测试里可以压到 0。
+  // 自检要跑得快：默认 3 秒去抖、15 秒重试，测试里可以压到 0。
   const wakeDebounceMs = Number(config.wakeDebounceMs ?? WAKE_DEBOUNCE_MS)
+  const retryDelayMs = Number(config.retryDelayMs ?? 15_000)
   const proactiveConfig = {
     enabled: config.proactive?.enabled !== false,
     idleMinutes: Number(config.proactive?.idleMinutes ?? 60),
@@ -141,12 +142,25 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     const instruction = isProactive(reason)
       ? `【MondChat 群】这个群安静了至少 ${proactiveConfig.idleMinutes} 分钟。你可以用 ${TOOL_SEND} 起个话头；没有想说的就别动。`
       : `【MondChat】${await labelOf(conversation)}${reason}。用 ${TOOL_UNREAD} 看内容；想发言就调 ${TOOL_SEND}，不想发言就不用调。发言用中文、口语，一条不超过 200 字。`
-    await ctx.sessionController.prompt({
-      requestId: randomUUID(),
-      sessionId: entry.sessionId,
-      mode: 'queue',
-      content: textBlock(instruction),
-    }, AbortSignal.timeout(30_000))
+    try {
+      await ctx.sessionController.prompt({
+        requestId: randomUUID(),
+        sessionId: entry.sessionId,
+        mode: 'queue',
+        content: textBlock(instruction),
+      }, AbortSignal.timeout(30_000))
+    } catch (error) {
+      // 排队失败时消息还在队列里；补一次重试，否则这个会话可能永远安静下去。
+      log(`唤醒 ${conversation} 失败，15 秒后重试：`, error.message)
+      const retryKey = `retry:${conversation}`
+      clearTimeout(timers.get(retryKey))
+      const timer = setTimeout(() => {
+        timers.delete(retryKey)
+        wake(conversation, reason).catch((again) => log(`${conversation} 重试唤醒仍失败：`, again.message))
+      }, retryDelayMs)
+      timer.unref?.()
+      timers.set(retryKey, timer)
+    }
   }
 
   const isProactive = (reason) => String(reason).startsWith('proactive')
