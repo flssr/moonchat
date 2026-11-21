@@ -72,8 +72,11 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   /** conversation → 主动话题时间戳数组，用来卡每小时上限 */
   const proactiveLog = new Map()
   const timers = new Map()
-  /** 已经挂过工具的 agent，避免重载或重复 adopt 时重复注册（同一层重名会抛）。 */
-  const registeredAgents = new Set()
+  /**
+   * 已经挂过工具的 agent。按对象记而不是按会话 id：会话被归档后重挂，id 不变但 agent 是新的，
+   * 按 id 去重会让那个会话永远拿不到工具。
+   */
+  const registeredAgents = new WeakSet()
   const toolDisposers = []
   let readOnlyPreset = null
   let stopped = false
@@ -315,13 +318,13 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   }
 
   function registerTools(agent, conversation) {
-    if (registeredAgents.has(agent.id)) return []
+    if (registeredAgents.has(agent)) return []
     const tools = toolsOf(agent)
     if (typeof tools?.register !== 'function') {
       log(`${conversation} 的 agent 还不能注册工具，下一次唤醒会重试`)
       return []
     }
-    registeredAgents.add(agent.id)
+    registeredAgents.add(agent)
     const disposers = [tools.register(unreadTool(conversation)), tools.register(sendTool(conversation))]
     toolDisposers.push(...disposers)
     return disposers
@@ -428,7 +431,6 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       timers.clear()
       for (const dispose of toolDisposers) dispose()
       toolDisposers.length = 0
-      registeredAgents.clear()
       bridge.close?.()
     })
   }

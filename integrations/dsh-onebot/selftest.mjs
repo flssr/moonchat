@@ -32,6 +32,7 @@ function makeHost(options = {}) {
         live: new Set(),
         sends: [],
         renames: [],
+        registrations: 0,
         disposers: [],
     }
     const presets = {
@@ -41,6 +42,7 @@ function makeHost(options = {}) {
     }
     const toolCtx = {
         register: (def) => {
+            state.registrations += 1
             state.tools.set(def.name, def)
             return () => state.tools.delete(def.name)
         },
@@ -217,6 +219,20 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.tick(Date.now() + 10 * 60_000)
     await settle()
     assert.equal(state.prompts.length, 0, '安静时段内不起话头')
+}
+
+// ---- 会话被归档后重挂：同一个 id、新的 agent，工具必须重新挂上 ----
+
+{
+    const { rt, state } = fakeHost()
+    await rt.ensureSession('private:100000004')
+    const first = state.registrations
+    assert.equal(first, 2, '两个工具各注册一次')
+
+    state.live.clear() // 模拟会话被归档/销毁，会话 id 不变
+    await rt.ensureSession('private:100000004')
+    assert.ok(state.registrations > first, '旧 agent 没了要重新挂工具，不能按会话 id 去重')
+    assert.ok(state.tools.has('mondchat_send'))
 }
 
 // ---- 唤醒失败要补一次重试，别把消息永远留在队列里 ----
