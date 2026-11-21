@@ -98,10 +98,13 @@ function makeHost(options = {}) {
     return { ctx, state, callBridge }
 }
 
+let hostHome = 0
+
 function fakeHost(options = {}) {
     const host = makeHost(options)
+    hostHome += 1
     const rt = createRuntime(host.ctx, {
-        home: process.env.DSH_HOME,
+        home: join(process.env.DSH_HOME, `fake-${hostHome}`),
         wakeDebounceMs: 0,
         retryDelayMs: 0,
         groups: options.groups !== false,
@@ -219,6 +222,23 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.tick(Date.now() + 10 * 60_000)
     await settle()
     assert.equal(state.prompts.length, 0, '安静时段内不起话头')
+}
+
+// ---- 设置页读的快照 ----
+
+{
+    const { rt, state } = fakeHost()
+    rt.ingest(message({ detail_type: 'group', group_id: '7' }))
+    await settle()
+    const snapshot = rt.status()
+    assert.equal(snapshot.bridge.url, 'ws://127.0.0.1:6700')
+    assert.equal(snapshot.bridge.connected, false, '自检里的桥是假的，没连上')
+    assert.equal(snapshot.config.groups, true)
+    assert.equal(snapshot.conversations.length, 1)
+    assert.equal(snapshot.conversations[0].conversation, 'group:7')
+    assert.match(snapshot.conversations[0].title, /测试群/)
+    assert.equal(snapshot.conversations[0].unread, 1)
+    assert.ok(state.created >= 1)
 }
 
 // ---- 队列有上限：丢掉多少要如实告诉 agent ----

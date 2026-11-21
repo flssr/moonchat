@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "title": "MondChat 连接",
+    "description": "把 MondChat 的私聊和群接成 DSH 会话：看桥有没有连上、有哪些会话、各自还积压多少条消息。"
+  },
+  "tab": "MondChat",
+  "bridge": "桥",
+  "connected": "已连接",
+  "disconnected": "未连接",
+  "url": "地址",
+  "groups": "群聊",
+  "on": "开",
+  "off": "关",
+  "workspace": "工作目录",
+  "model": "模型",
+  "modelDefault": "跟随 DSH 默认",
+  "proactive": "主动话题",
+  "proactiveValue": "安静 {idle} 分钟后可起话头，每小时最多 {max} 次",
+  "quiet": "安静时段",
+  "conversations": "已接入的会话",
+  "empty": "还没有 MondChat 消息进来。",
+  "unread": "{count} 条待处理",
+  "dropped": "（{count} 条因积压被丢弃）",
+  "live": "会话在线",
+  "cold": "会话未在线",
+  "lastActivity": "最近消息",
+  "loadFailed": "读取状态失败：{message}"
+}

@@ -26,6 +26,8 @@ const TICK_MS = 60_000
 
 const TOOL_UNREAD = 'mondchat_unread'
 const TOOL_SEND = 'mondchat_send'
+/** 设置页读状态用的只读路由，走共享 /api 通道（与其它插件同一套会话鉴权）。 */
+const STATUS_ROUTE = '/api/mondchat/status'
 
 const textBlock = (text) => [{ type: 'text', text: String(text) }]
 // OneBot 的消息段是 {type, data}，DSH 的 ContentBlock 是 {type, text}，别混用。
@@ -87,7 +89,41 @@ export function createRuntime(ctx, config = {}, deps = {}) {
 
   const bridge = deps.callBridge === undefined
     ? createBridgeClient({ url: bridgeUrl, token: accessToken, onEvent: (event) => ingest(event), log })
-    : { call: deps.callBridge, close() {} }
+    : { call: deps.callBridge, close() {}, isConnected: () => false }
+
+  /** 给设置页看的快照：桥连没连上、有哪些会话、各自积压多少。 */
+  function status() {
+    const conversations = []
+    const keys = new Set([
+      ...Object.keys(state.conversations ?? {}),
+      ...lastActivity.keys(),
+      ...inbox.keys(),
+    ])
+    for (const conversation of keys) {
+      const entry = sessions.get(conversation) ?? state.conversations?.[conversation]
+      const sessionId = entry?.sessionId ?? null
+      conversations.push({
+        conversation,
+        title: labelSync(conversation),
+        sessionId,
+        live: Boolean(sessionId && ctx.sessions.get(sessionId)),
+        unread: inbox.get(conversation)?.length ?? 0,
+        dropped: dropped.get(conversation) ?? 0,
+        lastActivity: lastActivity.get(conversation) ?? null,
+      })
+    }
+    conversations.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
+    return {
+      bridge: { url: bridgeUrl, connected: bridge.isConnected?.() === true },
+      config: {
+        groups: groupsEnabled,
+        workspace,
+        model: config.model ?? null,
+        proactive: proactiveConfig,
+      },
+      conversations,
+    }
+  }
 
   function loadState() {
     try {
@@ -426,6 +462,19 @@ export function createRuntime(ctx, config = {}, deps = {}) {
 
   function start() {
     bridge.connect?.()
+
+    // 设置页的只读快照；没有 connection 的环境（比如自检）就跳过。
+    const connection = ctx.get('connection')
+    if (connection?.fetch?.register) {
+      ctx.effect(() => connection.fetch.register({
+        path: STATUS_ROUTE,
+        methods: ['GET'],
+        requestBody: 'buffered',
+        fetch: async () => new Response(JSON.stringify(status()), {
+          headers: { 'content-type': 'application/json' },
+        }),
+      }), 'mondchat: status route')
+    }
     const timer = setInterval(() => {
       if (stopped) return
       try {
@@ -446,7 +495,7 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     })
   }
 
-  return { start, ingest, tick, ensureSession, inbox, sessions, state }
+  return { start, ingest, tick, ensureSession, inbox, sessions, state, status }
 }
 
 /** '23:00-08:00' 这种跨零点区间。 */
@@ -519,5 +568,5 @@ function createBridgeClient({ url, token, onEvent, log }) {
     })
   }
 
-  return { connect, call, close: () => { closed = true; clearTimeout(reconnectTimer); socket?.close() } }
+  return { connect, call, isConnected: () => socket?.readyState === 1, close: () => { closed = true; clearTimeout(reconnectTimer); socket?.close() } }
 }
