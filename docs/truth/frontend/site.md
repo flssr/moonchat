@@ -8,7 +8,7 @@
 | --- | --- |
 | `site/index.html` | 单页结构，以及首帧前的主题内联脚本 |
 | `site/styles.css` | 纸白 / 炭黑两套变量、排版与组件 |
-| `site/app.js` | 主题切换、引言轮换、下载确认弹窗、正文逐段进场 |
+| `site/app.js` | 主题切换、引言轮换、下载确认弹窗 |
 | `site/sky.js` | 首屏的月亮、星点与流星（canvas） |
 | `site/assets/mondchat-logo.svg` | 品牌图标与 favicon |
 
@@ -32,11 +32,17 @@
 - **白天只留月亮**；星点与流星只画在暗色的首屏。`sky.js` 在切回亮色时停帧并清空画布，画布本身在亮色下 `display:none`。
 - 流星同时最多 3 颗，间隔约 3.8–7 秒，只在标题上方的空天里划完，不穿过正文。
 
+## 正文入场
+
+- 进场和退场都挂在滚动位置上：`styles.css` 用 `animation-timeline: view()` + `animation-range: cover 0% cover 100%`，给 `.reveal` 里的 `p` / `h2` / `blockquote` / `figcaption` 播一段 `rv` 关键帧（0% 透明下沉 26px + 6px 模糊，14% 到位，84% 保持，100% 淡出并上浮 36px）。
+- 因为进度跟着滚动走，滑过再滑回来会原路重演，也不存在「停在屏幕中间却是透明」的死区：透明度只由元素当时的位置决定。
+- 顶部读者区保持不透明：淡出从元素滑到导航下方才开始，正文停在阅读位置时不发灰。
+- 没有 `animation-timeline` 的浏览器整段跳过，正文静态可见。
+
 ## 降级与可访问性
 
-- **没有 JS**：`<html>` 不会挂 `js` 类，正文不做进场、直接可见；主题保持首次解析时的默认值；「现在体验」退化成普通下载链接。
-- 正文按段落进场：`app.js` 给每个 `.reveal` 里的 `p` / `h2` / `blockquote` / `figcaption` 加 `rv` 类，靠近视口才加 `is-in`；相邻元素靠 `--i` 排队 110ms。`rv` 的隐藏规则与 `is-in` 命中规则都带 `html.js` 前缀：命中规则少了它就会被压过，正文停在透明。
-- `prefers-reduced-motion: reduce`：正文直接可见、星图静止、不出流星、引言不轮换。
+- **没有 JS**：主题保持首次解析时的默认值；「现在体验」退化成普通下载链接；正文入场是纯 CSS，照常生效。
+- `prefers-reduced-motion: reduce`：正文不播入场、直接可见；星图静止、不出流星、引言不轮换。
 - 引言 `figure` 可以聚焦，悬停或聚焦时暂停轮换。
 - 主题按钮有固定的 `aria-label`，不叠 `aria-pressed`；下载弹窗用 `<dialog>` 自带的焦点管理，标题由 `aria-labelledby` 关联。
 

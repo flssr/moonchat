@@ -4,10 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
-  // 首帧前定主题，并把「有 JS」标出来：没有 JS 时正文不做淡入、直接可见。
+  // 首帧前定主题，避免亮暗闪一下。
   (() => {
     const root = document.documentElement;
-    root.classList.add('js');
     let saved = null;
     try { saved = localStorage.getItem('mondchat-theme'); } catch (e) { /* private mode */ }
     const dark = saved ? saved === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;

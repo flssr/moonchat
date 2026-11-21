@@ -334,27 +334,29 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 }
 
 /* ---------- motion ---------- */
-/* 段落逐个进场：位置、透明度、模糊一起收，相邻元素靠 --i 排队。 */
-.rv {
-  transition:
-    opacity 760ms var(--ease-out),
-    transform 760ms var(--ease-out),
-    filter 760ms var(--ease-out);
-  transition-delay: calc(var(--i, 0) * 110ms);
+/* 进场和退场都挂在滚动位置上（view timeline）：滑到哪就演到哪，往回滑会原路退回，
+   所以每次滑回来都能再来一次，也不会留下「停在屏幕中间却是透明」的死区。
+   不支持 view timeline 的浏览器不加动画，正文照常可见。 */
+@keyframes rv {
+  0%   { opacity: 0; transform: translateY(26px); filter: blur(6px); }
+  14%  { opacity: 1; transform: none; filter: none; }
+  84%  { opacity: 1; transform: none; filter: none; }
+  100% { opacity: 0; transform: translateY(-36px); filter: blur(4px); }
 }
-/* 只有带 JS 时才先藏起来等进场；没有 JS 就直接显示正文。 */
-html.js .rv {
-  opacity: 0;
-  transform: translateY(26px);
-  filter: blur(6px);
+
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal :is(p, h2, blockquote, figcaption) {
+      animation: rv linear both;
+      animation-timeline: view();
+      animation-range: cover 0% cover 100%;
+    }
+  }
 }
-/* 选择器必须带上 html.js，否则压不过上面那条，正文会一直透明。 */
-html.js .rv.is-in { opacity: 1; transform: none; filter: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
-  html.js .rv { opacity: 1; transform: none; filter: none; }
 }
 
 /* ---------- responsive ---------- */

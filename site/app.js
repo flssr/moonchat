@@ -106,29 +106,4 @@
       }
     });
   }
-
-  // 正文按段落逐个进场：滑到哪一段，哪一段才起来。
-  const parts = [];
-  document.querySelectorAll('.reveal').forEach((box) => {
-    box.querySelectorAll('p, h2, blockquote, figcaption').forEach((el, i) => {
-      el.classList.add('rv');
-      el.style.setProperty('--i', String(Math.min(i, 6)));
-      parts.push(el);
-    });
-  });
-
-  if (!parts.length) return;
-  if (!('IntersectionObserver' in window)) {
-    parts.forEach((el) => el.classList.add('is-in'));
-    return;
-  }
-  const io = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add('is-in');
-      io.unobserve(entry.target);
-    }
-  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.12 });
-
-  parts.forEach((el) => io.observe(el));
 })();
