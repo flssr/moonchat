@@ -1,0 +1,25 @@
+{
+  "name": "dsh-onebot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "把 MondChat 的私聊/群接成 DSH 会话的 OneBot 12 应用端",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node selftest.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
