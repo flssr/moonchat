@@ -153,6 +153,7 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 - 建 Turms 用户时使用平台生成、不保存也不分发的随机密码。
 - 客户端只能从 `POST /api/sessions` 获得 Turms 凭据。
 - `allowSendMessagesToStranger = true`，因为好友关系不投影进 Turms；编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=true`，不吃上游默认值。
+- 已读时间一律由 Biz 代写、由 Turms 取服务器时间，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`，同样不吃上游默认值。
 
 任一前提被改都会破坏写入网关的唯一入口约束。
 
