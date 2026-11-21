@@ -50,6 +50,18 @@ public class ConversationController {
                 clientIp(httpRequest));
     }
 
+    /**
+     * #37 已读上报：无请求体、不回显时间。`204` 的含义是「已读到服务端此刻」，
+     * 客户端收到即可本地清零该会话，不必再 `QUERY` 确认。
+     */
+    @PostMapping("/{type}/{id}/read")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void markRead(CurrentAccount me,
+            @PathVariable("type") String conversationType,
+            @PathVariable("id") long conversationId) {
+        messageService.markRead(me, conversationType, conversationId);
+    }
+
     /** 入口只校验一次：枚举外取值就是 `validation_failed`，之后靠类型（一个枚举名）流转。 */
     private static String deviceType(String declared) {
         if (declared == null || declared.isBlank()) {

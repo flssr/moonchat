@@ -13,4 +13,10 @@ public interface MessageService {
     /** #19 发言：唯一写入口。发送者只取自凭据，不接受请求体自报。 */
     MessageResponses.SendResponse send(CurrentAccount me, String conversationType, long conversationId,
             MessageRequests.SendRequest request, String senderDeviceType, String senderIp);
+
+    /**
+     * #37 已读上报：把「本人该会话的已读时间」代写进 Turms（服务端此刻）。
+     * 只动自己的读游标，不写 PG、不产生消息、不进限流桶，冻结账号也放行。
+     */
+    void markRead(CurrentAccount me, String conversationType, long conversationId);
 }
