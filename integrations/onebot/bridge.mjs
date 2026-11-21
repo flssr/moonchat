@@ -52,6 +52,9 @@ export function createBridge() {
 
     const log = (...args) => console.log('[onebot]', ...args)
 
+    // 长驻进程：漏网的拒绝只该留日志，不该把桥带下去。
+    process.on('unhandledRejection', (error) => log('未处理的拒绝：', error?.message ?? error))
+
     let session = null
     let turms = null
     let refreshTimer = null
@@ -68,6 +71,7 @@ export function createBridge() {
     async function request(path, init = {}) {
         const res = await fetch(`${API_BASE}${path}`, {
             ...init,
+            signal: init.signal ?? AbortSignal.timeout(20_000),
             headers: {
                 'content-type': 'application/json',
                 authorization: `Bearer ${ACCOUNT_KEY}`,
@@ -86,6 +90,7 @@ export function createBridge() {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ account_key: ACCOUNT_KEY }),
+            signal: AbortSignal.timeout(20_000),
         })
         const text = await res.text()
         if (!res.ok) throw new Error(`换凭据失败 ${res.status}: ${text.slice(0, 300)}`)
@@ -186,6 +191,35 @@ export function createBridge() {
         scheduleRefresh()
         await previous?.close?.()
         log('凭据已续期并重连')
+    }
+
+    let watchdogTimer = null
+    let disconnectedChecks = 0
+
+    /**
+     * turms-client-js 自己会重连，但会话丢了就回不来。连续两次探测失联才重新登录，
+     * 免得一次网络抖动就换连接、把在途请求全打掉。
+     */
+    function startWatchdog() {
+        clearInterval(watchdogTimer)
+        watchdogTimer = setInterval(() => {
+            if (stopping || !turms) return
+            let connected = true
+            try {
+                connected = turms.driver.stateStore().isConnected !== false
+            } catch {
+                connected = true
+            }
+            if (connected) {
+                disconnectedChecks = 0
+                return
+            }
+            if (++disconnectedChecks < 2) return
+            disconnectedChecks = 0
+            log('Turms 连接断了，重新登录')
+            refreshCredential().catch((error) => log('重新登录失败，60 秒后重试：', error.message))
+        }, 30_000)
+        watchdogTimer.unref?.()
     }
 
     async function groupMembers(roomId) {
@@ -397,6 +431,7 @@ export function createBridge() {
         log(`已换到凭据：账号 ${session.account_id}（${session.display_name}）`)
         turms = await loginTurms(session)
         scheduleRefresh()
+        startWatchdog()
         await refreshRooms(true)
 
         const server = startServer()
@@ -405,6 +440,7 @@ export function createBridge() {
             stopping = true
             clearTimeout(refreshTimer)
             clearInterval(heartbeatTimer)
+            clearInterval(watchdogTimer)
             for (const client of clients) client.close(1001, 'bridge stopping')
             server.close()
             await turms?.close?.()
