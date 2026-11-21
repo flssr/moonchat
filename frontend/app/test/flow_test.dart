@@ -70,6 +70,24 @@ class _FakeRealtime implements RealtimeClient {
   }
 
   @override
+  Future<Map<String, DateTime?>> readDates({
+    required int myAccountId,
+    required List<int> peerAccountIds,
+    required List<String> turmsGroupIds,
+  }) async {
+    readDateQueries.add((
+      peers: List<int>.of(peerAccountIds),
+      groups: List<String>.of(turmsGroupIds),
+    ));
+    return readDatesResult;
+  }
+
+  /// 服务端已读时间：测试里按需塞 `dm:<id>` / `room:<turms 群 id>`。
+  final Map<String, DateTime?> readDatesResult = <String, DateTime?>{};
+  final List<({List<int> peers, List<String> groups})> readDateQueries =
+      <({List<int> peers, List<String> groups})>[];
+
+  @override
   Future<void> disconnect() async {
     connected = false;
   }
@@ -85,7 +103,7 @@ http.Response _json(Object? body, int status) => http.Response(
     );
 
 /// 假 Biz：只实现客户端会打到的那几条，字段与 `docs/truth/backend/README.md` 一致。
-MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
+MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf, int readStatus = 204}) {
   return MockClient((http.Request req) async {
     final String path = req.url.path;
     final String method = req.method;
@@ -93,12 +111,23 @@ MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf}) {
     // 发送路径也要校验契约头：token 掉了、设备头写错，测试必须红（`X-Device-Type` 就是这么漏过去的）。
     if (path.startsWith('/api/conversations/')) {
       expect(req.headers['authorization'] ?? req.headers['Authorization'], startsWith('Bearer '));
-      expect(
-        const <String>['desktop', 'browser', 'ios', 'android', 'others']
-            .contains(req.headers['x-device-type'] ?? req.headers['X-Device-Type']),
-        isTrue,
-        reason: 'X-Device-Type 必须是写入网关认的枚举',
-      );
+      // 已读上报不带设备头（后端也不要求），只有发言走写入网关。
+      if (path.endsWith('/messages')) {
+        expect(
+          const <String>['desktop', 'browser', 'ios', 'android', 'others']
+              .contains(req.headers['x-device-type'] ?? req.headers['X-Device-Type']),
+          isTrue,
+          reason: 'X-Device-Type 必须是写入网关认的枚举',
+        );
+      }
+    }
+
+    // issue #37：204 才表示「已读到服务端此刻」；503 留给客户端保留角标重试。
+    if (method == 'POST' && path.endsWith('/read')) {
+      if (readStatus != 204) {
+        return _json(<String, Object?>{'code': 'upstream_unavailable', 'message': 'no'}, readStatus);
+      }
+      return http.Response('', 204);
     }
 
     if (method == 'POST' && path == '/api/auth/login') {
@@ -201,11 +230,12 @@ AppState _newState({
   _FakeRealtime? realtime,
   MessageCacheStore? cache,
   bool primeOnLogin = false,
+  int readStatus = 204,
 }) {
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
-      client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf),
+      client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf, readStatus: readStatus),
     ),
     realtime: realtime ?? _FakeRealtime(),
     cache: cache,
@@ -769,7 +799,56 @@ void main() {
     expect(state.lastMessage(dm.key)?.text, '在吗');
 
     state.selectConversation(dm.key);
+    // 角标等 204 回来才清：上报有 1 秒去抖（issue #37）。
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
     expect(state.unreadFor(dm.key), 0);
+  });
+
+  test('登录未读以服务端 readDate 为准，没有本机缓存也算出来', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    rt.readDatesResult['dm:2'] = DateTime.parse('2026-11-10T09:00:00Z');
+    rt.pages.add(<IncomingMessage>[
+      IncomingMessage(
+        id: '901',
+        text: '离线来的',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T09:01:00Z'),
+      ),
+    ]);
+    final AppState state = _newState(realtime: rt, primeOnLogin: true);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    for (int i = 0; i < 100 && state.lastMessage(dm.key) == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(state.lastMessage(dm.key)?.text, '离线来的');
+    expect(state.unreadFor(dm.key), 1, reason: 'readDate 之前的对端消息都算未读');
+    // 私聊按对端账号查已读；没有群时群查询是空的。
+    expect(rt.readDateQueries.single.peers, contains(2));
+  });
+
+  test('已读上报失败（503）时角标保留，不假装读过', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt, readStatus: 503);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000999',
+      text: '在吗',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    expect(state.unreadFor(dm.key), 1);
+
+    state.selectConversation(dm.key);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(state.unreadFor(dm.key), 1, reason: '503 说明服务端没确认，角标不能清');
   });
 
   test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {
