@@ -66,7 +66,12 @@ python -m http.server 8130 --directory site
 
 `file://` 下 `localStorage` 可能不可用，主题只跟随系统。
 
+## 部署与缓存
+
+- `site/` 推到 `main`（或手动触发）后由 [`.github/workflows/site.yml`](../../../.github/workflows/site.yml) 铺到 `mondchat.com` 根目录：先解压全部资源，最后落 `index.html`，中途刷新不会拿到「新 HTML 指向还没到的新资源」。
+- 部署时把 `styles.css` / `app.js` / `sky.js` / 品牌图的内容哈希写成 `?v=` 指纹，只写在部署产物里；仓库里的 `index.html` 保持裸文件名，本地直接打开照常工作。资源一变地址就变，浏览器不会拿旧 CSS 配新 HTML。
+- 站点服务器上给 `index.html` 发 `Cache-Control: no-cache`、给带指纹的资源发长缓存（`max-age` + `immutable`）是部署侧的事，不在仓库里；没配之前浏览器会按 `Last-Modified` 猜有效期，改样式后老访客可能短时间看到旧 CSS。
+
 ## 边界
 
 - 不在客户端构建里，也不进 `frontend/app` 的产物；与 `frontend/preview`（客户端设计评审稿）是两回事。
-- 仓库里没有 `site/` 的部署编排与 CI 校验，托管方式由部署侧决定。
