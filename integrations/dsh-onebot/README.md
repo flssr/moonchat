@@ -33,6 +33,63 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 
 分层只有两条：**`model/` 不碰宿主**（可以单独 assert）；**`routes.js` 不写业务**（校验 + 调 service）。其余按 DSH 的插件习惯，`service.js` 之外没有框架。
 
+## 开发规范
+
+**分层**
+
+| 文件 | 可以做什么 | 不可以做什么 |
+| --- | --- | --- |
+| `index.js` | 建服务、`ctx.provide`、挂路由 | 写业务逻辑 |
+| `src/service.js` | 用例与状态、定时器、桥进程 | 认 HTTP、认槽位、拼提示词 |
+| `src/routes.js` | 解析请求、调 service、包 JSON | 业务判定（该不该发、能不能改） |
+| `src/tools.js` | 决定挂哪些工具 | 工具本体 |
+| `src/tools/<name>.js` | 单个工具的 schema 与校验 | 跨工具共享状态 |
+| `src/bridge/client.js` | OneBot 12 协议：连接、echo、退避 | 会话、设置、持久化 |
+| `src/model/` | 纯数据与纯函数 | `import node:http`、读环境变量、起定时器 |
+
+**实体**
+
+- 会话标识用 `ConversationId` 的概念（`kind` + `id`），不要在任何地方手拼 `'private:100'` 字符串再拆；
+- 会话的数据放在一个 `Conversation` 里，不要再开平行的 `Map` 存队列/丢弃/最近活动；
+- 实体只存数据；推进状态用 `recordMessage` / `takeMessages` / `gateFor` 这类纯函数返回新对象。
+
+**提示词**
+
+- 只有一套英文模板，边界靠标签（`<context>` / `<task>` / `<rules>` / `<example>`）；
+- 回复语言的唯一来源是 `<language>`，模板本身不能出现中文（群名、人名是数据，可以是中文）；
+- 改模板必须同步 `selftest.mjs` 里的标签断言。
+
+**配置**
+
+- 声明式配置（桥地址、时区、语言、闸门默认值）进 profile patch，经 `configEditor` 写；
+- 运行时数据（每会话覆盖、会话映射）进 `state.json`；两者互不覆盖；
+- 密钥只从 `accountKey` 或 `accountKeyFile` 读，不进日志、不进 `state.json`、不写进 patch。
+
+**测试**
+
+- `npm test` 必须绿；新增分支或纯函数至少留一条 `assert`；
+- 不引测试框架，不写 fixture 文件；假宿主在 `selftest.mjs` 的 `makeHost` 里，新服务方法/路由要在那里补用例；
+- 涉及真机行为（桥连接、面板渲染）的改动，说明验到哪一步、哪些没验。
+
+**提交与文档**
+
+- 提交用中文陈述句，一次提交只做一件事；
+- 行为变化同步本 README；若触及平台边界（Biz 的写入口、Turms 凭据、agent 收消息口径），同时改 `docs/truth` 并只在 `docs/history` 追加；
+- 不提交密钥、`node_modules`、临时探针脚本。
+
+**改完怎么验**
+
+```powershell
+cd integrations/dsh-onebot && npm test
+# 真宿主里重载：plugin_manager set_bundle dsh-onebot(false) → 再 true
+# 然后看 6700 上有没有连接（插件 ↔ 桥）
+```
+
+**不做**
+
+- 不在插件里发明 OneBot 私有动作，协议面归 `integrations/onebot`；
+- 不在客户端做业务判定，面板只呈现与提交。
+
 ## 界面
 
 侧栏面板里和「便签」「自动化任务」并排，点图标在主栏整页打开，显示：
