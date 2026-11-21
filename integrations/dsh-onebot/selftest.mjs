@@ -447,6 +447,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
         wakeDebounceMs: 0,
         retryDelayMs: 0,
         accountKey: 'test-key',
+        bridge: 'ws://127.0.0.1:7788',
     }, { callBridge: host.callBridge })
     rt.ingest(message())
     await settle()
@@ -478,7 +479,20 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     await bridgeRoute.fetch({ json: async () => ({ action: 'start' }) })
     assert.equal(host.state.processes.length, 1, '启动桥要 spawn 一次')
     assert.match(host.state.processes[0].spec.argv.join(' '), /bridge\.mjs/)
+    assert.equal(host.state.processes[0].spec.env.ONEBOT_WS_PORT, '7788', '自选端口要传给子进程')
+    assert.equal(host.state.processes[0].spec.env.ONEBOT_WS_HOST, '127.0.0.1')
     assert.equal(rt.status().bridge.process, 'running')
+
+    const badBridge = await settingsRoute.fetch({
+        json: async () => ({ global: { bridge: 'http://nope' } }),
+    })
+    assert.equal(badBridge.status, 400, '桥地址只认 ws(s)://')
+
+    const goodBridge = await settingsRoute.fetch({
+        json: async () => ({ global: { bridge: 'ws://127.0.0.1:7789' } }),
+    })
+    assert.equal(goodBridge.status, 200)
+    assert.equal(host.state.edits.at(-1).config.bridge, 'ws://127.0.0.1:7789')
 
     await bridgeRoute.fetch({ json: async () => ({ action: 'stop' }) })
     assert.equal(host.state.processes[0].terminated, true, '停止桥要 terminate')

@@ -45,6 +45,9 @@ export class MondChatService {
         this.accessToken = config.accessToken ?? ''
         this.wakeDebounceMs = Number(config.wakeDebounceMs ?? WAKE_DEBOUNCE_MS)
         this.retryDelayMs = Number(config.retryDelayMs ?? 15_000)
+        // 桥地址是唯一真相：托管桥时按它推导子进程的 host/port。
+        this.bridgeHost = hostOf(this.bridgeUrl, '127.0.0.1')
+        this.bridgePort = portOf(this.bridgeUrl, 6700)
 
         // 启停桥：默认用跑 DSH 的同一个 node 执行仓库里的桥脚本。
         this.bridgeScript = config.bridgeScript ?? join(PLUGIN_DIR, '..', 'onebot', 'bridge.mjs')
@@ -166,6 +169,9 @@ export class MondChatService {
                     ...process.env,
                     MONDCHAT_ACCOUNT_KEY: key,
                     MONDCHAT_API_BASE: this.apiBase,
+                    // 自选端口：子进程绑定的就是配置里那个地址。
+                    ONEBOT_WS_HOST: this.bridgeHost,
+                    ONEBOT_WS_PORT: String(this.bridgePort),
                 },
             })
         } catch (error) {
@@ -217,6 +223,7 @@ export class MondChatService {
         if (!entry) throw new Error('找不到插件在 profile 里的配置项')
 
         const next = {}
+        if (patch.bridge !== undefined) next.bridge = normalizeBridgeUrl(patch.bridge)
         if (patch.timezone !== undefined) next.timezone = String(patch.timezone ?? '')
         if (patch.language !== undefined) {
             next.language = LANGUAGES.includes(patch.language) ? patch.language : this.global.language
@@ -533,6 +540,8 @@ export class MondChatService {
                 bridgeScript: this.bridgeScript,
                 accountKeyFile: this.accountKeyFile,
                 apiBase: this.apiBase,
+                host: this.bridgeHost,
+                port: this.bridgePort,
             },
             config: {
                 groups: this.global.groups,
@@ -545,4 +554,33 @@ export class MondChatService {
             conversations: list,
         }
     }
+}
+
+function hostOf(url, fallback) {
+    try {
+        return new URL(String(url)).hostname || fallback
+    } catch {
+        return fallback
+    }
+}
+
+/** 没写端口时用桥的默认 6700，而不是 ws 协议默认的 80。 */
+function portOf(url, fallback) {
+    try {
+        const port = new URL(String(url)).port
+        return port ? Number(port) : fallback
+    } catch {
+        return fallback
+    }
+}
+
+function normalizeBridgeUrl(value) {
+    const url = String(value ?? '').trim()
+    if (!/^wss?:\/\//i.test(url)) throw new Error('桥地址必须以 ws:// 或 wss:// 开头')
+    try {
+        new URL(url)
+    } catch {
+        throw new Error(`桥地址解析不了：${url}`)
+    }
+    return url
 }

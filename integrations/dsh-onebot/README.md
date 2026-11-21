@@ -46,6 +46,7 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 可操作的：
 
 - **启动 / 停止 / 重启桥**：`POST /api/mondchat/bridge`，插件用 `subprocess.spawn` 托管桥进程，卸载时一起停；端口上已有外部桥在应答时禁用启动，避免撞端口；
+- **桥地址（含端口）**：同一个 `global` 里的 `bridge`，只认 `ws://` / `wss://`；托管桥时子进程绑的就是这个地址的 host 与 port；
 - **时区与回复语言**：`POST /api/mondchat/settings` 的 `global`，写回 profile patch（会触发一次插件重装，桥跟着重连）；
 - **每个会话的主动话题闸门**：同一路由的 `gate`（安静分钟、每小时上限、免打扰时段、开关），写 `state.json`，立刻生效不重装；提交空 gate 表示回到全局。
 
@@ -85,7 +86,7 @@ pnpm install    # profile 目录
 ```yaml
 - id: mondchat-onebot
   config:
-    bridge: ws://127.0.0.1:6700
+    bridge: ws://127.0.0.1:6700    # 桥地址即端口来源；托管桥时子进程绑这里的 host/port
     # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
     # groups: true

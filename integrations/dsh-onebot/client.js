@@ -32,6 +32,8 @@ window.__ModuleLoader__.load({
         settings: 'Settings',
         timezone: 'Time zone',
         timezoneHint: 'IANA zone such as Asia/Shanghai; empty follows the host.',
+        bridgeUrl: 'Bridge address',
+        bridgeHint: 'A spawned bridge binds this address. Effective now:',
         language: 'Reply language',
         groups: 'Groups',
         save: 'Save',
@@ -73,6 +75,8 @@ window.__ModuleLoader__.load({
         settings: '设置',
         timezone: '时区',
         timezoneHint: 'IANA 名称，如 Asia/Shanghai；留空跟随宿主。',
+        bridgeUrl: '桥地址',
+        bridgeHint: '托管的桥会绑到这个地址。当前生效：',
         language: '回复语言',
         groups: '群聊',
         save: '保存',
@@ -240,6 +244,7 @@ window.__ModuleLoader__.load({
             setData(next)
             setError('')
             setDraft((current) => current ?? {
+              bridge: next.bridge?.url ?? '',
               timezone: next.config?.timezone ?? '',
               language: next.config?.language ?? 'zh',
               groups: next.config?.groups !== false,
@@ -321,6 +326,14 @@ window.__ModuleLoader__.load({
 
       const settingsCard = h('div', { style: S.card },
         h('div', { style: S.head }, t('settings')),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('bridgeUrl')),
+          h('input', {
+            style: { ...S.input, width: 220 },
+            value: draft?.bridge ?? '',
+            placeholder: 'ws://127.0.0.1:6700',
+            onChange: (event) => setDraft({ ...draft, bridge: event.target.value }),
+          })),
+        h('div', { style: S.caption }, `${t('bridgeHint')} ${controls.host}:${controls.port}`),
         h('div', { style: S.row }, h('div', { style: S.label }, t('timezone')),
           h('input', {
             style: S.input,
