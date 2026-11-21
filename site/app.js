@@ -77,10 +77,49 @@
     start();
   }
 
-  const items = document.querySelectorAll('.reveal');
-  if (!items.length) return;
+  // 安装包只跑在 x64 的 Windows 10+：点「现在体验」先提醒，确认了才去下载。
+  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe';
+  const gate = document.getElementById('getGate');
+  const getBtn = document.getElementById('getBtn');
+
+  getBtn?.addEventListener('click', (event) => {
+    // 没有原生 dialog 就把链接让过去；没有 JS 时它本身就是下载链接。
+    if (typeof gate?.showModal !== 'function') return;
+    event.preventDefault();
+    gate.showModal();
+  });
+
+  if (gate) {
+    gate.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target.closest('[data-confirm]')) {
+        gate.close();
+        window.location.href = INSTALLER;
+      } else if (target.closest('[data-close]')) {
+        gate.close();
+      } else if (target === gate) {
+        // 只有点面板外的遮罩才关，点面板里的留白不算。
+        const box = gate.getBoundingClientRect();
+        const outside = event.clientX < box.left || event.clientX > box.right
+          || event.clientY < box.top || event.clientY > box.bottom;
+        if (outside) gate.close();
+      }
+    });
+  }
+
+  // 正文按段落逐个进场：滑到哪一段，哪一段才起来。
+  const parts = [];
+  document.querySelectorAll('.reveal').forEach((box) => {
+    box.querySelectorAll('p, h2, blockquote, figcaption').forEach((el, i) => {
+      el.classList.add('rv');
+      el.style.setProperty('--i', String(Math.min(i, 6)));
+      parts.push(el);
+    });
+  });
+
+  if (!parts.length) return;
   if (!('IntersectionObserver' in window)) {
-    items.forEach((el) => el.classList.add('is-in'));
+    parts.forEach((el) => el.classList.add('is-in'));
     return;
   }
   const io = new IntersectionObserver((entries) => {
@@ -89,7 +128,7 @@
       entry.target.classList.add('is-in');
       io.unobserve(entry.target);
     }
-  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.06 });
+  }, { rootMargin: '0px 0px -12% 0px', threshold: 0.12 });
 
-  items.forEach((el) => io.observe(el));
+  parts.forEach((el) => io.observe(el));
 })();

@@ -102,6 +102,19 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 }
 .brand__name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
 
+.nav__actions { display: flex; align-items: center; gap: 10px; }
+
+.cta {
+  display: inline-flex; align-items: center;
+  height: 32px; padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 13px; letter-spacing: -.005em;
+  color: var(--ink);
+  transition: background-color var(--d1) var(--ease), border-color var(--d1) var(--ease), color var(--d1) var(--ease);
+}
+.cta:hover { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
 .themeBtn {
   position: relative;
   display: grid; place-items: center;
@@ -267,6 +280,44 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   color: color-mix(in srgb, currentColor 58%, transparent);
 }
 
+/* ---------- download gate ---------- */
+.gate {
+  width: min(440px, calc(100vw - 40px));
+  padding: 26px 28px 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 24px 64px color-mix(in srgb, #000 30%, transparent);
+}
+.gate::backdrop {
+  background: color-mix(in srgb, #000 55%, transparent);
+  backdrop-filter: blur(2px);
+}
+.gate[open] { animation: gate-in 240ms var(--ease-out); }
+@keyframes gate-in {
+  from { opacity: 0; transform: translateY(10px) scale(.98); }
+}
+.gate__title { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+.gate__body { margin-top: 12px; font-size: 14px; line-height: 1.8; color: var(--ink-2); }
+.gate__actions {
+  margin-top: 24px;
+  display: flex; justify-content: flex-end; gap: 10px;
+}
+.gate__btn {
+  height: 34px; padding: 0 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  font-size: 13px;
+  color: var(--ink-2);
+  transition: border-color var(--d1) var(--ease), color var(--d1) var(--ease), opacity var(--d1) var(--ease);
+}
+.gate__btn:hover { border-color: var(--ink-2); color: var(--ink); }
+.gate__btn--go {
+  background: var(--ink); border-color: var(--ink); color: var(--bg);
+}
+.gate__btn--go:hover { color: var(--bg); opacity: .86; }
+
 /* ---------- footer ---------- */
 .foot { border-top: 1px solid var(--line); margin-top: 120px; }
 .foot__inner {
@@ -283,21 +334,27 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 }
 
 /* ---------- motion ---------- */
-.reveal {
-  transition: opacity 720ms var(--ease-out), transform 720ms var(--ease-out);
+/* 段落逐个进场：位置、透明度、模糊一起收，相邻元素靠 --i 排队。 */
+.rv {
+  transition:
+    opacity 760ms var(--ease-out),
+    transform 760ms var(--ease-out),
+    filter 760ms var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 110ms);
 }
-/* 只有带 JS 时才先藏起来等淡入；没有 JS 就直接显示正文。 */
-html.js .reveal {
+/* 只有带 JS 时才先藏起来等进场；没有 JS 就直接显示正文。 */
+html.js .rv {
   opacity: 0;
-  transform: translateY(16px);
+  transform: translateY(26px);
+  filter: blur(6px);
 }
 /* 选择器必须带上 html.js，否则压不过上面那条，正文会一直透明。 */
-html.js .reveal.is-in { opacity: 1; transform: none; }
+html.js .rv.is-in { opacity: 1; transform: none; filter: none; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
-  html.js .reveal { opacity: 1; transform: none; }
+  html.js .rv { opacity: 1; transform: none; filter: none; }
 }
 
 /* ---------- responsive ---------- */
