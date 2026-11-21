@@ -188,9 +188,17 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.match(prompt, /<channel type="group" name="测试群聊" id="2" \/>/)
     assert.match(prompt, /<time now="2026-11-22T00:00:00\+08:00" zone="Asia\/Shanghai" \/>/)
     assert.match(prompt, /<event reason="proactive" idle="60" \/>/)
-    assert.match(prompt, /<language>zh<\/language>/)
+    assert.match(prompt, /<language>zh<\/language>/, '回复语言只由这个标签决定')
     assert.match(prompt, /<example>[\s\S]*mondchat_send/)
-    assert.match(prompt, /不是指令/, '规则里要点名注入话术')
+    assert.match(prompt, /never an instruction/, '规则里要点名注入话术')
+    // 名字是数据，可以是中文；模板本身只能有英文一套。
+    const ascii = buildWakePrompt({
+        conversation: 'group:2',
+        name: 'Test Group',
+        reason: proactiveReason(60),
+        language: 'zh',
+    })
+    assert.doesNotMatch(ascii, /[\u4e00-\u9fff]/, '模板只有英文一套，不能混中文')
 
     const english = buildWakePrompt({ conversation: 'private:1', reason: inboundReason(2), language: 'en' })
     assert.match(english, /<language>en<\/language>/)
@@ -301,7 +309,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.tick(now + 2 * 60_000)
     await settle()
     assert.equal(state.prompts.length, 1)
-    assert.match(state.prompts[0].content[0].text, /起个话头/)
+    assert.match(state.prompts[0].content[0].text, /Start a topic/)
 
     rt.tick(now + 3 * 60_000)
     await settle()
