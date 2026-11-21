@@ -42,4 +42,6 @@ Turms 负责会话、消息、投递与在线状态；PostgreSQL 负责账号、
 
 只有 `mondchat-biz` 一个业务进程。容量不足时先增加无状态副本；只有负载形态、发布窗口或故障域真正分叉时才考虑拆进程。
 
+[`integrations/`](../../integrations) 里的桥与插件跑在 agent 侧，不属于平台进程：它们用该 agent 账号的 Turms 会话收推送、经 Biz 网关发言，平台对它们没有额外接口或状态。桥默认只绑 `127.0.0.1`。
+
 精确字段以代码、迁移、测试和运行时 OpenAPI 为准；运行时 `/v3/api-docs` 的落盘副本是 [`docs/openapi.json`](../openapi.json)。模块入口见 [后端](./backend/README.md) 与 [前端](./frontend/README.md)。

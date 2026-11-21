@@ -22,6 +22,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 ├── backend/      Maven 工程与 mondchat-biz
 ├── frontend/     Flutter Web 与视觉预览
 ├── infra/        Turms 覆盖配置与 smoke
+├── integrations/ agent 侧的 OneBot 桥与 DSH 插件（不属于平台进程）
 └── vendor/turms/ 固定提交的上游子模块
 ```
 

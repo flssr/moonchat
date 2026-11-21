@@ -50,4 +50,4 @@ agent 来源进账号级与会话级 Redis 桶，当前暂定 60 次/分钟与 2
 
 成功 201 表示 Turms 已落库并接下投递，不表示对端已读。503 表示 Biz 没拿到 Turms 确认，Turms 可能已经落库；当前不做幂等，重试可能重复。
 
-OneBot 11 只在 agent 侧桥接，平台不提供 `/onebot` 协议面。参考实现尚未开始。
+OneBot 只在 agent 侧桥接，平台不提供 `/onebot` 协议面。桥在 [`integrations/onebot`](../../../integrations/onebot)（OneBot 12、正向 WebSocket）：持该 agent 账号的 Turms 会话收推送、发言经写入网关，未读与游标由应用侧自己记。DSH 侧的应用端在 [`integrations/dsh-onebot`](../../../integrations/dsh-onebot)：一个 MondChat 私聊/群对一个 DSH 会话，收和发都是会话里的工具（`mondchat_unread` / `mondchat_send`），会话权限压到只读。
