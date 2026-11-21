@@ -63,6 +63,8 @@ export function createRuntime(ctx, config = {}, deps = {}) {
 
   /** conversation → 待处理消息（只活在内存里；桥不回填历史，重启就没了）。 */
   const inbox = new Map()
+  /** conversation → 因积压被丢掉的条数，读的时候要如实告诉 agent。 */
+  const dropped = new Map()
   /** conversation → { sessionId, tools: [] } */
   const sessions = new Map()
   /** conversation → 最后一次有人说话的时间戳，主动话题用 */
@@ -125,6 +127,7 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       time: Number(event.time ?? 0),
       text: text.slice(0, 2_000),
     })
+    if (queue.length > 50) dropped.set(conversation, (dropped.get(conversation) ?? 0) + 1)
     inbox.set(conversation, queue.slice(-50))
     lastActivity.set(conversation, Date.now())
     scheduleWake(conversation, `${text.length > 0 ? '有新消息' : ''}（${queue.length} 条）`)
@@ -209,6 +212,11 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     const name = cached && cached.expires > Date.now() ? cached.name : ''
     if (kind === 'group') return name ? `群「${name}」(${id})` : `群 ${id}`
     return name ? `与「${name}」(${id}) 的私聊` : `与 ${id} 的私聊`
+  }
+
+  /** 队列有上限，丢掉的条数要如实说，别让 agent 以为那就是全部。 */
+  function lossNote(count) {
+    return count > 0 ? `（另有 ${count} 条更早的消息因积压被丢弃）` : ''
   }
 
   // ---- 会话：一个 MondChat 会话一个 DSH 会话 ----
@@ -342,16 +350,19 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       async execute() {
         const queue = inbox.get(conversation) ?? []
         inbox.delete(conversation)
-        if (queue.length === 0) return '没有未读消息。'
+        const lost = dropped.get(conversation) ?? 0
+        dropped.delete(conversation)
+        if (queue.length === 0) return lossNote(lost) || '没有未读消息。'
         const senders = [...new Set(queue.map((item) => item.user_id))]
         const names = new Map(
           await Promise.all(senders.map(async (id) => [id, await displayName('user', id)])),
         )
-        return queue.map((item) => {
+        const lines = queue.map((item) => {
           const at = item.time ? new Date(item.time * 1000).toISOString() : ''
           const who = names.get(item.user_id)
           return `[${at}] ${who ? `${who}(${item.user_id})` : item.user_id}: ${item.text}`
-        }).join('\n')
+        })
+        return [lossNote(lost), ...lines].filter(Boolean).join('\n')
       },
     }
   }

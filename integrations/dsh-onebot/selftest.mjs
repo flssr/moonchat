@@ -221,6 +221,18 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.equal(state.prompts.length, 0, '安静时段内不起话头')
 }
 
+// ---- 队列有上限：丢掉多少要如实告诉 agent ----
+
+{
+    const { rt, state } = fakeHost()
+    for (let i = 0; i < 55; i += 1) rt.ingest(message({ message_id: String(i) }))
+    await settle()
+    const text = await state.tools.get('mondchat_unread').execute({}, {})
+    assert.equal(text.split('\n').length, 51, '50 条消息 + 1 条丢弃说明')
+    assert.match(text, /另有 5 条更早的消息因积压被丢弃/)
+    assert.match(await state.tools.get('mondchat_unread').execute({}, {}), /没有未读消息/)
+}
+
 // ---- 会话被归档后重挂：同一个 id、新的 agent，工具必须重新挂上 ----
 
 {
