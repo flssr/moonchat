@@ -55,6 +55,8 @@ jobs:
   # 桌面壳独立成包：复用 frontend/app 的界面，只带 Windows 存储与 Turms WebSocket。
   # 它依赖 vendor/turms 里的 Dart proto，所以只有这个 job 拉子模块（Web/后端 job 不拉）。
   desktop:
+    # PR 不构建 Windows：这里只是发安装包，不是合并门槛；PR 每次 push 会烧一台 windows-latest 并留下 14.7MB 产物。
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:
@@ -83,4 +85,5 @@ jobs:
         with:
           name: mondchat-windows
           path: desktop/build/windows/x64/runner/Release/
+          retention-days: 3
           if-no-files-found: error
