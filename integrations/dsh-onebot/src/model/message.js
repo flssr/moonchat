@@ -32,13 +32,6 @@ export function parseInbound(event, { groupsEnabled = true } = {}) {
     }
 }
 
-/** 入队并截断，返回新的 (queue, dropped)；不修改入参。 */
-export function enqueue(queue, message, dropped = 0) {
-    const next = [...queue, message]
-    if (next.length <= QUEUE_LIMIT) return { queue: next, dropped }
-    return { queue: next.slice(-QUEUE_LIMIT), dropped: dropped + (next.length - QUEUE_LIMIT) }
-}
-
 /** 队列丢掉的条数要写进工具结果，别让 agent 以为拿到的就是全部。 */
 export function lossNote(count) {
     return count > 0 ? `（另有 ${count} 条更早的消息因积压被丢弃）` : ''

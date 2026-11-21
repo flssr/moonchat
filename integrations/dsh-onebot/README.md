@@ -11,18 +11,23 @@ MondChat ── 桥（integrations/onebot）── OneBot 12/WS ── 本插件
 ## 结构
 
 ```
-index.js              装配：注入服务、注册工具/路由/定时器
-src/model/            纯数据与纯函数，能脱离宿主单测
-  conversation.js     ConversationId、Conversation（队列/丢弃/最近活动）、describe/titleOf
-  message.js          InboundMessage、入站解析、队列上限
-  settings.js         全局设置、每会话覆盖、gateFor、时区与安静时段
-  prompt.js           结构化提示词（context/language/task/rules/example）
-  wake.js             唤醒原因
-  bridge.js           BridgeState（进程态 / 连接态分开）
+index.js              装配：建服务、ctx.provide('mondchat')、挂路由
+src/
+  service.js          用例层：会话、桥、设置、定时器；面板/工具/路由都调它
+  routes.js           HTTP 路由：只做协议转换，注册进宿主共享 /api 通道
+  tools.js            会话内的两个工具（收/发），校验与呈现，用例在 service
+  bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
+  model/              纯数据与纯函数，能脱离宿主单测
+    conversation.js   ConversationId、Conversation、describe/titleOf
+    message.js        InboundMessage、入站解析、队列上限
+    settings.js       全局设置、每会话覆盖、gateFor、时区与安静时段
+    prompt.js         结构化提示词（context/language/task/rules/example）
+    wake.js           唤醒原因
+    bridge.js         BridgeState（进程态 / 连接态分开）
 selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/面板数据
 ```
 
-规则只有一条：**能脱离宿主 `assert` 的才进 `src/model/`**，碰 `ctx.*`、定时器、IO 的留在 `index.js`。
+分层只有两条：**`model/` 不碰宿主**（可以单独 assert）；**`routes.js` 不写业务**（校验 + 调 service）。其余按 DSH 的插件习惯，`service.js` 之外没有框架。
 
 ## 界面
 

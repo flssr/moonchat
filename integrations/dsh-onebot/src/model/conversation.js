@@ -19,10 +19,6 @@ export function parseConversation(key) {
     return { kind: match[1], id: match[2] }
 }
 
-export function isGroup(key) {
-    return parseConversation(key)?.kind === GROUP
-}
-
 /** 「群「测试群聊」(2)」或「与「flssr」(100000004) 的私聊」；没名字就退回 id。 */
 export function describe(key, name = '') {
     const parsed = parseConversation(key)
