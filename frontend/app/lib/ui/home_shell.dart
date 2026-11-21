@@ -5,6 +5,7 @@ import '../i18n/context_tr.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'account_view.dart';
+import 'blocklist_dialog.dart';
 import 'contacts_view.dart';
 import 'messages_view.dart';
 import 'profile_editor.dart';
@@ -105,6 +106,7 @@ class _HomeShellState extends State<HomeShell> {
                         onLanguageChanged: widget.onLanguageChanged,
                         notifyOnMessage: widget.notifyOnMessage,
                         onNotifyChanged: widget.onNotifyChanged,
+                        onOpenBlocklist: () => showBlocklistDialog(context, state),
                       ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,

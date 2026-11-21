@@ -303,9 +303,18 @@ class ApiClient {
 
   // —— 群与成员 ——
 
-  /// #12 建群。
-  Future<Room> createRoom({required String token, required String name}) async {
-    final json = await _send('POST', '/api/rooms', token: token, body: {'name': name});
+  /// #12 建群。简介可选，空白就不传（issue #38）。
+  Future<Room> createRoom({
+    required String token,
+    required String name,
+    String? description,
+  }) async {
+    final String? intro =
+        description == null || description.trim().isEmpty ? null : description.trim();
+    final json = await _send('POST', '/api/rooms', token: token, body: <String, Object?>{
+      'name': name,
+      'description': ?intro,
+    });
     return Room.fromJson(json);
   }
 
@@ -405,5 +414,15 @@ class ApiClient {
       headers: {'X-Device-Type': deviceType},
     );
     return SentMessage.fromJson(json);
+  }
+
+  /// #37 已读到服务端此刻：204 表示写进去了，客户端才可以清本地未读。
+  /// `type` 只有 `dm` / `room`；`id` 是对端账号 id 或 `room_id`。
+  Future<void> markRead({
+    required String token,
+    required String type,
+    required int id,
+  }) async {
+    await _send('POST', '/api/conversations/$type/$id/read', token: token);
   }
 }

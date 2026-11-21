@@ -268,6 +268,7 @@ class RoomDetail {
     required this.ownerAccountId,
     required this.memberCount,
     required this.createdAt,
+    this.description,
   });
 
   factory RoomDetail.fromJson(Map<String, dynamic> j) => RoomDetail(
@@ -275,12 +276,16 @@ class RoomDetail {
         ownerAccountId: _int(j['owner_account_id']),
         memberCount: _intOrNull(j['member_count']) ?? 0,
         createdAt: _date(j['created_at']),
+        description: _strOrNull(j['description']),
       );
 
   final String name;
   final int ownerAccountId;
   final int memberCount;
   final DateTime? createdAt;
+
+  /// 群简介：建群时可填，空就是没写（issue #38）。
+  final String? description;
 }
 
 class RoomMember {
