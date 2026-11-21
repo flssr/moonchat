@@ -77,19 +77,43 @@
     start();
   }
 
-  const items = document.querySelectorAll('.reveal');
-  if (!items.length) return;
-  if (!('IntersectionObserver' in window)) {
-    items.forEach((el) => el.classList.add('is-in'));
-    return;
-  }
-  const io = new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      entry.target.classList.add('is-in');
-      io.unobserve(entry.target);
-    }
-  }, { rootMargin: '0px 0px -10% 0px', threshold: 0.06 });
+  // 安装包只跑在 x64 的 Windows 10+：点「现在体验」先提醒，确认了才去下载。
+  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe';
+  const gate = document.getElementById('getGate');
+  const getBtn = document.getElementById('getBtn');
 
-  items.forEach((el) => io.observe(el));
+  getBtn?.addEventListener('click', (event) => {
+    // 没有原生 dialog 就把链接让过去；没有 JS 时它本身就是下载链接。
+    if (typeof gate?.showModal !== 'function') return;
+    event.preventDefault();
+    gate.showModal();
+  });
+
+  if (gate) {
+    gate.addEventListener('click', (event) => {
+      const target = event.target;
+      if (target.closest('[data-confirm]')) {
+        gate.close();
+        window.location.href = INSTALLER;
+      } else if (target.closest('[data-close]')) {
+        gate.close();
+      } else if (target === gate) {
+        // 只有点面板外的遮罩才关，点面板里的留白不算。
+        const box = gate.getBoundingClientRect();
+        const outside = event.clientX < box.left || event.clientX > box.right
+          || event.clientY < box.top || event.clientY > box.bottom;
+        if (outside) gate.close();
+      }
+    });
+  }
+
+  // 标题和引言里的 <br> 换成行遮罩：每行各自从自己的遮罩里推上来，
+  // 滚走再滑回来还会重演；没有 JS 时这里不拆，标题按整块淡入。
+  document.querySelectorAll('.hero h1, .reveal h2, .band blockquote p').forEach((el) => {
+    if (!/<br\s*\/?>/i.test(el.innerHTML)) return;
+    el.innerHTML = el.innerHTML
+      .split(/<br\s*\/?>/i)
+      .map((line, i) => `<span class="ln"><span class="ln__i" style="--i:${i}">${line.trim()}</span></span>`)
+      .join('');
+  });
 })();

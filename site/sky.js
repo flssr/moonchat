@@ -20,7 +20,8 @@
   let width = 0;
   let height = 0;
   let stars = [];
-  let meteor = null;
+  const meteors = [];
+  const MAX_METEORS = 3;
   let nextMeteorAt = 0;
   let frame = 0;
   let last = 0;
@@ -64,15 +65,15 @@
     const speed = rand(680, 960);
     const vx = -Math.cos(angle) * speed;
     const vy = Math.sin(angle) * speed;
-    const x = rand(width * 0.55, width * 1.05);
-    const y = rand(-20, height * 0.24);
+    const x = rand(width * 0.35, width * 1.05);
+    const y = rand(-height * 0.16, height * 0.08);
     // 只在上方那片空天里划完，不落到标题上。
     const maxLife = ((height * 0.3 - y) / vy) * 1000;
     if (maxLife < 120) {
-      nextMeteorAt = now + 4000;
+      nextMeteorAt = now + 3000;
       return;
     }
-    meteor = {
+    meteors.push({
       x,
       y,
       vx,
@@ -81,11 +82,11 @@
       age: 0,
       life: Math.min(rand(650, 1000), maxLife),
       alpha: rand(0.42, 0.58),
-    };
-    nextMeteorAt = now + rand(9000, 18000);
+    });
+    nextMeteorAt = now + rand(3800, 7000);
   }
 
-  function drawMeteor() {
+  function drawMeteor(meteor) {
     const len = Math.hypot(meteor.vx, meteor.vy) || 1;
     const tailX = meteor.x - (meteor.vx / len) * meteor.length;
     const tailY = meteor.y - (meteor.vy / len) * meteor.length;
@@ -140,16 +141,18 @@
     }
 
     if (!still) {
-      if (!meteor && now > nextMeteorAt) spawnMeteor(now);
-      if (meteor) {
+      if (meteors.length >= MAX_METEORS) nextMeteorAt = now + rand(1500, 3000);
+      else if (now > nextMeteorAt) spawnMeteor(now);
+      for (let i = meteors.length - 1; i >= 0; i--) {
+        const meteor = meteors[i];
         meteor.age += dt;
         if (meteor.age >= meteor.life) {
-          meteor = null;
-        } else {
-          meteor.x += (meteor.vx * dt) / 1000;
-          meteor.y += (meteor.vy * dt) / 1000;
-          drawMeteor();
+          meteors.splice(i, 1);
+          continue;
         }
+        meteor.x += (meteor.vx * dt) / 1000;
+        meteor.y += (meteor.vy * dt) / 1000;
+        drawMeteor(meteor);
       }
       frame = requestAnimationFrame(loop);
     }
@@ -159,7 +162,7 @@
     if (frame) return;
     if (!isNight() || document.hidden || !visible) return;
     last = performance.now();
-    if (!meteor && performance.now() > nextMeteorAt) nextMeteorAt = last + rand(3000, 7000);
+    if (!meteors.length && performance.now() > nextMeteorAt) nextMeteorAt = last + rand(1200, 3000);
     frame = requestAnimationFrame(loop);
   }
 

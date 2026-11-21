@@ -4,10 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script>
-  // 首帧前定主题，并把「有 JS」标出来：没有 JS 时正文不做淡入、直接可见。
+  // 首帧前定主题，避免亮暗闪一下。
   (() => {
     const root = document.documentElement;
-    root.classList.add('js');
     let saved = null;
     try { saved = localStorage.getItem('mondchat-theme'); } catch (e) { /* private mode */ }
     const dark = saved ? saved === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches === true;
@@ -34,10 +33,13 @@
       <img class="brand__mark" src="assets/mondchat-logo.svg" alt="" width="22" height="22">
       <span class="brand__name">MondChat</span>
     </a>
-    <button id="themeBtn" class="themeBtn" type="button" aria-label="切换明暗主题">
-      <svg class="ico ico--moon" aria-hidden="true"><use href="#i-moon"/></svg>
-      <svg class="ico ico--sun" aria-hidden="true"><use href="#i-sun"/></svg>
-    </button>
+    <div class="nav__actions">
+      <a id="getBtn" class="cta" href="https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe">现在体验 MondChat</a>
+      <button id="themeBtn" class="themeBtn" type="button" aria-label="切换明暗主题">
+        <svg class="ico ico--moon" aria-hidden="true"><use href="#i-moon"/></svg>
+        <svg class="ico ico--sun" aria-hidden="true"><use href="#i-sun"/></svg>
+      </button>
+    </div>
   </div>
 </header>
 
@@ -131,6 +133,15 @@
     <p class="foot__meta">一个聊天的地方<br>2026</p>
   </div>
 </footer>
+
+<dialog class="gate" id="getGate" aria-labelledby="getGateTitle">
+  <h2 class="gate__title" id="getGateTitle">下载桌面客户端</h2>
+  <p class="gate__body">目前 MondChat 只支持 x64 平台的 Windows 10 及以上版本，请确认你的系统是否匹配。</p>
+  <div class="gate__actions">
+    <button class="gate__btn" type="button" data-close>取消</button>
+    <button class="gate__btn gate__btn--go" type="button" data-confirm>确认</button>
+  </div>
+</dialog>
 
 <script src="app.js" defer></script>
 <script src="sky.js" defer></script>
