@@ -243,37 +243,33 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': 'Aquarius',
     '双鱼座': 'Pisces',
     // 引言与作者
-    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
-        'We can only see a short distance ahead, but we can see plenty there that needs to be done.',
-    '语言是误解的根源。': 'Words are the source of misunderstandings.',
-    '一切真实的生活都是相遇。': 'All real living is meeting.',
-    '语言是存在之家。': 'Language is the house of being.',
-    '我的语言的界限，意味着我的世界的界限。':
-        'The limits of my language mean the limits of my world.',
-    '读书使人充实，讨论使人机智，笔记使人准确。':
-        'Reading maketh a full man; conference a ready man; and writing an exact man.',
+    '我们塑造工具，然后工具塑造我们。':
+        'We shape our tools and thereafter our tools shape us.',
+    '计算机是人类心灵的自行车。': 'The computer is a bicycle for our minds.',
+    '我不害怕计算机，我害怕的是没有它们。':
+        'I do not fear computers. I fear the lack of them.',
+    '我们都是赛博格。': 'We are all cyborgs.',
+    '我们的书写工具也在参与我们的思考。':
+        'Our writing tools are also working on our thoughts.',
     '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
         'We had better be quite sure that the purpose put into the machine is the purpose which we really desire.',
-    '你们说话，是当你们无法与自己的思想和平相处的时候。':
-        'You talk when you cease to be at peace with your thoughts.',
-    '有朋自远方来，不亦乐乎。': 'Is it not a joy to have friends come from afar?',
-    '独学而无友，则孤陋而寡闻。':
-        'To study alone without friends is to be narrow and shallow.',
-    '信言不美，美言不信。':
-        'Truthful words are not beautiful; beautiful words are not truthful.',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        'The rise of powerful AI will be either the best or the worst thing ever to happen to humanity.',
+    '天地与我并生，而万物与我为一。':
+        'Heaven and earth come into being with me, and the myriad things are one with me.',
+    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
+        'We can only see a short distance ahead, but we can see plenty there that needs to be done.',
     '预测未来的最好方式，就是创造它。':
         'The best way to predict the future is to invent it.',
-    '艾伦·图灵': 'Alan Turing',
-    '圣埃克苏佩里': 'Antoine de Saint-Exupéry',
-    '马丁·布伯': 'Martin Buber',
-    '海德格尔': 'Martin Heidegger',
-    '维特根斯坦': 'Ludwig Wittgenstein',
-    '弗朗西斯·培根': 'Francis Bacon',
+    '马歇尔·麦克卢汉': 'Marshall McLuhan',
+    '史蒂夫·乔布斯': 'Steve Jobs',
+    '艾萨克·阿西莫夫': 'Isaac Asimov',
+    '唐娜·哈拉维': 'Donna Haraway',
+    '尼采': 'Friedrich Nietzsche',
     '诺伯特·维纳': 'Norbert Wiener',
-    '纪伯伦': 'Kahlil Gibran',
-    '孔子': 'Confucius',
-    '《礼记·学记》': 'Book of Rites, Xueji',
-    '老子': 'Laozi',
+    '斯蒂芬·霍金': 'Stephen Hawking',
+    '庄子': 'Zhuangzi',
+    '艾伦·图灵': 'Alan Turing',
     '艾伦·凯': 'Alan Kay',
   },
   'ja': <String, String>{
@@ -492,34 +488,32 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': '水瓶座',
     '双鱼座': '魚座',
     // 引用と著者
-    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
-        'われわれは前方を少ししか見通せないが、やるべきことは十分にある。',
-    '语言是误解的根源。': '言葉は誤解の源である。',
-    '一切真实的生活都是相遇。': 'すべての真実の生は出会いである。',
-    '语言是存在之家。': '言語は存在の家である。',
-    '我的语言的界限，意味着我的世界的界限。':
-        '私の言語の限界は、私の世界の限界を意味する。',
-    '读书使人充实，讨论使人机智，笔记使人准确。':
-        '読書は人を充実させ、討論は人を機敏にし、筆記は人を正確にする。',
+    '我们塑造工具，然后工具塑造我们。':
+        'われわれは道具を形づくり、その後、道具がわれわれを形づくる。',
+    '计算机是人类心灵的自行车。': 'コンピュータは人間の心の自転車である。',
+    '我不害怕计算机，我害怕的是没有它们。':
+        '私はコンピュータを恐れない。恐れるのは、コンピュータがないことだ。',
+    '我们都是赛博格。': 'われわれはみなサイボーグである。',
+    '我们的书写工具也在参与我们的思考。':
+        'われわれの筆記具もまた、われわれの思考に加わっている。',
     '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
         '機械に与える目的が、われわれが本当に望む目的であることを、よく確かめておくべきだ。',
-    '你们说话，是当你们无法与自己的思想和平相处的时候。':
-        'あなたがたが語るのは、自分の思いと平和に過ごせないときである。',
-    '有朋自远方来，不亦乐乎。': '朋あり遠方より来る、また楽しからずや。',
-    '独学而无友，则孤陋而寡闻。': '独学にして友なければ、すなわち孤陋にして寡聞なり。',
-    '信言不美，美言不信。': '信なる言は美ならず、美なる言は信ならず。',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        '強力なAIの台頭は、人類にとって最良の出来事にも、最悪の出来事にもなりうる。',
+    '天地与我并生，而万物与我为一。':
+        '天地と我とは並び生じ、万物と我とは一つである。',
+    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
+        'われわれは前方を少ししか見通せないが、やるべきことは十分にある。',
     '预测未来的最好方式，就是创造它。': '未来を予測する最善の方法は、それを発明することだ。',
-    '艾伦·图灵': 'アラン・チューリング',
-    '圣埃克苏佩里': 'サン＝テグジュペリ',
-    '马丁·布伯': 'マルティン・ブーバー',
-    '海德格尔': 'マルティン・ハイデッガー',
-    '维特根斯坦': 'ルートヴィヒ・ウィトゲンシュタイン',
-    '弗朗西斯·培根': 'フランシス・ベーコン',
+    '马歇尔·麦克卢汉': 'マーシャル・マクルーハン',
+    '史蒂夫·乔布斯': 'スティーブ・ジョブズ',
+    '艾萨克·阿西莫夫': 'アイザック・アシモフ',
+    '唐娜·哈拉维': 'ドナ・ハラウェイ',
+    '尼采': 'フリードリヒ・ニーチェ',
     '诺伯特·维纳': 'ノーバート・ウィーナー',
-    '纪伯伦': 'ハリール・ジブラーン',
-    '孔子': '孔子',
-    '《礼记·学记》': '『礼記』学記篇',
-    '老子': '老子',
+    '斯蒂芬·霍金': 'スティーブン・ホーキング',
+    '庄子': '荘子',
+    '艾伦·图灵': 'アラン・チューリング',
     '艾伦·凯': 'アラン・ケイ',
   },
   'de': <String, String>{
@@ -740,37 +734,33 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': 'Wassermann',
     '双鱼座': 'Fische',
     // Zitate und Autoren
-    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
-        'Wir können nur ein kurzes Stück voraussehen, aber es gibt dort genug zu tun.',
-    '语言是误解的根源。': 'Worte sind die Quelle der Missverständnisse.',
-    '一切真实的生活都是相遇。': 'Alles wirkliche Leben ist Begegnung.',
-    '语言是存在之家。': 'Die Sprache ist das Haus des Seins.',
-    '我的语言的界限，意味着我的世界的界限。':
-        'Die Grenzen meiner Sprache bedeuten die Grenzen meiner Welt.',
-    '读书使人充实，讨论使人机智，笔记使人准确。':
-        'Lesen macht einen vollen, Gespräch einen bereiten, Schreiben einen exakten Menschen.',
+    '我们塑造工具，然后工具塑造我们。':
+        'Wir formen unsere Werkzeuge, und danach formen unsere Werkzeuge uns.',
+    '计算机是人类心灵的自行车。': 'Der Computer ist ein Fahrrad für unseren Geist.',
+    '我不害怕计算机，我害怕的是没有它们。':
+        'Ich fürchte Computer nicht. Ich fürchte ihren Mangel.',
+    '我们都是赛博格。': 'Wir sind alle Cyborgs.',
+    '我们的书写工具也在参与我们的思考。':
+        'Auch unsere Schreibwerkzeuge arbeiten an unseren Gedanken mit.',
     '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
         'Wir sollten uns besser vergewissern, dass der Zweck, den wir der Maschine geben, der Zweck ist, den wir wirklich wünschen.',
-    '你们说话，是当你们无法与自己的思想和平相处的时候。':
-        'Ihr sprecht, wenn ihr nicht mehr in Frieden mit euren Gedanken seid.',
-    '有朋自远方来，不亦乐乎。': 'Ist es nicht eine Freude, Freunde von weit her zu empfangen?',
-    '独学而无友，则孤陋而寡闻。':
-        'Allein zu lernen ohne Freunde macht eng und unkundig.',
-    '信言不美，美言不信。':
-        'Wahre Worte sind nicht schön, schöne Worte sind nicht wahr.',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        'Der Aufstieg starker KI wird entweder das Beste oder das Schlimmste sein, was der Menschheit je widerfahren ist.',
+    '天地与我并生，而万物与我为一。':
+        'Himmel und Erde entstehen mit mir, und die zehntausend Dinge sind eins mit mir.',
+    '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
+        'Wir können nur ein kurzes Stück voraussehen, aber es gibt dort genug zu tun.',
     '预测未来的最好方式，就是创造它。':
         'Die beste Art, die Zukunft vorherzusagen, ist, sie zu erfinden.',
-    '艾伦·图灵': 'Alan Turing',
-    '圣埃克苏佩里': 'Antoine de Saint-Exupéry',
-    '马丁·布伯': 'Martin Buber',
-    '海德格尔': 'Martin Heidegger',
-    '维特根斯坦': 'Ludwig Wittgenstein',
-    '弗朗西斯·培根': 'Francis Bacon',
+    '马歇尔·麦克卢汉': 'Marshall McLuhan',
+    '史蒂夫·乔布斯': 'Steve Jobs',
+    '艾萨克·阿西莫夫': 'Isaac Asimov',
+    '唐娜·哈拉维': 'Donna Haraway',
+    '尼采': 'Friedrich Nietzsche',
     '诺伯特·维纳': 'Norbert Wiener',
-    '纪伯伦': 'Kahlil Gibran',
-    '孔子': 'Konfuzius',
-    '《礼记·学记》': 'Buch der Riten, Xueji',
-    '老子': 'Laozi',
+    '斯蒂芬·霍金': 'Stephen Hawking',
+    '庄子': 'Zhuangzi',
+    '艾伦·图灵': 'Alan Turing',
     '艾伦·凯': 'Alan Kay',
   },
 };
