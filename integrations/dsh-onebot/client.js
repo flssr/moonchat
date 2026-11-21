@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
         connected: 'Connected',
         disconnected: 'Disconnected',
         url: 'Address',
+        process: 'Process / link',
         groups: 'Groups',
         on: 'On',
         off: 'Off',
@@ -34,6 +35,7 @@ window.__ModuleLoader__.load({
         live: 'Session live',
         cold: 'Session not live',
         lastActivity: 'Last message',
+        error: 'Error',
         loadFailed: 'Could not read status: {message}',
       },
       zh: {
@@ -44,6 +46,8 @@ window.__ModuleLoader__.load({
         connected: '已连接',
         disconnected: '未连接',
         url: '地址',
+        process: '进程 / 连接',
+        error: '错误',
         groups: '群聊',
         on: '开',
         off: '关',
@@ -200,11 +204,14 @@ window.__ModuleLoader__.load({
       const config = data.config || {}
       const proactive = config.proactive || {}
       const conversations = Array.isArray(data.conversations) ? data.conversations : []
+      const connected = bridge.connection === 'connected'
 
       const bridgeCard = h('div', { style: S.card },
-        h('div', { style: S.head }, h('span', { style: S.dot(bridge.connected) }), t('bridge'),
-          h('span', { style: S.badge }, bridge.connected ? t('connected') : t('disconnected'))),
-        field(t, t('url'), bridge.url || '—', S.mono))
+        h('div', { style: S.head }, h('span', { style: S.dot(connected) }), t('bridge'),
+          h('span', { style: S.badge }, connected ? t('connected') : t('disconnected'))),
+        field(t, t('url'), bridge.url || '—', S.mono),
+        field(t, t('process'), `${bridge.process || '—'} / ${bridge.connection || '—'}`, S.mono),
+        bridge.lastError ? field(t, t('error'), bridge.lastError, S.error) : null)
 
       const configCard = h('div', { style: S.card },
         field(t, t('groups'), config.groups ? t('on') : t('off')),

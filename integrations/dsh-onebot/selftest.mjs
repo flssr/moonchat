@@ -132,9 +132,12 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 {
     const { buildWakePrompt } = await import('./src/model/prompt.js')
-    const { normalizeGlobal, settingsFor } = await import('./src/model/settings.js')
+    const { gateFor, normalizeGlobal, normalizeOverrides } = await import('./src/model/settings.js')
     const { proactiveReason, inboundReason } = await import('./src/model/wake.js')
-    const { describe, titleOf, parseConversation } = await import('./src/model/conversation.js')
+    const { bridgeState, withConnection, withProcess } = await import('./src/model/bridge.js')
+    const {
+        createConversation, describe, parseConversation, recordMessage, takeMessages, titleOf,
+    } = await import('./src/model/conversation.js')
 
     assert.deepEqual(parseConversation('group:2'), { kind: 'group', id: '2' })
     assert.equal(parseConversation('bad:2'), null)
@@ -161,12 +164,32 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.match(english, /<event reason="inbound" pending="2" \/>/)
     assert.match(english, /Call mondchat_unread/)
 
-    const settings = normalizeGlobal({
-        proactive: { idleMinutes: 30 },
-        conversations: { 'group:2': { idleMinutes: 5, quietHours: '' } },
-    })
-    assert.equal(settingsFor(settings, 'group:2').idleMinutes, 5, '会话覆盖优先')
-    assert.equal(settingsFor(settings, 'group:3').idleMinutes, 30, '没覆盖就继承全局')
+    const settings = normalizeGlobal({ proactive: { idleMinutes: 30 } })
+    const overrides = normalizeOverrides({ 'group:2': { idleMinutes: 5, quietHours: '' }, 'group:bad': 'x' })
+    assert.equal(gateFor(settings, overrides, 'group:2').idleMinutes, 5, '会话覆盖优先')
+    assert.equal(gateFor(settings, overrides, 'group:3').idleMinutes, 30, '没覆盖就继承全局')
+    assert.equal(overrides['group:bad'], undefined, '坏条目直接丢')
+
+    // 会话实体：队列有上限，取走后清空
+    let conversation = createConversation('group:2')
+    for (let i = 0; i < 55; i += 1) {
+        conversation = recordMessage(conversation, { messageId: String(i), userId: '1', text: 'x', at: 0 })
+    }
+    assert.equal(conversation.queue.length, 50)
+    assert.equal(conversation.dropped, 5)
+    const taken = takeMessages(conversation)
+    assert.equal(taken.messages.length, 50)
+    assert.equal(taken.conversation.queue.length, 0)
+    assert.equal(taken.conversation.dropped, 0)
+
+    // 桥状态：进程态与连接态分开
+    const state = bridgeState({ url: 'ws://x' })
+    assert.equal(state.process, 'external')
+    assert.equal(state.connection, 'connecting')
+    assert.equal(withConnection(state, 'connected').connection, 'connected')
+    assert.equal(withProcess(state, 'running').process, 'running')
+    assert.equal(withProcess(state, 'failed', 'boom').lastError, 'boom')
+    assert.equal(withProcess(state, 'running').lastError, '')
 }
 
 // ---- 安静时段 ----
@@ -227,7 +250,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.ingest(message({ detail_type: 'group', group_id: '7' }))
     await settle()
     assert.equal(state.prompts.length, 0, '群关掉时连唤醒都不该有')
-    assert.equal(rt.inbox.size, 0)
+    assert.equal(rt.conversations.size, 0)
 }
 
 // ---- 主动话题：安静够久才起，安静时段不起，每小时有上限 ----
@@ -274,7 +297,8 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     await settle()
     const snapshot = rt.status()
     assert.equal(snapshot.bridge.url, 'ws://127.0.0.1:6700')
-    assert.equal(snapshot.bridge.connected, false, '自检里的桥是假的，没连上')
+    assert.notEqual(snapshot.bridge.connection, 'connected', '自检里的桥是假的，没连上')
+    assert.equal(snapshot.bridge.process, 'external', '桥不在插件管辖内就是 external')
     assert.equal(snapshot.config.groups, true)
     assert.equal(snapshot.conversations.length, 1)
     assert.equal(snapshot.conversations[0].conversation, 'group:7')

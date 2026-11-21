@@ -1,4 +1,5 @@
-// 设置实体：全局的一份，叠上每个会话的覆盖。纯函数，不碰宿主也不读环境。
+// 设置实体：全局（进 profile patch）与每会话覆盖（进 state.json）分开，
+// 合并后的「最终生效值」才参与判定。纯函数，不碰宿主也不读环境。
 
 export const LANGUAGES = ['zh', 'en']
 
@@ -16,8 +17,6 @@ export const DEFAULTS = {
         maxPerHour: 2,
         quietHours: '23:00-08:00',
     },
-    /** conversation key → 覆盖项；缺省字段继承全局。 */
-    conversations: {},
 }
 
 const positive = (value, fallback) => {
@@ -44,24 +43,49 @@ export function normalizeGlobal(config = {}) {
             maxPerHour: positive(proactive.maxPerHour, DEFAULTS.proactive.maxPerHour),
             quietHours: typeof proactive.quietHours === 'string' ? proactive.quietHours : DEFAULTS.proactive.quietHours,
         },
-        conversations: config.conversations && typeof config.conversations === 'object' ? config.conversations : {},
     }
 }
 
-/** 某个会话最终生效的闸门：会话覆盖优先，缺的继承全局。 */
-export function settingsFor(settings, conversation) {
-    const override = settings.conversations?.[conversation] ?? {}
+/**
+ * state.json 里的每会话覆盖 → 规整后的表。
+ * 只留认识的字段；坏值直接丢，让该字段回落到全局。
+ */
+export function normalizeOverrides(raw) {
+    const result = {}
+    if (!raw || typeof raw !== 'object') return result
+    for (const [key, value] of Object.entries(raw)) {
+        if (!value || typeof value !== 'object') continue
+        const entry = {}
+        if (typeof value.enabled === 'boolean') entry.enabled = value.enabled
+        if (Number.isFinite(Number(value.idleMinutes)) && Number(value.idleMinutes) > 0) {
+            entry.idleMinutes = Number(value.idleMinutes)
+        }
+        if (Number.isFinite(Number(value.maxPerHour)) && Number(value.maxPerHour) > 0) {
+            entry.maxPerHour = Number(value.maxPerHour)
+        }
+        if (typeof value.quietHours === 'string') entry.quietHours = value.quietHours
+        if (Object.keys(entry).length > 0) result[key] = entry
+    }
+    return result
+}
+
+/**
+ * 某个会话最终生效的闸门（值对象），缺的字段继承全局。
+ * enabled 这里只表示「主动话题开不开」，接不接消息不受它影响。
+ */
+export function gateFor(global, overrides, conversation) {
+    const override = overrides?.[conversation] ?? {}
     return {
-        enabled: override.enabled ?? settings.proactive.enabled,
-        idleMinutes: positive(override.idleMinutes, settings.proactive.idleMinutes),
-        maxPerHour: positive(override.maxPerHour, settings.proactive.maxPerHour),
-        quietHours: typeof override.quietHours === 'string' ? override.quietHours : settings.proactive.quietHours,
+        enabled: override.enabled ?? global.proactive.enabled,
+        idleMinutes: positive(override.idleMinutes, global.proactive.idleMinutes),
+        maxPerHour: positive(override.maxPerHour, global.proactive.maxPerHour),
+        quietHours: typeof override.quietHours === 'string' ? override.quietHours : global.proactive.quietHours,
     }
 }
 
 /** 时区没配就按宿主本地；配错了也退回本地，不让 Intl 抛。 */
-export function zoneOf(settings) {
-    return settings.timezone || undefined
+export function zoneOf(global) {
+    return global.timezone || undefined
 }
 
 const MINUTES = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/

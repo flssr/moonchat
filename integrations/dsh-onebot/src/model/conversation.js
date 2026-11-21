@@ -38,3 +38,46 @@ export function titleOf(key, name = '') {
     const label = name ? ` ${name}` : ` ${parsed.id}`
     return parsed.kind === GROUP ? `MondChat · 群${label}` : `MondChat · 与${label} 的私聊`
 }
+
+export const QUEUE_LIMIT = 50
+
+/**
+ * 一个 MondChat 会话的全部数据：名字、DSH 会话 id、待处理队列、最近活动。
+ * 只存数据；推进状态用下面的纯函数返回新对象，调用方决定何时落盘。
+ */
+export function createConversation(key, { name = '', sessionId = null } = {}) {
+    const parsed = parseConversation(key)
+    if (!parsed) throw new Error(`不是会话 key：${key}`)
+    return {
+        key,
+        kind: parsed.kind,
+        id: parsed.id,
+        name,
+        sessionId,
+        queue: [],
+        dropped: 0,
+        lastActivity: 0,
+    }
+}
+
+/** 收一条消息：入队并截断，返回新会话；丢弃条数累加。 */
+export function recordMessage(conversation, message, now = Date.now()) {
+    const queue = [...conversation.queue, message]
+    const overflow = Math.max(0, queue.length - QUEUE_LIMIT)
+    return {
+        ...conversation,
+        queue: queue.slice(overflow),
+        dropped: conversation.dropped + overflow,
+        lastActivity: now,
+    }
+}
+
+/** 取走队列：返回新会话（队列清空、丢弃清零）和被取走的消息。 */
+export function takeMessages(conversation) {
+    const messages = conversation.queue
+    return {
+        conversation: { ...conversation, queue: [], dropped: 0 },
+        messages,
+        dropped: conversation.dropped,
+    }
+}
