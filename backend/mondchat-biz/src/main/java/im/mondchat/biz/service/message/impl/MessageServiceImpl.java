@@ -108,6 +108,35 @@ public class MessageServiceImpl implements MessageService {
     }
 
     /**
+     * #37 已读上报：`dm` 只校验对端存在且不是自己（删好友后角标仍要能清，所以不查 friendship、
+     * 不查黑名单）；`room` 校验有效成员，键用 `turms_group_id`，取不到与发言同口径 503。
+     * 冻结**不拦**：它只改自己的读游标、不产生对他人的可见状态，拦了只会让角标永久挂着。
+     */
+    @Override
+    public void markRead(CurrentAccount me, String conversationType, long conversationId) {
+        long accountId = me.accountId();
+        boolean groupMessage = switch (conversationType) {
+            case ROOM -> true;
+            case DM -> false;
+            default -> throw ApiException.validationFailed("type", "type 只能是 room 或 dm");
+        };
+        long targetId = conversationId;
+        if (groupMessage) {
+            Long turmsGroupId = resolveRoom(conversationId).getTurmsGroupId();
+            requireRoomMember(conversationId, accountId);
+            if (turmsGroupId == null) {
+                throw ApiException.upstreamUnavailable();
+            }
+            targetId = turmsGroupId;
+        } else {
+            resolvePeer(me, conversationId);
+        }
+
+        // 不进任何限流桶：打开会话是高频动作，进桶会让角标清不掉；频率靠客户端 debounce。
+        turmsAdmin.updateReadDate(accountId, groupMessage, targetId);
+    }
+
+    /**
      * 消息 id 由网关生成后随代发提交：Admin `POST /messages` 返回空 body，不回传 Turms 生成的 id。
      * 毫秒时间戳放进高位，进程内自增放进低 20 位：单调递增，也不保存任何历史 id。
      */

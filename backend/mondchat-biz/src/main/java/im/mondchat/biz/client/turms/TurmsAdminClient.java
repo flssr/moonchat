@@ -180,6 +180,40 @@ public class TurmsAdminClient {
     }
 
     /**
+     * 代写「本人该会话的已读时间」：Admin `PUT /conversations`，`readDate` 传 null 让 Turms 取服务端当前时间。
+     * 私聊键的 owner 必须是调用者本人（写反会把已读写到对端）；群侧 groupId 必须是 Turms 的 group id。
+     * 复合主键入参形状 `keys[0].*` 与 `removeGroupMember` 同一套，冒烟已实测。
+     */
+    public void updateReadDate(long accountId, boolean groupMessage, long targetId) {
+        // readDate 明确写 null：Turms 用服务端时间，一次拿到「现在 + 私聊只前进 + 群侧覆盖」
+        Map<String, Object> body = new HashMap<>();
+        body.put("readDate", null);
+        try {
+            restClient.put()
+                    .uri(uri -> {
+                        uri.path("/conversations");
+                        if (groupMessage) {
+                            return uri.queryParam("groupConversationMemberKeys[0].groupId", targetId)
+                                    .queryParam("groupConversationMemberKeys[0].memberId", accountId)
+                                    .build();
+                        }
+                        return uri.queryParam("privateConversationKeys[0].ownerId", accountId)
+                                .queryParam("privateConversationKeys[0].targetId", targetId)
+                                .build();
+                    })
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            // 没拿到确认就回 503：客户端据此保留未读，不假装清掉了
+            log.warn("代写已读时间失败：accountId={} groupMessage={} targetId={}",
+                    accountId, groupMessage, targetId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /**
      * 代发消息：Admin `POST /messages`，带已认证的 `senderId`、设备类型与来源 IP。
      * 消息 id 由写入网关生成后在这里一并提交（Admin 不回传 id），`isSystemMessage` 恒为 false。
      * 返回后 Turms 仍会用自己的投影再校验一次（群成员、黑名单）。

@@ -204,6 +204,7 @@ services:
         -Dturms.service.redis.ip-blocklist.uri=redis://redis:6379
         -Dturms.service.redis.user-id-blocklist.uri=redis://redis:6379
         -Dturms.service.message.allow-send-messages-to-stranger=true
+        -Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false
     healthcheck:
       test:
         - CMD-SHELL
