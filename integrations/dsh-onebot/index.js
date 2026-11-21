@@ -191,6 +191,14 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     return labelSync(conversation)
   }
 
+  /** 侧栏里认得出的标题：MondChat 的私聊/群叫什么。 */
+  async function titleOf(conversation) {
+    const [kind, id] = conversation.split(':')
+    const name = await displayName(kind, id)
+    if (kind === 'group') return name ? `MondChat · 群「${name}」` : `MondChat · 群 ${id}`
+    return name ? `MondChat · 与 ${name} 的私聊` : `MondChat · 与 ${id} 的私聊`
+  }
+
   /** 同步版：只用缓存，工具描述那种建注册时就要出字的地方用它。 */
   function labelSync(conversation) {
     const [kind, id] = conversation.split(':')
@@ -234,6 +242,12 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       saveState()
 
       const entry = await adoptSession(conversation, sessionId)
+      // 只给新建的会话起标题；恢复回来的保留用户已经改过的名字。
+      try {
+        await ctx.sessionController.rename({ sessionId, title: await titleOf(conversation) })
+      } catch (error) {
+        log('改会话标题失败：', error.message)
+      }
       sessions.set(conversation, entry)
       log(`${conversation} → 会话 ${sessionId}`)
       return entry

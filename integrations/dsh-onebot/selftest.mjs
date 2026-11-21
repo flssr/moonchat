@@ -31,6 +31,7 @@ function makeHost(options = {}) {
         created: 0,
         live: new Set(),
         sends: [],
+        renames: [],
         disposers: [],
     }
     const presets = {
@@ -79,6 +80,9 @@ function makeHost(options = {}) {
                 if (state.attempts <= (options.promptFails ?? 0)) throw new Error('session/agent-busy')
                 state.prompts.push(request)
                 return { accepted: true }
+            },
+            async rename({ sessionId, title }) {
+                state.renames.push({ sessionId, title })
             },
             async selectModel() {},
         },
@@ -151,6 +155,8 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     await assert.rejects(() => send.execute({ text: '   ' }, {}), /不能为空/)
 
     assert.deepEqual(state.presetSets.map((x) => x.name), ['ro'], '会话要设成只读预设')
+    assert.equal(state.renames.length, 1, '新建会话要起个认得出的标题')
+    assert.match(state.renames[0].title, /MondChat · 与 张三 的私聊/)
     assert.equal(state.created, 1, '同一会话只建一个 DSH 会话')
     await rt.ensureSession('private:100000004')
     assert.equal(state.created, 1, '第二次不再新建')
@@ -237,6 +243,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     const rt2 = createRuntime(cold.ctx, { home, wakeDebounceMs: 0 }, { callBridge: cold.callBridge })
     const after = await rt2.ensureSession('private:100000004')
     assert.equal(cold.state.created, 0, '冷的持久会话要被 resume，不能新建')
+    assert.equal(cold.state.renames.length, 0, '恢复回来的会话不改标题')
     assert.equal(after.sessionId, before.sessionId, '还是原来那个会话')
 }
 
@@ -301,8 +308,13 @@ class FakeSocket {
         const request = JSON.parse(raw)
         this.requests.push(request)
         setTimeout(() => {
+            const data = request.action === 'get_user_info'
+                ? { user_id: request.params.user_id, user_name: '张三' }
+                : request.action === 'get_group_info'
+                    ? { group_id: request.params.group_id, group_name: '测试群' }
+                    : { message_id: '42', time: 1 }
             this.fire('message', {
-                data: JSON.stringify({ status: 'ok', retcode: 0, data: { message_id: '42', time: 1 }, message: '', echo: request.echo }),
+                data: JSON.stringify({ status: 'ok', retcode: 0, data, message: '', echo: request.echo }),
             })
         }, 0)
     }
@@ -331,7 +343,7 @@ class FakeSocket {
 
     // 桥推一条消息进来
     socket.push(message())
-    await settle()
+    await new Promise((resolve) => setTimeout(resolve, 150))
     assert.equal(host.state.prompts.length, 1, '事件经真实 WS 客户端进到插件并唤醒')
 
     // 工具调用经真实 WS 发出去，echo 对上才算成功
