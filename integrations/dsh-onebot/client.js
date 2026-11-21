@@ -104,6 +104,10 @@ window.__ModuleLoader__.load({
 
     const fill = (text, values) => String(text).replace(/\{(\w+)\}/g, (_, key) => (values[key] ?? ''))
 
+    // 这个插槽只声明了 id/order/label，不传 inject；翻译走模块内绑定，
+    // bind() 每次调用都读当前语言，所以切语言不用重新注册。
+    let boundT = (key) => key
+
     function field(t, label, value, style) {
       return h('div', { style: S.row },
         h('div', { style: S.label }, label),
@@ -117,7 +121,7 @@ window.__ModuleLoader__.load({
     }
 
     function Page(props) {
-      const t = props && props.t ? props.t : (key) => key
+      const t = (props && props.t) || boundT
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState('')
 
@@ -190,13 +194,13 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, 'en', DICTS.en), 'dsh-onebot: en dictionary')
         ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'dsh-onebot: zh dictionary')
         const t = ctx.locale.bind(NS)
+        boundT = t
         ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
           name: 'settings.plugins.tab',
           id: 'mondchat-onebot',
           order: 40,
           label: () => t('tab'),
           locale: NS,
-          inject: () => ({ t }),
         }, Page))
       },
     }
