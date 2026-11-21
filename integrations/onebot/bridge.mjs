@@ -127,7 +127,13 @@ export function createBridge() {
     function broadcast(event) {
         const payload = JSON.stringify(event)
         for (const client of clients) {
-            if (client.readyState === client.OPEN) client.send(payload)
+            if (client.readyState !== client.OPEN) continue
+            try {
+                client.send(payload)
+            } catch {
+                // 连接在检查与发送之间断掉：这次丢掉，别让异常从心跳定时器里冒出去。
+                clients.delete(client)
+            }
         }
     }
 
@@ -369,7 +375,7 @@ export function createBridge() {
     }
 
     function startServer() {
-        const server = new WebSocketServer({ host: WS_HOST, port: WS_PORT })
+        const server = new WebSocketServer({ host: WS_HOST, port: WS_PORT, maxPayload: 1 << 20 })
 
         server.on('connection', (socket, request) => {
             if (!authorized(request)) {
