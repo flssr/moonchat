@@ -1,6 +1,6 @@
 // 桥里唯一有分支的那几块：切段、网关地址、消息段、事件形状。跑法：node selftest.mjs
 import assert from 'node:assert/strict'
-import { buildEvent, metaConnectEvent, metaHeartbeatEvent, segmentsToText, splitText, toWsUrl } from './protocol.mjs'
+import { buildEvent, isAuthorized, metaConnectEvent, metaHeartbeatEvent, segmentsToText, splitText, toWsUrl } from './protocol.mjs'
 
 // 500 字上限：超了要切，且不能切出空段
 assert.deepEqual(splitText('a'.repeat(1001)).map((s) => s.length), [500, 500, 1])
@@ -56,5 +56,15 @@ const beat = metaHeartbeatEvent({ selfId: 1, intervalMs: 15000 })
 assert.equal(beat.type, 'meta')
 assert.equal(beat.detail_type, 'heartbeat')
 assert.equal(beat.interval, 15000)
+
+// 桥只绑回环，但被转发出去时 access_token 是唯一一道门
+const req = (url, headers = {}) => ({ url, headers })
+assert.equal(isAuthorized(req('/'), ''), true, '没配 token 就等同不设防')
+assert.equal(isAuthorized(req('/?access_token=t'), 't'), true)
+assert.equal(isAuthorized(req('/'), 't'), false, '不带 token 要被挡')
+assert.equal(isAuthorized(req('/?access_token=nope'), 't'), false, '错 token 要被挡')
+assert.equal(isAuthorized(req('/?foo=1&access_token=t'), 't'), true, '其它查询参数不影响')
+assert.equal(isAuthorized(req('/', { authorization: 'Bearer t' }), 't'), true)
+assert.equal(isAuthorized(req('/', { authorization: 'Bearer other' }), 't'), false)
 
 console.log('[onebot] selftest ok')

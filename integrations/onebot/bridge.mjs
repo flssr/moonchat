@@ -23,6 +23,7 @@ import TurmsClient from 'turms-client-js'
 import {
     PLATFORM,
     buildEvent,
+    isAuthorized,
     metaConnectEvent,
     metaHeartbeatEvent,
     segmentsToText,
@@ -364,10 +365,7 @@ export function createBridge() {
     }
 
     function authorized(request) {
-        if (!ACCESS_TOKEN) return true
-        const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`)
-        if (url.searchParams.get('access_token') === ACCESS_TOKEN) return true
-        return request.headers.authorization === `Bearer ${ACCESS_TOKEN}`
+        return isAuthorized(request, ACCESS_TOKEN)
     }
 
     function startServer() {

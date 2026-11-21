@@ -96,3 +96,11 @@ export function metaHeartbeatEvent({ selfId, intervalMs }) {
         interval: intervalMs,
     }
 }
+
+/** 桥只绑回环，但一旦被转发出去，access_token 就是唯一一道门。 */
+export function isAuthorized(request, token) {
+    if (!token) return true
+    const url = new URL(String(request?.url ?? '/'), `http://${request?.headers?.host ?? 'localhost'}`)
+    if (url.searchParams.get('access_token') === token) return true
+    return request?.headers?.authorization === `Bearer ${token}`
+}
