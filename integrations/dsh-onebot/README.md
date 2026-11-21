@@ -8,15 +8,31 @@
 MondChat ── 桥（integrations/onebot）── OneBot 12/WS ── 本插件 ── DSH 会话
 ```
 
+## 结构
+
+```
+index.js              装配：注入服务、注册工具/路由/定时器
+src/model/            纯数据与纯函数，能脱离宿主单测
+  conversation.js     ConversationId、Conversation（队列/丢弃/最近活动）、describe/titleOf
+  message.js          InboundMessage、入站解析、队列上限
+  settings.js         全局设置、每会话覆盖、gateFor、时区与安静时段
+  prompt.js           结构化提示词（context/language/task/rules/example）
+  wake.js             唤醒原因
+  bridge.js           BridgeState（进程态 / 连接态分开）
+selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/面板数据
+```
+
+规则只有一条：**能脱离宿主 `assert` 的才进 `src/model/`**，碰 `ctx.*`、定时器、IO 的留在 `index.js`。
+
 ## 界面
 
-装在 DSH 里之后，**设置 → 插件 → MondChat** 多一个页签，显示：
+侧栏面板里和「便签」「自动化任务」并排，点图标在主栏整页打开，显示：
 
-- 桥有没有连上、连的哪个地址；
-- 群聊开关、主动话题的闸门值、安静时段、工作目录与模型；
+- 桥的进程态与连接态、连的哪个地址；
+- 群聊开关、主动话题闸门、安静时段、模型、工作目录；
 - 已接入的每个 MondChat 会话：名字、DSH 会话是否在线、还有几条待处理、最近一条消息的时间。
 
-页面每 5 秒刷新一次，数据来自宿主的只读路由 `/api/mondchat/status`（走共享 `/api` 通道，和别的插件同一套会话鉴权）。它只读，改配置仍然写 profile 的 `cordis.patch.yml`。
+页面每 5 秒刷新一次，数据来自宿主的只读路由 `/api/mondchat/status`（走共享 `/api` 通道，和别的插件同一套会话鉴权）。目前只读，改配置仍然写 profile 的 `cordis.patch.yml`。
 
 ## 行为
 
