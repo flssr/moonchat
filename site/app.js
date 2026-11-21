@@ -106,4 +106,14 @@
       }
     });
   }
+
+  // 标题和引言里的 <br> 换成行遮罩：每行各自从自己的遮罩里推上来，
+  // 滚走再滑回来还会重演；没有 JS 时这里不拆，标题按整块淡入。
+  document.querySelectorAll('.hero h1, .reveal h2, .band blockquote p').forEach((el) => {
+    if (!/<br\s*\/?>/i.test(el.innerHTML)) return;
+    el.innerHTML = el.innerHTML
+      .split(/<br\s*\/?>/i)
+      .map((line, i) => `<span class="ln"><span class="ln__i" style="--i:${i}">${line.trim()}</span></span>`)
+      .join('');
+  });
 })();

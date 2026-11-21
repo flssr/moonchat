@@ -7,7 +7,7 @@
 | 文件 | 用途 |
 | --- | --- |
 | `site/index.html` | 单页结构，以及首帧前的主题内联脚本 |
-| `site/styles.css` | 纸白 / 炭黑两套变量、排版与组件 |
+| `site/styles.css` | 纸白 / 炭黑两套变量、排版与组件、滚动驱动的进出场 |
 | `site/app.js` | 主题切换、引言轮换、下载确认弹窗 |
 | `site/sky.js` | 首屏的月亮、星点与流星（canvas） |
 | `site/assets/mondchat-logo.svg` | 品牌图标与 favicon |
@@ -34,14 +34,24 @@
 
 ## 正文入场
 
-- 进场和退场都挂在滚动位置上：`styles.css` 用 `animation-timeline: view()` + `animation-range: cover 0% cover 100%`，给 `.reveal` 里的 `p` / `h2` / `blockquote` / `figcaption` 播一段 `rv` 关键帧（0% 透明下沉 26px + 6px 模糊，14% 到位，84% 保持，100% 淡出并上浮 36px）。
-- 因为进度跟着滚动走，滑过再滑回来会原路重演，也不存在「停在屏幕中间却是透明」的死区：透明度只由元素当时的位置决定。
-- 顶部读者区保持不透明：淡出从元素滑到导航下方才开始，正文停在阅读位置时不发灰。
-- 没有 `animation-timeline` 的浏览器整段跳过，正文静态可见。
+进场和退场都挂在滚动位置上（`animation-timeline: view()` + `animation-range: cover 0% cover 100%`），滑过再滑回来会原路重演，也不存在「停在屏幕中间却是透明」的死区：透明度只由元素当时的位置决定。分了几层：
+
+| 层 | 做法 |
+| --- | --- |
+| 标题行 | `app.js` 把 `.hero h1` / `.reveal h2` / `.band blockquote p` 里的 `<br>` 拆成 `.ln > .ln__i`，外层 `overflow: clip` 当遮罩，内层按自己的时间线从 118% 推到 0，一行一行出来 |
+| 小节标签 | `.kicker` 用 `clip-path: inset(0 100% 0 0)` 从左往右揭开 |
+| 段落 / 落款 | 淡入 + 上浮 22px + 5px 模糊，滑到导航下方再淡出并上浮 30px |
+| 分节线 | `.essay` 的 1px 背景线随 `background-size` 从 0 拉到 100%，从左画到右 |
+| 导航下沿 | `.nav::after` 的渐变在滚动 0–120px 内淡入，正文滑上来时在导航下面化开 |
+| 首屏 | 标题按行推上来，图标 / 正文 / 引言 / 继续阅读依次淡入（一次性的读入动画，不跟滚动） |
+
+- 标题行用 `overflow: clip` 而不是 `overflow: hidden`：后者是滚动容器，会接管行内元素的 `view()` 时间线。
+- 有 `:has(.ln)` 的判断：标题被拆成行以后，整块的淡入让位给行遮罩，不叠两层。
+- 没有 JS 时不拆行，标题退回整块淡入；`prefers-reduced-motion` 时全部不播，正文静态可见。
 
 ## 降级与可访问性
 
-- **没有 JS**：主题保持首次解析时的默认值；「现在体验」退化成普通下载链接；正文入场是纯 CSS，照常生效。
+- **没有 JS**：主题保持首次解析时的默认值；「现在体验」退化成普通下载链接；标题不拆行、按整块淡入。
 - `prefers-reduced-motion: reduce`：正文不播入场、直接可见；星图静止、不出流星、引言不轮换。
 - 引言 `figure` 可以聚焦，悬停或聚焦时暂停轮换。
 - 主题按钮有固定的 `aria-label`，不叠 `aria-pressed`；下载弹窗用 `<dialog>` 自带的焦点管理，标题由 `aria-labelledby` 关联。

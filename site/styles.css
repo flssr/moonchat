@@ -87,6 +87,15 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--line);
 }
+/* 正文滑上来时在导航下面化开一层背景，退场不是被硬切掉。滚起来才出现。 */
+.nav::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: 100%;
+  height: 64px;
+  background: linear-gradient(to bottom, var(--bg), transparent);
+  pointer-events: none;
+}
 .nav__inner {
   max-width: 1120px;
   margin: 0 auto;
@@ -230,10 +239,15 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 
 /* ---------- essay ---------- */
 .essay {
+  position: relative;
   max-width: 760px;
   margin: 0 auto;
   padding: 140px 28px;
-  border-top: 1px solid var(--line);
+  /* 分节线画在顶上，配合滚动自己从左边拉出来。 */
+  background-image: linear-gradient(var(--line), var(--line));
+  background-repeat: no-repeat;
+  background-position: 0 0;
+  background-size: 100% 1px;
 }
 .essay h2 {
   margin-top: 18px;
@@ -336,20 +350,94 @@ svg { display: block; width: 18px; height: 18px; fill: none; stroke: currentColo
 /* ---------- motion ---------- */
 /* 进场和退场都挂在滚动位置上（view timeline）：滑到哪就演到哪，往回滑会原路退回，
    所以每次滑回来都能再来一次，也不会留下「停在屏幕中间却是透明」的死区。
-   不支持 view timeline 的浏览器不加动画，正文照常可见。 */
+   标题按行从遮罩里推上来，小标签从左揭开，段落淡入上浮，分节线跟着一起画出来。
+   不支持这些特性的浏览器不加动画，正文照常可见。 */
 @keyframes rv {
-  0%   { opacity: 0; transform: translateY(26px); filter: blur(6px); }
+  0%   { opacity: 0; transform: translateY(22px); filter: blur(5px); }
   14%  { opacity: 1; transform: none; filter: none; }
   84%  { opacity: 1; transform: none; filter: none; }
-  100% { opacity: 0; transform: translateY(-36px); filter: blur(4px); }
+  100% { opacity: 0; transform: translateY(-30px); filter: blur(3px); }
+}
+@keyframes wipe {
+  0%   { clip-path: inset(0 100% 0 0); opacity: .3; }
+  100% { clip-path: inset(0); opacity: 1; }
+}
+@keyframes line-up {
+  0%   { transform: translateY(118%); }
+  100% { transform: none; }
+}
+@keyframes rule {
+  0%   { background-size: 0% 1px; }
+  100% { background-size: 100% 1px; }
+}
+@keyframes edge-in {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes fade-up {
+  0%   { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* 行遮罩：overflow: clip 不建滚动容器，行里的 view() 时间线仍然对着页面算。 */
+.ln { display: block; overflow: clip; overflow-clip-margin: .12em; }
+.ln__i { display: block; }
+
+/* 首屏标题入场：一行一行推上来，其余元素随后淡入，进来就是开场。 */
+@media (prefers-reduced-motion: no-preference) {
+  .hero .ln__i {
+    animation: line-up 820ms var(--ease-out) both;
+    animation-delay: calc(40ms + var(--i, 0) * 90ms);
+  }
+  .hero__mark,
+  .lede,
+  .hero__quote,
+  .hero__hint {
+    animation: fade-up 760ms var(--ease-out) both;
+  }
+  .hero__mark { animation-delay: 40ms; }
+  .lede { animation-delay: 330ms; }
+  .hero__quote { animation-delay: 450ms; }
+  .hero__hint { animation-delay: 560ms; }
 }
 
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
-    .reveal :is(p, h2, blockquote, figcaption) {
+    /* 段落和落款：淡入上浮。已经拆成行的标题、引言交给行遮罩。 */
+    .reveal :is(p, blockquote, figcaption):not(.kicker):not(:has(.ln)),
+    .reveal h2:not(:has(.ln)) {
       animation: rv linear both;
       animation-timeline: view();
       animation-range: cover 0% cover 100%;
+    }
+    /* 小节标签：从左往右揭开。 */
+    .reveal .kicker {
+      animation: wipe linear both;
+      animation-timeline: view();
+      animation-range: cover 6% cover 34%;
+    }
+    /* 标题行：一行一行从自己的遮罩里推上来。 */
+    .reveal .ln__i {
+      animation: line-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 24%;
+    }
+    /* 分节线：滚到这一节，从左往右拉开。 */
+    .essay {
+      animation: rule linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100%;
+    }
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* 导航底下的那层化开只跟着页面滚动出现，回到顶部就收掉。 */
+    .nav::after {
+      animation: edge-in linear both;
+      animation-timeline: scroll();
+      animation-range: 0 120px;
     }
   }
 }
