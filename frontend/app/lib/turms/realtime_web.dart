@@ -8,7 +8,7 @@ import 'realtime.dart';
 
 /// `turms-client-js` 的 IIFE 构建（`vendor/turms/turms-client-js/dist/turms-client.iife.min.js`）
 /// 由 `web/index.html` 以 `<script>` 引入，全局名就是 `TurmsClient`。
-@JS()
+@JS('TurmsClient')
 extension type _TurmsClient._(JSObject _) implements JSObject {
   external _TurmsClient(JSObject options);
   external _UserService get userService;
