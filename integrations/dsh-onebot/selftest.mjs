@@ -34,6 +34,36 @@ function makeHost(options = {}) {
         renames: [],
         registrations: 0,
         disposers: [],
+        routes: new Map(),
+        processes: [],
+        edits: [],
+    }
+    state.subprocess = {
+        spawn(spec) {
+            const handle = {
+                spec,
+                terminated: false,
+                terminate() { this.terminated = true },
+                async waitForExit() { return true },
+                done: new Promise(() => {}),
+            }
+            state.processes.push(handle)
+            return handle
+        },
+    }
+    state.configEditor = {
+        entries: () => [{ id: 'mondchat-onebot', name: 'dsh-onebot' }],
+        async edit(entry, change) {
+            state.edits.push({ entry: entry.id, config: change({ bridge: 'ws://127.0.0.1:6700' }, {}) })
+        },
+    }
+    state.connection = {
+        fetch: {
+            register(route) {
+                state.routes.set(route.path, route)
+                return () => state.routes.delete(route.path)
+            },
+        },
     }
     const presets = {
         catalog: () => ({ options: [{ value: 'full', name: 'Full' }, { value: 'ro', name: 'Read only' }] }),
@@ -51,6 +81,9 @@ function makeHost(options = {}) {
         on: () => () => {},
         get: (key) => {
             if (key === 'permissionPresets') return presets
+            if (key === 'subprocess') return state.subprocess
+            if (key === 'configEditor') return state.configEditor
+            if (key === 'connection') return state.connection
             if (key === 'agents') {
                 return { get: (id) => (options.agentsHasTools ? { id, ctx: { tools: toolCtx } } : undefined) }
             }
@@ -395,6 +428,53 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     }, { callBridge: host.callBridge })
     await rt.ensureSession('private:1')
     assert.equal(host.state.tools.size, 0, '两边都没工具面时不抛，只是这次没挂上')
+}
+
+// ---- 服务：路由、设置、启停桥 ----
+
+{
+    const host = makeHost()
+    const rt = createRuntime(host.ctx, {
+        home: join(process.env.DSH_HOME, 'svc'),
+        wakeDebounceMs: 0,
+        retryDelayMs: 0,
+        accountKey: 'test-key',
+    }, { callBridge: host.callBridge })
+    rt.ingest(message())
+    await settle()
+    rt.start()
+
+    const statusRoute = host.state.routes.get('/api/mondchat/status')
+    assert.ok(statusRoute, '状态路由要注册上')
+    const snapshot = await (await statusRoute.fetch({})).json()
+    assert.equal(snapshot.conversations.length, 1)
+    assert.equal(snapshot.controls.bridge, true)
+    assert.equal(snapshot.controls.inProcess, false)
+
+    const settingsRoute = host.state.routes.get('/api/mondchat/settings')
+    const gateResponse = await settingsRoute.fetch({
+        json: async () => ({ gate: { conversation: 'private:100000004', idleMinutes: 7 } }),
+    })
+    assert.equal((await gateResponse.json()).gate.idleMinutes, 7)
+    assert.equal(rt.status().conversations[0].gate.idleMinutes, 7, '每会话闸门立刻生效')
+
+    const globalResponse = await settingsRoute.fetch({
+        json: async () => ({ global: { timezone: 'Asia/Shanghai', language: 'en' } }),
+    })
+    assert.equal((await globalResponse.json()).reload, true, '全局设置写回 patch 会重装')
+    assert.equal(host.state.edits.at(-1).config.timezone, 'Asia/Shanghai')
+    assert.equal(host.state.edits.at(-1).config.language, 'en')
+    assert.equal(host.state.edits.at(-1).config.bridge, 'ws://127.0.0.1:6700', '没改的字段保持原样')
+
+    const bridgeRoute = host.state.routes.get('/api/mondchat/bridge')
+    await bridgeRoute.fetch({ json: async () => ({ action: 'start' }) })
+    assert.equal(host.state.processes.length, 1, '启动桥要 spawn 一次')
+    assert.match(host.state.processes[0].spec.argv.join(' '), /bridge\.mjs/)
+    assert.equal(rt.status().bridge.process, 'running')
+
+    await bridgeRoute.fetch({ json: async () => ({ action: 'stop' }) })
+    assert.equal(host.state.processes[0].terminated, true, '停止桥要 terminate')
+    assert.equal(rt.status().bridge.process, 'stopped')
 }
 
 // ---- 真 apply()：假 WebSocket 冒充桥，走一遍真实接线 ----

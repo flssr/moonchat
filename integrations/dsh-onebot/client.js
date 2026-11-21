@@ -1,12 +1,14 @@
 // MondChat 插件的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
-// 只读快照：桥连没连上、有哪些会话、各自还积压多少。数据来自宿主的 /api/mondchat/status。
+// 数据来自宿主的 /api/mondchat/* 路由；面板只做呈现与提交，判定在 service。
 window.__ModuleLoader__.load({
   id: 'dsh-onebot',
   factory(require) {
     const React = require('react')
     const h = React.createElement
     const NS = 'dsh-onebot'
-    const API = '/api/mondchat/status'
+    const STATUS = '/api/mondchat/status'
+    const BRIDGE = '/api/mondchat/bridge'
+    const SETTINGS = '/api/mondchat/settings'
     const PANEL_ID = 'mondchat'
 
     const DICTS = {
@@ -19,15 +21,21 @@ window.__ModuleLoader__.load({
         disconnected: 'Disconnected',
         url: 'Address',
         process: 'Process / link',
+        error: 'Error',
+        start: 'Start bridge',
+        stop: 'Stop bridge',
+        restart: 'Restart',
+        busy: 'Working…',
+        managed: 'The bridge runs as a child of DSH; stopping the plugin stops it too.',
+        unmanaged: 'This host cannot start processes; run the bridge yourself.',
+        external: 'A bridge is already answering on this port (started outside the plugin), so starting another is disabled.',
+        settings: 'Settings',
+        timezone: 'Time zone',
+        timezoneHint: 'IANA zone such as Asia/Shanghai; empty follows the host.',
+        language: 'Reply language',
         groups: 'Groups',
-        on: 'On',
-        off: 'Off',
-        workspace: 'Working folder',
-        model: 'Model',
-        modelDefault: 'DSH default',
-        proactive: 'Proactive topic',
-        proactiveValue: 'After {idle} quiet minutes, at most {max} per hour',
-        quiet: 'Quiet hours',
+        save: 'Save',
+        savedReload: 'Saved. The plugin reloads and the bridge reconnects once.',
         conversations: 'Connected conversations',
         empty: 'No MondChat message has arrived yet. Send one to the bot account to start.',
         unread: '{count} pending',
@@ -35,8 +43,15 @@ window.__ModuleLoader__.load({
         live: 'Session live',
         cold: 'Session not live',
         lastActivity: 'Last message',
-        error: 'Error',
+        gate: 'Proactive',
+        idle: 'Idle minutes',
+        perHour: 'Max per hour',
+        quiet: 'Quiet hours',
+        reset: 'Reset to global',
+        edit: 'Edit',
+        close: 'Close',
         loadFailed: 'Could not read status: {message}',
+        actionFailed: 'Action failed: {message}',
       },
       zh: {
         panel: 'MondChat',
@@ -48,15 +63,20 @@ window.__ModuleLoader__.load({
         url: '地址',
         process: '进程 / 连接',
         error: '错误',
+        start: '启动桥',
+        stop: '停止桥',
+        restart: '重启',
+        busy: '处理中…',
+        managed: '桥由 DSH 作为子进程托管，插件卸载时会一起停掉。',
+        unmanaged: '这个宿主不能启动进程，桥需要你自己跑。',
+        external: '这个端口上已经有桥在应答（插件之外启动的），所以不再允许重复启动。',
+        settings: '设置',
+        timezone: '时区',
+        timezoneHint: 'IANA 名称，如 Asia/Shanghai；留空跟随宿主。',
+        language: '回复语言',
         groups: '群聊',
-        on: '开',
-        off: '关',
-        workspace: '工作目录',
-        model: '模型',
-        modelDefault: '跟随 DSH 默认',
-        proactive: '主动话题',
-        proactiveValue: '安静 {idle} 分钟后可起话头，每小时最多 {max} 次',
-        quiet: '安静时段',
+        save: '保存',
+        savedReload: '已保存。插件会重装一次，桥跟着重连。',
         conversations: '已接入的会话',
         empty: '还没有 MondChat 消息进来。给 bot 账号发一条私聊就会出现在这里。',
         unread: '{count} 条待处理',
@@ -64,7 +84,15 @@ window.__ModuleLoader__.load({
         live: '会话在线',
         cold: '会话未在线',
         lastActivity: '最近消息',
+        gate: '主动话题',
+        idle: '安静分钟',
+        perHour: '每小时上限',
+        quiet: '免打扰时段',
+        reset: '回到全局',
+        edit: '编辑',
+        close: '收起',
         loadFailed: '读取状态失败：{message}',
+        actionFailed: '操作失败：{message}',
       },
     }
 
@@ -89,9 +117,10 @@ window.__ModuleLoader__.load({
         padding: '14px 16px',
         display: 'grid',
         gap: 10,
-        maxWidth: 760,
+        maxWidth: 820,
       },
       head: { display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 },
+      actions: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
       row: { display: 'flex', gap: 12, alignItems: 'baseline', minHeight: 20 },
       label: { color: 'var(--dsw-alias-label-secondary)', minWidth: 104 },
       mono: {
@@ -114,36 +143,63 @@ window.__ModuleLoader__.load({
         color: 'var(--dsw-alias-label-secondary)',
         whiteSpace: 'nowrap',
       },
-      list: { display: 'grid', gap: 8, maxWidth: 760 },
+      button: {
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-layer-2)',
+        color: 'var(--dsw-alias-label-primary)',
+        borderRadius: 6,
+        padding: '3px 10px',
+        fontSize: 12,
+        cursor: 'pointer',
+      },
+      input: {
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-base)',
+        color: 'var(--dsw-alias-label-primary)',
+        borderRadius: 6,
+        padding: '3px 8px',
+        fontSize: 12,
+        width: 140,
+      },
+      list: { display: 'grid', gap: 8, maxWidth: 820 },
       item: {
-        display: 'flex',
-        gap: 10,
-        alignItems: 'center',
+        display: 'grid',
+        gap: 8,
         padding: '10px 12px',
         borderRadius: 8,
         border: '1px solid var(--dsw-alias-border-l1)',
         background: 'var(--dsw-alias-bg-base)',
       },
+      itemRow: { display: 'flex', gap: 10, alignItems: 'center' },
       itemTitle: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
       error: { color: 'var(--dsw-alias-state-error-primary)' },
+      notice: { color: 'var(--dsw-alias-state-success-primary)', fontSize: 12 },
     }
 
     const fill = (text, values) => String(text).replace(/\{(\w+)\}/g, (_, key) => (values[key] ?? ''))
 
-    // 这些插槽只声明了 id/order/label（main 只有 key）；翻译走模块内绑定，
-    // bind() 每次读当前语言，所以切语言不用重新注册。
+    // 这些插槽只声明了 id/order/key；翻译走模块内绑定。
     let boundT = (key) => key
 
-    function field(t, label, value, style) {
-      return h('div', { style: S.row },
-        h('div', { style: S.label }, label),
-        h('div', { style: style ?? { color: 'var(--dsw-alias-label-primary)' } }, value))
-    }
+    const field = (t, label, value, style) => h('div', { style: S.row },
+      h('div', { style: S.label }, label),
+      h('div', { style: style ?? { color: 'var(--dsw-alias-label-primary)' } }, value))
 
-    function when(ts) {
+    const when = (ts) => {
       if (!ts) return '—'
       const date = new Date(ts)
       return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
+    }
+
+    async function post(path, body) {
+      const response = await fetch(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(data.error || ('HTTP ' + response.status))
+      return data
     }
 
     function Icon(props) {
@@ -167,17 +223,27 @@ window.__ModuleLoader__.load({
       const t = boundT
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState('')
+      const [busy, setBusy] = React.useState('')
+      const [notice, setNotice] = React.useState('')
+      const [draft, setDraft] = React.useState(null)
+      const [editing, setEditing] = React.useState('')
+      const [gateDraft, setGateDraft] = React.useState({})
 
       React.useEffect(() => {
         let alive = true
         async function load() {
           try {
-            const response = await fetch(API, { cache: 'no-store' })
+            const response = await fetch(STATUS, { cache: 'no-store' })
             if (!response.ok) throw new Error('HTTP ' + response.status)
             const next = await response.json()
             if (!alive) return
             setData(next)
             setError('')
+            setDraft((current) => current ?? {
+              timezone: next.config?.timezone ?? '',
+              language: next.config?.language ?? 'zh',
+              groups: next.config?.groups !== false,
+            })
           } catch (failure) {
             if (alive) setError(String((failure && failure.message) || failure))
           }
@@ -190,6 +256,20 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      const run = async (label, task) => {
+        setBusy(label)
+        setNotice('')
+        setError('')
+        try {
+          const result = await task()
+          setNotice(result?.reload ? t('savedReload') : '')
+        } catch (failure) {
+          setError(fill(t('actionFailed'), { message: String((failure && failure.message) || failure) }))
+        } finally {
+          setBusy('')
+        }
+      }
+
       const header = h('div', { style: { display: 'grid', gap: 4 } },
         h('div', { style: S.titleRow }, h('div', { style: S.title }, t('title'))),
         h('div', { style: S.subtitle }, t('subtitle')))
@@ -201,38 +281,173 @@ window.__ModuleLoader__.load({
       }
 
       const bridge = data.bridge || {}
+      const controls = data.controls || {}
       const config = data.config || {}
-      const proactive = config.proactive || {}
       const conversations = Array.isArray(data.conversations) ? data.conversations : []
       const connected = bridge.connection === 'connected'
+      const running = bridge.process === 'running'
+      // 端口上已经有桥在应答（用户自己跑的）：别再起第二个，会撞端口。
+      const external = connected && !controls.inProcess
+
+      const bridgeButtons = h('div', { style: S.actions },
+        h('button', {
+          type: 'button',
+          style: S.button,
+          disabled: !controls.bridge || busy !== '' || running || external,
+          onClick: () => run('start', () => post(BRIDGE, { action: 'start' })),
+        }, busy === 'start' ? t('busy') : t('start')),
+        h('button', {
+          type: 'button',
+          style: S.button,
+          disabled: !controls.bridge || busy !== '' || !running,
+          onClick: () => run('stop', () => post(BRIDGE, { action: 'stop' })),
+        }, busy === 'stop' ? t('busy') : t('stop')),
+        h('button', {
+          type: 'button',
+          style: S.button,
+          disabled: !controls.bridge || busy !== '',
+          onClick: () => run('restart', () => post(BRIDGE, { action: 'restart' })),
+        }, busy === 'restart' ? t('busy') : t('restart')))
 
       const bridgeCard = h('div', { style: S.card },
         h('div', { style: S.head }, h('span', { style: S.dot(connected) }), t('bridge'),
           h('span', { style: S.badge }, connected ? t('connected') : t('disconnected'))),
         field(t, t('url'), bridge.url || '—', S.mono),
         field(t, t('process'), `${bridge.process || '—'} / ${bridge.connection || '—'}`, S.mono),
-        bridge.lastError ? field(t, t('error'), bridge.lastError, S.error) : null)
+        bridge.lastError ? field(t, t('error'), bridge.lastError, S.error) : null,
+        bridgeButtons,
+        h('div', { style: S.caption }, controls.bridge ? t('managed') : t('unmanaged')),
+        external ? h('div', { style: S.caption }, t('external')) : null)
 
-      const configCard = h('div', { style: S.card },
-        field(t, t('groups'), config.groups ? t('on') : t('off')),
-        field(t, t('proactive'), fill(t('proactiveValue'), { idle: proactive.idleMinutes, max: proactive.maxPerHour })),
-        field(t, t('quiet'), proactive.quietHours || '—', S.mono),
-        field(t, t('model'), config.model && config.model.model ? `${config.model.provider || ''} / ${config.model.model}` : t('modelDefault'), S.mono),
-        field(t, t('workspace'), config.workspace || '—', S.mono))
+      const settingsCard = h('div', { style: S.card },
+        h('div', { style: S.head }, t('settings')),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('timezone')),
+          h('input', {
+            style: S.input,
+            value: draft?.timezone ?? '',
+            placeholder: 'Asia/Shanghai',
+            onChange: (event) => setDraft({ ...draft, timezone: event.target.value }),
+          })),
+        h('div', { style: S.caption }, t('timezoneHint')),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('language')),
+          h('select', {
+            style: S.input,
+            value: draft?.language ?? 'zh',
+            onChange: (event) => setDraft({ ...draft, language: event.target.value }),
+          },
+          h('option', { value: 'zh' }, '中文'),
+          h('option', { value: 'en' }, 'English'))),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('groups')),
+          h('input', {
+            type: 'checkbox',
+            checked: draft?.groups !== false,
+            onChange: (event) => setDraft({ ...draft, groups: event.target.checked }),
+          })),
+        h('div', { style: S.actions },
+          h('button', {
+            type: 'button',
+            style: S.button,
+            disabled: busy !== '' || !draft,
+            onClick: () => run('save', () => post(SETTINGS, { global: draft })),
+          }, busy === 'save' ? t('busy') : t('save')),
+          h('span', { style: S.caption }, `${t('process')}: ${config.timezone || 'system'} / ${config.language}`)))
 
       const items = conversations.length === 0
         ? [h('div', { style: S.caption }, t('empty'))]
-        : conversations.map((item) => h('div', { key: item.conversation, style: S.item },
-          h('div', { style: S.itemTitle }, item.title || item.conversation),
-          h('span', { style: S.badge }, item.live ? t('live') : t('cold')),
-          item.unread > 0 ? h('span', { style: S.badge }, fill(t('unread'), { count: item.unread })) : null,
-          item.dropped > 0 ? h('span', { style: S.badge }, fill(t('dropped'), { count: item.dropped })) : null,
-          h('span', { style: S.caption }, `${t('lastActivity')} ${when(item.lastActivity)}`)))
+        : conversations.map((item) => {
+          const gate = item.gate || {}
+          const open = editing === item.conversation
+          const current = gateDraft[item.conversation] ?? {
+            idleMinutes: gate.idleMinutes,
+            maxPerHour: gate.maxPerHour,
+            quietHours: gate.quietHours,
+            enabled: gate.enabled,
+          }
+          return h('div', { key: item.conversation, style: S.item },
+            h('div', { style: S.itemRow },
+              h('div', { style: S.itemTitle }, item.title || item.conversation),
+              h('span', { style: S.badge }, item.live ? t('live') : t('cold')),
+              item.unread > 0 ? h('span', { style: S.badge }, fill(t('unread'), { count: item.unread })) : null,
+              item.dropped > 0 ? h('span', { style: S.badge }, fill(t('dropped'), { count: item.dropped })) : null,
+              h('span', { style: S.caption }, `${t('lastActivity')} ${when(item.lastActivity)}`),
+              h('button', {
+                type: 'button',
+                style: S.button,
+                onClick: () => setEditing(open ? '' : item.conversation),
+              }, open ? t('close') : t('edit'))),
+            open ? h('div', { style: S.actions },
+              h('span', { style: S.caption }, t('gate')),
+              h('label', { style: S.caption }, t('idle')),
+              h('input', {
+                style: S.input,
+                type: 'number',
+                min: 1,
+                value: current.idleMinutes,
+                onChange: (event) => setGateDraft({
+                  ...gateDraft,
+                  [item.conversation]: { ...current, idleMinutes: event.target.value },
+                }),
+              }),
+              h('label', { style: S.caption }, t('perHour')),
+              h('input', {
+                style: S.input,
+                type: 'number',
+                min: 1,
+                value: current.maxPerHour,
+                onChange: (event) => setGateDraft({
+                  ...gateDraft,
+                  [item.conversation]: { ...current, maxPerHour: event.target.value },
+                }),
+              }),
+              h('label', { style: S.caption }, t('quiet')),
+              h('input', {
+                style: S.input,
+                value: current.quietHours ?? '',
+                placeholder: '23:00-08:00',
+                onChange: (event) => setGateDraft({
+                  ...gateDraft,
+                  [item.conversation]: { ...current, quietHours: event.target.value },
+                }),
+              }),
+              h('label', { style: S.caption },
+                h('input', {
+                  type: 'checkbox',
+                  checked: current.enabled !== false,
+                  onChange: (event) => setGateDraft({
+                    ...gateDraft,
+                    [item.conversation]: { ...current, enabled: event.target.checked },
+                  }),
+                }), ` ${t('gate')}`),
+              h('button', {
+                type: 'button',
+                style: S.button,
+                disabled: busy !== '',
+                onClick: () => run('gate', () => post(SETTINGS, {
+                  gate: { conversation: item.conversation, ...current },
+                }).then((result) => {
+                  setEditing('')
+                  return result
+                })),
+              }, busy === 'gate' ? t('busy') : t('save')),
+              h('button', {
+                type: 'button',
+                style: S.button,
+                disabled: busy !== '',
+                onClick: () => run('gate', () => post(SETTINGS, {
+                  gate: { conversation: item.conversation },
+                }).then((result) => {
+                  setEditing('')
+                  return result
+                })),
+              }, t('reset'))) : null)
+        })
 
       return h('div', { style: S.page },
         header,
+        error ? h('div', { style: S.error }, error) : null,
+        notice ? h('div', { style: S.notice }, notice) : null,
         bridgeCard,
-        configCard,
+        settingsCard,
         h('div', { style: { display: 'grid', gap: 10 } },
           h('div', { style: S.head }, t('conversations')),
           h('div', { style: S.list }, items)))
@@ -246,7 +461,6 @@ window.__ModuleLoader__.load({
         const t = ctx.locale.bind(NS)
         boundT = t
 
-        // 侧栏图标：id 就是主栏要打开的 key，和便签、自动化任务同一排。
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist',
           id: PANEL_ID,
@@ -255,7 +469,6 @@ window.__ModuleLoader__.load({
           locale: NS,
         }, Icon))
 
-        // 主栏页面：点图标切过来，和便签页同一形态。
         ctx.slots.inject('main', () => ctx.slots.register({
           name: 'main',
           key: PANEL_ID,

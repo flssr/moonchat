@@ -37,7 +37,13 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 - 群聊开关、主动话题闸门、安静时段、模型、工作目录；
 - 已接入的每个 MondChat 会话：名字、DSH 会话是否在线、还有几条待处理、最近一条消息的时间。
 
-页面每 5 秒刷新一次，数据来自宿主的只读路由 `/api/mondchat/status`（走共享 `/api` 通道，和别的插件同一套会话鉴权）。目前只读，改配置仍然写 profile 的 `cordis.patch.yml`。
+页面每 5 秒刷新一次，数据来自 `/api/mondchat/status`（走共享 `/api` 通道，和别的插件同一套会话鉴权）。
+
+可操作的：
+
+- **启动 / 停止 / 重启桥**：`POST /api/mondchat/bridge`，插件用 `subprocess.spawn` 托管桥进程，卸载时一起停；端口上已有外部桥在应答时禁用启动，避免撞端口；
+- **时区与回复语言**：`POST /api/mondchat/settings` 的 `global`，写回 profile patch（会触发一次插件重装，桥跟着重连）；
+- **每个会话的主动话题闸门**：同一路由的 `gate`（安静分钟、每小时上限、免打扰时段、开关），写 `state.json`，立刻生效不重装；提交空 gate 表示回到全局。
 
 ## 行为
 
@@ -48,7 +54,8 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 | agent 看消息 | 调 `mondchat_unread`；读走即清空，不重复出现 |
 | agent 发言 | 调 `mondchat_send`；不调就是不想说，没有哨兵文本、没有自动转发 |
 | 权限 | 会话建好后按 `permissionPresets` 里 `sandbox === 'read-only'` 的档位压成只读 |
-| 主动话题 | 只在群里：安静满 `idleMinutes`（默认 60）且不在安静时段，每小时最多 `maxPerHour`（默认 2）次 |
+| 主动话题 | 每个会话各自的闸门：安静满 `idleMinutes`、不在免打扰时段、每小时不超过 `maxPerHour` |
+| 桥进程 | 可由面板托管（`subprocess.spawn`），也可自己在外面跑；插件只负责连 |
 | 断线 | 桥不可达时指数退避重连（最长 30 秒），期间消息不补（桥本身也不回填历史） |
 | 唤醒失败 | 排队被拒（比如 agent 正忙）时留着手里的消息，15 秒后补一次重试 |
 
@@ -78,6 +85,12 @@ pnpm install    # profile 目录
     # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
     # groups: true
+    # timezone: Asia/Shanghai     # 空 = 跟随宿主；提示词里的时间与免打扰都按它算
+    # language: zh                # 回复语言，写进提示词的 <language>
+    # accountKeyFile: ~/.mondchat.key   # 面板启停桥时读它；也可以直接给 accountKey
+    # apiBase: https://api.mondchat.com
+    # bridgeScript: /path/to/integrations/onebot/bridge.mjs   # 默认按插件位置推导
+    # bridgeCommand: [node, /path/to/bridge.mjs]              # 给了就覆盖上面两行
     # model: { provider: deepseek, model: deepseek-chat }   # 不填就跟 DSH 默认
     # proactive:
     #   enabled: true

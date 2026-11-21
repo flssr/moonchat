@@ -2,11 +2,12 @@
 // 路由、工具、面板都调这里；它自己不认 HTTP，也不知道槽位。
 
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { createBridgeClient } from './bridge/client.js'
-import { bridgeState, withConnection } from './model/bridge.js'
+import { bridgeState, withConnection, withProcess } from './model/bridge.js'
 import {
     createConversation,
     describe,
@@ -17,6 +18,7 @@ import {
 import { parseInbound } from './model/message.js'
 import { buildWakePrompt } from './model/prompt.js'
 import {
+    LANGUAGES,
     gateFor,
     inQuietHours,
     normalizeGlobal,
@@ -28,6 +30,7 @@ import { registerTools } from './tools.js'
 
 const WAKE_DEBOUNCE_MS = 3_000
 const TICK_MS = 60_000
+const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
 export class MondChatService {
     constructor({ ctx, config = {}, deps = {}, log = (...args) => console.log('[mondchat]', ...args) }) {
@@ -42,6 +45,16 @@ export class MondChatService {
         this.accessToken = config.accessToken ?? ''
         this.wakeDebounceMs = Number(config.wakeDebounceMs ?? WAKE_DEBOUNCE_MS)
         this.retryDelayMs = Number(config.retryDelayMs ?? 15_000)
+
+        // 启停桥：默认用跑 DSH 的同一个 node 执行仓库里的桥脚本。
+        this.bridgeScript = config.bridgeScript ?? join(PLUGIN_DIR, '..', 'onebot', 'bridge.mjs')
+        this.bridgeCommand = Array.isArray(config.bridgeCommand) && config.bridgeCommand.length > 0
+            ? config.bridgeCommand.map(String)
+            : [process.execPath, this.bridgeScript]
+        this.accountKeyFile = config.accountKeyFile
+            ?? join(process.env.USERPROFILE ?? process.env.HOME ?? '.', '.mondchat.key')
+        this.apiBase = config.apiBase ?? 'https://api.mondchat.com'
+        this.subprocessHandle = null
 
         mkdirSync(this.workspace, { recursive: true })
         mkdirSync(this.home, { recursive: true })
@@ -107,7 +120,132 @@ export class MondChatService {
         for (const dispose of this.toolDisposers) dispose()
         this.toolDisposers.length = 0
         this.agents.clear()
+        // 自己起的桥要跟着走，别留孤儿进程。
+        this.subprocessHandle?.terminate()
+        this.subprocessHandle = null
         this.bridge.close?.()
+    }
+
+    // ---- 桥进程 ----
+
+    /** 密钥只从 config 或文件读，不落日志、不进 state。 */
+    accountKey() {
+        if (typeof this.config.accountKey === 'string' && this.config.accountKey.trim()) {
+            return this.config.accountKey.trim()
+        }
+        try {
+            return readFileSync(this.accountKeyFile, 'utf8').trim()
+        } catch {
+            return ''
+        }
+    }
+
+    canManageBridge() {
+        return typeof this.ctx.get('subprocess')?.spawn === 'function'
+    }
+
+    async startBridge() {
+        if (!this.canManageBridge()) throw new Error('宿主没有 subprocess 服务，不能启停桥')
+        if (this.subprocessHandle) return this.bridgeStatus
+        const key = this.accountKey()
+        if (!key) throw new Error(`没有账号密钥：填 config.accountKey 或写 ${this.accountKeyFile}`)
+
+        this.bridgeStatus = withProcess(this.bridgeStatus, 'starting')
+        let handle
+        try {
+            handle = this.ctx.get('subprocess').spawn({
+                argv: this.bridgeCommand,
+                cwd: dirname(this.bridgeScript),
+                stdio: {
+                    stdin: 'ignore',
+                    stdout: { maxBytes: 64 * 1024 },
+                    stderr: { maxBytes: 64 * 1024 },
+                },
+                graceMs: 5_000,
+                env: {
+                    ...process.env,
+                    MONDCHAT_ACCOUNT_KEY: key,
+                    MONDCHAT_API_BASE: this.apiBase,
+                },
+            })
+        } catch (error) {
+            this.bridgeStatus = withProcess(this.bridgeStatus, 'failed', error.message)
+            throw error
+        }
+
+        this.subprocessHandle = handle
+        this.bridgeStatus = withProcess(this.bridgeStatus, 'running')
+        handle.done.then((outcome) => {
+            this.subprocessHandle = null
+            const failed = outcome.exitCode !== 0
+            this.bridgeStatus = withProcess(
+                this.bridgeStatus,
+                failed ? 'failed' : 'stopped',
+                failed ? `退出码 ${outcome.exitCode}` : '',
+            )
+        }).catch((error) => {
+            this.subprocessHandle = null
+            this.bridgeStatus = withProcess(this.bridgeStatus, 'failed', error.message)
+        })
+        return this.bridgeStatus
+    }
+
+    async stopBridge() {
+        const handle = this.subprocessHandle
+        if (!handle) {
+            this.bridgeStatus = withProcess(this.bridgeStatus, 'stopped')
+            return this.bridgeStatus
+        }
+        this.subprocessHandle = null
+        handle.terminate()
+        await handle.waitForExit().catch(() => {})
+        this.bridgeStatus = withProcess(this.bridgeStatus, 'stopped')
+        return this.bridgeStatus
+    }
+
+    // ---- 设置 ----
+
+    /** 全局项进 profile patch：改完 Loader 会重装插件（桥跟着重连一次）。 */
+    async setGlobal(patch = {}) {
+        const editor = this.ctx.get('configEditor')
+        if (typeof editor?.edit !== 'function' || typeof editor?.entries !== 'function') {
+            throw new Error('宿主没有 configEditor，不能改全局设置')
+        }
+        const entries = editor.entries()
+        const entry = entries.find((item) => item.id === 'mondchat-onebot')
+            ?? entries.find((item) => item.name === 'dsh-onebot')
+        if (!entry) throw new Error('找不到插件在 profile 里的配置项')
+
+        const next = {}
+        if (patch.timezone !== undefined) next.timezone = String(patch.timezone ?? '')
+        if (patch.language !== undefined) {
+            next.language = LANGUAGES.includes(patch.language) ? patch.language : this.global.language
+        }
+        if (patch.groups !== undefined) next.groups = Boolean(patch.groups)
+        if (Object.keys(next).length === 0) throw new Error('没有可改的全局设置')
+
+        await editor.edit(entry, (current) => ({ ...current, ...next }))
+        return next
+    }
+
+    /** 每会话闸门进 state.json：立即生效，不重装插件。 */
+    setGate(key, patch = {}) {
+        this.conversationFor(key)
+        const clean = {}
+        if (typeof patch.enabled === 'boolean') clean.enabled = patch.enabled
+        if (Number.isFinite(Number(patch.idleMinutes)) && Number(patch.idleMinutes) > 0) {
+            clean.idleMinutes = Number(patch.idleMinutes)
+        }
+        if (Number.isFinite(Number(patch.maxPerHour)) && Number(patch.maxPerHour) > 0) {
+            clean.maxPerHour = Number(patch.maxPerHour)
+        }
+        if (typeof patch.quietHours === 'string') clean.quietHours = patch.quietHours
+
+        // 空值 = 清掉这个会话的覆盖，回到全局。
+        if (Object.keys(clean).length === 0) delete this.overrides[key]
+        else this.overrides[key] = { ...this.overrides[key], ...clean }
+        this.saveState()
+        return gateFor(this.global, this.overrides, key)
     }
 
     // ---- 状态读写 ----
@@ -389,6 +527,13 @@ export class MondChatService {
         list.sort((a, b) => (b.lastActivity ?? 0) - (a.lastActivity ?? 0))
         return {
             bridge: this.bridgeStatus,
+            controls: {
+                bridge: this.canManageBridge(),
+                inProcess: Boolean(this.subprocessHandle),
+                bridgeScript: this.bridgeScript,
+                accountKeyFile: this.accountKeyFile,
+                apiBase: this.apiBase,
+            },
             config: {
                 groups: this.global.groups,
                 workspace: this.workspace,
