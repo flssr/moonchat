@@ -1,4 +1,4 @@
-// MondChat 插件的设置页：设置 → 插件 → MondChat。
+// MondChat 插件的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
 // 只读快照：桥连没连上、有哪些会话、各自还积压多少。数据来自宿主的 /api/mondchat/status。
 window.__ModuleLoader__.load({
   id: 'dsh-onebot',
@@ -7,10 +7,13 @@ window.__ModuleLoader__.load({
     const h = React.createElement
     const NS = 'dsh-onebot'
     const API = '/api/mondchat/status'
+    const PANEL_ID = 'mondchat'
 
     const DICTS = {
       en: {
-        tab: 'MondChat',
+        panel: 'MondChat',
+        title: 'MondChat',
+        subtitle: 'Direct chats and groups bridged into DSH sessions.',
         bridge: 'Bridge',
         connected: 'Connected',
         disconnected: 'Disconnected',
@@ -25,7 +28,7 @@ window.__ModuleLoader__.load({
         proactiveValue: 'After {idle} quiet minutes, at most {max} per hour',
         quiet: 'Quiet hours',
         conversations: 'Connected conversations',
-        empty: 'No MondChat message has arrived yet.',
+        empty: 'No MondChat message has arrived yet. Send one to the bot account to start.',
         unread: '{count} pending',
         dropped: '({count} dropped while backed up)',
         live: 'Session live',
@@ -34,7 +37,9 @@ window.__ModuleLoader__.load({
         loadFailed: 'Could not read status: {message}',
       },
       zh: {
-        tab: 'MondChat',
+        panel: 'MondChat',
+        title: 'MondChat',
+        subtitle: '把 MondChat 的私聊和群接进 DSH 会话。',
         bridge: '桥',
         connected: '已连接',
         disconnected: '未连接',
@@ -49,7 +54,7 @@ window.__ModuleLoader__.load({
         proactiveValue: '安静 {idle} 分钟后可起话头，每小时最多 {max} 次',
         quiet: '安静时段',
         conversations: '已接入的会话',
-        empty: '还没有 MondChat 消息进来。',
+        empty: '还没有 MondChat 消息进来。给 bot 账号发一条私聊就会出现在这里。',
         unread: '{count} 条待处理',
         dropped: '（{count} 条因积压被丢弃）',
         live: '会话在线',
@@ -60,7 +65,19 @@ window.__ModuleLoader__.load({
     }
 
     const S = {
-      wrap: { padding: '20px 24px', display: 'grid', gap: 18, color: 'var(--dsw-alias-label-primary)', fontSize: 13 },
+      page: {
+        height: '100%',
+        overflowY: 'auto',
+        padding: '28px 32px 40px',
+        display: 'grid',
+        gap: 16,
+        alignContent: 'start',
+        color: 'var(--dsw-alias-label-primary)',
+        fontSize: 13,
+      },
+      titleRow: { display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' },
+      title: { fontSize: 18, fontWeight: 600 },
+      subtitle: { color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 },
       card: {
         border: '1px solid var(--dsw-alias-border-l1)',
         borderRadius: 10,
@@ -68,12 +85,16 @@ window.__ModuleLoader__.load({
         padding: '14px 16px',
         display: 'grid',
         gap: 10,
+        maxWidth: 760,
       },
       head: { display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600 },
       row: { display: 'flex', gap: 12, alignItems: 'baseline', minHeight: 20 },
       label: { color: 'var(--dsw-alias-label-secondary)', minWidth: 104 },
-      value: { color: 'var(--dsw-alias-label-primary)' },
-      mono: { fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace', fontSize: 12, color: 'var(--dsw-alias-label-secondary)' },
+      mono: {
+        fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+        fontSize: 12,
+        color: 'var(--dsw-alias-label-secondary)',
+      },
       caption: { color: 'var(--dsw-alias-label-tertiary)', fontSize: 12 },
       dot: (ok) => ({
         width: 8,
@@ -87,8 +108,9 @@ window.__ModuleLoader__.load({
         padding: '1px 8px',
         fontSize: 12,
         color: 'var(--dsw-alias-label-secondary)',
+        whiteSpace: 'nowrap',
       },
-      list: { display: 'grid', gap: 8 },
+      list: { display: 'grid', gap: 8, maxWidth: 760 },
       item: {
         display: 'flex',
         gap: 10,
@@ -104,14 +126,14 @@ window.__ModuleLoader__.load({
 
     const fill = (text, values) => String(text).replace(/\{(\w+)\}/g, (_, key) => (values[key] ?? ''))
 
-    // 这个插槽只声明了 id/order/label，不传 inject；翻译走模块内绑定，
-    // bind() 每次调用都读当前语言，所以切语言不用重新注册。
+    // 这些插槽只声明了 id/order/label（main 只有 key）；翻译走模块内绑定，
+    // bind() 每次读当前语言，所以切语言不用重新注册。
     let boundT = (key) => key
 
     function field(t, label, value, style) {
       return h('div', { style: S.row },
         h('div', { style: S.label }, label),
-        h('div', { style: style ?? S.value }, value))
+        h('div', { style: style ?? { color: 'var(--dsw-alias-label-primary)' } }, value))
     }
 
     function when(ts) {
@@ -120,8 +142,25 @@ window.__ModuleLoader__.load({
       return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString()
     }
 
-    function Page(props) {
-      const t = (props && props.t) || boundT
+    function Icon(props) {
+      const size = (props && props.size) || 18
+      return h('svg', {
+        width: size,
+        height: size,
+        viewBox: '0 0 24 24',
+        fill: 'none',
+        'aria-hidden': true,
+        style: { display: 'block' },
+      },
+      h('rect', { x: 2.5, y: 4.5, width: 19, height: 13, rx: 3.5, stroke: 'currentColor', strokeWidth: 1.6 }),
+      h('path', { d: 'M7 20.2l3.4-2.7', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round' }),
+      h('circle', { cx: 8.2, cy: 11, r: 1.35, fill: 'currentColor' }),
+      h('circle', { cx: 12, cy: 11, r: 1.35, fill: 'currentColor' }),
+      h('circle', { cx: 15.8, cy: 11, r: 1.35, fill: 'currentColor' }))
+    }
+
+    function PanelPage() {
+      const t = boundT
       const [data, setData] = React.useState(null)
       const [error, setError] = React.useState('')
 
@@ -147,9 +186,14 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      const header = h('div', { style: { display: 'grid', gap: 4 } },
+        h('div', { style: S.titleRow }, h('div', { style: S.title }, t('title'))),
+        h('div', { style: S.subtitle }, t('subtitle')))
+
       if (!data) {
-        return h('div', { style: S.wrap }, h('div', { style: error ? S.error : S.caption },
-          error ? fill(t('loadFailed'), { message: error }) : '…'))
+        return h('div', { style: S.page }, header,
+          h('div', { style: error ? S.error : S.caption },
+            error ? fill(t('loadFailed'), { message: error }) : '…'))
       }
 
       const bridge = data.bridge || {}
@@ -158,11 +202,9 @@ window.__ModuleLoader__.load({
       const conversations = Array.isArray(data.conversations) ? data.conversations : []
 
       const bridgeCard = h('div', { style: S.card },
-        h('div', { style: S.head }, h('span', { style: S.dot(bridge.connected) }), t('bridge')),
-        field(t, t('url'), bridge.url || '—', S.mono),
-        h('div', { style: S.row },
-          h('div', { style: S.label }, bridge.connected ? t('connected') : t('disconnected')),
-          h('div', { style: S.value }, bridge.connected ? t('connected') : t('disconnected'))))
+        h('div', { style: S.head }, h('span', { style: S.dot(bridge.connected) }), t('bridge'),
+          h('span', { style: S.badge }, bridge.connected ? t('connected') : t('disconnected'))),
+        field(t, t('url'), bridge.url || '—', S.mono))
 
       const configCard = h('div', { style: S.card },
         field(t, t('groups'), config.groups ? t('on') : t('off')),
@@ -180,10 +222,11 @@ window.__ModuleLoader__.load({
           item.dropped > 0 ? h('span', { style: S.badge }, fill(t('dropped'), { count: item.dropped })) : null,
           h('span', { style: S.caption }, `${t('lastActivity')} ${when(item.lastActivity)}`)))
 
-      return h('div', { style: S.wrap },
+      return h('div', { style: S.page },
+        header,
         bridgeCard,
         configCard,
-        h('div', { style: S.card },
+        h('div', { style: { display: 'grid', gap: 10 } },
           h('div', { style: S.head }, t('conversations')),
           h('div', { style: S.list }, items)))
     }
@@ -195,13 +238,22 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'dsh-onebot: zh dictionary')
         const t = ctx.locale.bind(NS)
         boundT = t
-        ctx.slots.inject('settings.plugins.tab', () => ctx.slots.register({
-          name: 'settings.plugins.tab',
-          id: 'mondchat-onebot',
-          order: 40,
-          label: () => t('tab'),
+
+        // 侧栏图标：id 就是主栏要打开的 key，和便签、自动化任务同一排。
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist',
+          id: PANEL_ID,
+          order: 5,
+          label: () => t('panel'),
           locale: NS,
-        }, Page))
+        }, Icon))
+
+        // 主栏页面：点图标切过来，和便签页同一形态。
+        ctx.slots.inject('main', () => ctx.slots.register({
+          name: 'main',
+          key: PANEL_ID,
+          locale: NS,
+        }, PanelPage))
       },
     }
   },
