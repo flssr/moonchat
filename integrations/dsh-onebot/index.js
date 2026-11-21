@@ -16,10 +16,23 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+import {
+  conversationKey,
+  describe,
+  isGroup,
+  parseConversation,
+  titleOf as sessionTitleOf,
+} from './src/model/conversation.js'
+import { enqueue, formatMessages, lossNote, parseInbound } from './src/model/message.js'
+import { buildWakePrompt } from './src/model/prompt.js'
+import { inQuietHours, normalizeGlobal, settingsFor, zoneOf } from './src/model/settings.js'
+import { inboundReason, proactiveReason } from './src/model/wake.js'
+
+export { inQuietHours } from './src/model/settings.js'
+
 export const name = 'mondchat-onebot'
 export const inject = ['tools', 'sessions', 'sessionController']
 
-const CONVERSATION = /^(private|group):(\d+)$/
 const WAKE_DEBOUNCE_MS = 3_000
 const RECONNECT_MAX_MS = 30_000
 const TICK_MS = 60_000
@@ -46,16 +59,11 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   const workspace = config.workspace ?? join(home, 'workspace')
   const bridgeUrl = config.bridge ?? 'ws://127.0.0.1:6700'
   const accessToken = config.accessToken ?? ''
-  const groupsEnabled = config.groups !== false
+  const settings = normalizeGlobal(config)
+  const groupsEnabled = settings.groups
   // 自检要跑得快：默认 3 秒去抖、15 秒重试，测试里可以压到 0。
   const wakeDebounceMs = Number(config.wakeDebounceMs ?? WAKE_DEBOUNCE_MS)
   const retryDelayMs = Number(config.retryDelayMs ?? 15_000)
-  const proactiveConfig = {
-    enabled: config.proactive?.enabled !== false,
-    idleMinutes: Number(config.proactive?.idleMinutes ?? 60),
-    maxPerHour: Number(config.proactive?.maxPerHour ?? 2),
-    quietHours: config.proactive?.quietHours ?? '23:00-08:00',
-  }
 
   mkdirSync(workspace, { recursive: true })
   mkdirSync(home, { recursive: true })
@@ -118,8 +126,10 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       config: {
         groups: groupsEnabled,
         workspace,
-        model: config.model ?? null,
-        proactive: proactiveConfig,
+        language: settings.language,
+        timezone: settings.timezone,
+        model: settings.model,
+        proactive: settings.proactive,
       },
       conversations,
     }
@@ -144,29 +154,14 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   // ---- 事件进来：排队 + 唤醒 ----
 
   function ingest(event) {
-    if (!event || event.type !== 'message') return
-    const isGroup = event.detail_type === 'group'
-    if (isGroup && !groupsEnabled) return
-    const id = isGroup ? String(event.group_id ?? '') : String(event.user_id ?? '')
-    if (!id || !event.user_id) return
-    const conversation = `${isGroup ? 'group' : 'private'}:${id}`
-    const text = (event.message ?? [])
-      .filter((segment) => segment?.type === 'text')
-      .map((segment) => String(segment.data?.text ?? ''))
-      .join('')
-    if (!text.trim()) return
-
-    const queue = inbox.get(conversation) ?? []
-    queue.push({
-      message_id: String(event.message_id ?? ''),
-      user_id: String(event.user_id),
-      time: Number(event.time ?? 0),
-      text: text.slice(0, 2_000),
-    })
-    if (queue.length > 50) dropped.set(conversation, (dropped.get(conversation) ?? 0) + 1)
-    inbox.set(conversation, queue.slice(-50))
+    const parsed = parseInbound(event, { groupsEnabled })
+    if (!parsed) return
+    const { conversation, message } = parsed
+    const queued = enqueue(inbox.get(conversation) ?? [], message, dropped.get(conversation) ?? 0)
+    inbox.set(conversation, queued.queue)
+    if (queued.dropped > 0) dropped.set(conversation, queued.dropped)
     lastActivity.set(conversation, Date.now())
-    scheduleWake(conversation, `${text.length > 0 ? '有新消息' : ''}（${queue.length} 条）`)
+    scheduleWake(conversation, inboundReason(queued.queue.length))
   }
 
   function scheduleWake(conversation, reason) {
@@ -181,9 +176,15 @@ export function createRuntime(ctx, config = {}, deps = {}) {
 
   async function wake(conversation, reason) {
     const entry = await ensureSession(conversation)
-    const instruction = isProactive(reason)
-      ? `【MondChat 群】这个群安静了至少 ${proactiveConfig.idleMinutes} 分钟。你可以用 ${TOOL_SEND} 起个话头；没有想说的就别动。`
-      : `【MondChat】${await labelOf(conversation)}${reason}。用 ${TOOL_UNREAD} 看内容；想发言就调 ${TOOL_SEND}，不想发言就不用调。发言用中文、口语，一条不超过 200 字。`
+    const parsed = parseConversation(conversation)
+    const name = parsed ? await displayName(parsed.kind, parsed.id) : ''
+    const instruction = buildWakePrompt({
+      conversation,
+      name,
+      reason,
+      language: settings.language,
+      timeZone: zoneOf(settings),
+    })
     try {
       await ctx.sessionController.prompt({
         requestId: randomUUID(),
@@ -204,8 +205,6 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       timers.set(retryKey, timer)
     }
   }
-
-  const isProactive = (reason) => String(reason).startsWith('proactive')
 
   /**
    * 名字只是为了让 agent 读得懂，拿不到不算错：桥不可达或没这个接口就退回 id。
@@ -228,31 +227,24 @@ export function createRuntime(ctx, config = {}, deps = {}) {
   }
 
   async function labelOf(conversation) {
-    const [kind, id] = conversation.split(':')
-    await displayName(kind, id)
-    return labelSync(conversation)
+    const parsed = parseConversation(conversation)
+    if (!parsed) return conversation
+    return describe(conversation, await displayName(parsed.kind, parsed.id))
   }
 
-  /** 侧栏里认得出的标题：MondChat 的私聊/群叫什么。 */
   async function titleOf(conversation) {
-    const [kind, id] = conversation.split(':')
-    const name = await displayName(kind, id)
-    if (kind === 'group') return name ? `MondChat · 群「${name}」` : `MondChat · 群 ${id}`
-    return name ? `MondChat · 与 ${name} 的私聊` : `MondChat · 与 ${id} 的私聊`
+    const parsed = parseConversation(conversation)
+    if (!parsed) return sessionTitleOf(conversation)
+    return sessionTitleOf(conversation, await displayName(parsed.kind, parsed.id))
   }
 
   /** 同步版：只用缓存，工具描述那种建注册时就要出字的地方用它。 */
   function labelSync(conversation) {
-    const [kind, id] = conversation.split(':')
-    const cached = nameCache.get(`${kind}:${id}`)
+    const parsed = parseConversation(conversation)
+    if (!parsed) return conversation
+    const cached = nameCache.get(`${parsed.kind}:${parsed.id}`)
     const name = cached && cached.expires > Date.now() ? cached.name : ''
-    if (kind === 'group') return name ? `群「${name}」(${id})` : `群 ${id}`
-    return name ? `与「${name}」(${id}) 的私聊` : `与 ${id} 的私聊`
-  }
-
-  /** 队列有上限，丢掉的条数要如实说，别让 agent 以为那就是全部。 */
-  function lossNote(count) {
-    return count > 0 ? `（另有 ${count} 条更早的消息因积压被丢弃）` : ''
+    return describe(conversation, name)
   }
 
   // ---- 会话：一个 MondChat 会话一个 DSH 会话 ----
@@ -389,22 +381,18 @@ export function createRuntime(ctx, config = {}, deps = {}) {
         const lost = dropped.get(conversation) ?? 0
         dropped.delete(conversation)
         if (queue.length === 0) return lossNote(lost) || '没有未读消息。'
-        const senders = [...new Set(queue.map((item) => item.user_id))]
+        const senders = [...new Set(queue.map((item) => item.userId))]
         const names = new Map(
           await Promise.all(senders.map(async (id) => [id, await displayName('user', id)])),
         )
-        const lines = queue.map((item) => {
-          const at = item.time ? new Date(item.time * 1000).toISOString() : ''
-          const who = names.get(item.user_id)
-          return `[${at}] ${who ? `${who}(${item.user_id})` : item.user_id}: ${item.text}`
-        })
+        const lines = formatMessages(queue, (id) => names.get(id))
         return [lossNote(lost), ...lines].filter(Boolean).join('\n')
       },
     }
   }
 
   function sendTool(conversation) {
-    const [kind, id] = conversation.split(':')
+    const parsed = parseConversation(conversation) ?? { kind: 'private', id: '' }
     return {
       name: TOOL_SEND,
       description: `在 ${labelSync(conversation)} 里发一条消息。不超过 500 字，超出会自动切段。`,
@@ -426,8 +414,8 @@ export function createRuntime(ctx, config = {}, deps = {}) {
         let result
         try {
           result = await bridge.call('send_message', {
-            detail_type: kind === 'group' ? 'group' : 'private',
-            ...(kind === 'group' ? { group_id: id } : { user_id: id }),
+            detail_type: parsed.kind === 'group' ? 'group' : 'private',
+            ...(parsed.kind === 'group' ? { group_id: parsed.id } : { user_id: parsed.id }),
             message: oneBotText(text),
           })
         } catch (error) {
@@ -438,23 +426,23 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     }
   }
 
-  // ---- 主动话题：群里安静太久就给它一次机会 ----
+  // ---- 主动话题：会话安静够久就让 agent 自己决定起不起话头 ----
 
   function tick(now = Date.now()) {
-    if (!proactiveConfig.enabled) return
     if (!groupsEnabled) return
-    // 只在真的见过消息的群上起话头：桥只推事件，没推过的群我们也不认识。
+    // 只在真的见过消息的会话上起话头：桥只推事件，没推过的会话我们也不认识。
     for (const conversation of lastActivity.keys()) {
-      if (!conversation.startsWith('group:')) continue
+      const gate = settingsFor(settings, conversation)
+      if (!gate.enabled) continue
       const idleSince = lastActivity.get(conversation) ?? 0
-      if (now - idleSince < proactiveConfig.idleMinutes * 60_000) continue
-      if (inQuietHours(now, proactiveConfig.quietHours)) continue
+      if (now - idleSince < gate.idleMinutes * 60_000) continue
+      if (inQuietHours(now, gate.quietHours, zoneOf(settings))) continue
       const recent = (proactiveLog.get(conversation) ?? []).filter((t) => now - t < 60 * 60_000)
-      if (recent.length >= proactiveConfig.maxPerHour) continue
+      if (recent.length >= gate.maxPerHour) continue
       recent.push(now)
       proactiveLog.set(conversation, recent)
       lastActivity.set(conversation, now)
-      wake(conversation, 'proactive').catch((error) => log('主动话题失败：', error.message))
+      wake(conversation, proactiveReason(gate.idleMinutes)).catch((error) => log('主动话题失败：', error.message))
     }
   }
 
@@ -495,18 +483,7 @@ export function createRuntime(ctx, config = {}, deps = {}) {
     })
   }
 
-  return { start, ingest, tick, ensureSession, inbox, sessions, state, status }
-}
-
-/** '23:00-08:00' 这种跨零点区间。 */
-export function inQuietHours(now, range) {
-  const match = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(String(range ?? ''))
-  if (!match) return false
-  const date = new Date(now)
-  const minutes = date.getHours() * 60 + date.getMinutes()
-  const start = Number(match[1]) * 60 + Number(match[2])
-  const end = Number(match[3]) * 60 + Number(match[4])
-  return start <= end ? minutes >= start && minutes < end : minutes >= start || minutes < end
+  return { start, ingest, tick, ensureSession, inbox, sessions, state, status, settings }
 }
 
 function createBridgeClient({ url, token, onEvent, log }) {

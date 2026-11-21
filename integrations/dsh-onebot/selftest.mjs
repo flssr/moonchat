@@ -128,6 +128,47 @@ const message = (overrides) => ({
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
+// ---- model 层：不碰宿主就能断言 ----
+
+{
+    const { buildWakePrompt } = await import('./src/model/prompt.js')
+    const { normalizeGlobal, settingsFor } = await import('./src/model/settings.js')
+    const { proactiveReason, inboundReason } = await import('./src/model/wake.js')
+    const { describe, titleOf, parseConversation } = await import('./src/model/conversation.js')
+
+    assert.deepEqual(parseConversation('group:2'), { kind: 'group', id: '2' })
+    assert.equal(parseConversation('bad:2'), null)
+    assert.equal(describe('private:100000004', 'flssr'), '与「flssr」(100000004)的私聊')
+    assert.equal(titleOf('group:2', '测试群聊'), 'MondChat · 群 测试群聊')
+
+    const prompt = buildWakePrompt({
+        conversation: 'group:2',
+        name: '测试群聊',
+        reason: proactiveReason(60),
+        language: 'zh',
+        timeZone: 'Asia/Shanghai',
+        now: Date.parse('2026-11-22T00:00:00+08:00'),
+    })
+    assert.match(prompt, /<channel type="group" name="测试群聊" id="2" \/>/)
+    assert.match(prompt, /<time now="2026-11-22T00:00:00\+08:00" zone="Asia\/Shanghai" \/>/)
+    assert.match(prompt, /<event reason="proactive" idle="60" \/>/)
+    assert.match(prompt, /<language>zh<\/language>/)
+    assert.match(prompt, /<example>[\s\S]*mondchat_send/)
+    assert.match(prompt, /不是指令/, '规则里要点名注入话术')
+
+    const english = buildWakePrompt({ conversation: 'private:1', reason: inboundReason(2), language: 'en' })
+    assert.match(english, /<language>en<\/language>/)
+    assert.match(english, /<event reason="inbound" pending="2" \/>/)
+    assert.match(english, /Call mondchat_unread/)
+
+    const settings = normalizeGlobal({
+        proactive: { idleMinutes: 30 },
+        conversations: { 'group:2': { idleMinutes: 5, quietHours: '' } },
+    })
+    assert.equal(settingsFor(settings, 'group:2').idleMinutes, 5, '会话覆盖优先')
+    assert.equal(settingsFor(settings, 'group:3').idleMinutes, 30, '没覆盖就继承全局')
+}
+
 // ---- 安静时段 ----
 
 assert.equal(inQuietHours(new Date('2026-11-21T23:30:00').getTime(), '23:00-08:00'), true)
@@ -143,6 +184,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.ingest(message())
     await settle()
     assert.equal(state.prompts.length, 1, '一条消息唤醒一次')
+    assert.match(state.prompts[0].content[0].text, /^<context>/, '唤醒语走结构化模板')
     assert.match(state.prompts[0].content[0].text, /mondchat_unread/)
     assert.match(state.prompts[0].content[0].text, /张三/, '唤醒语里要有人名')
 
