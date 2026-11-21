@@ -15,7 +15,11 @@ index.js              装配：建服务、ctx.provide('mondchat')、挂路由
 src/
   service.js          用例层：会话、桥、设置、定时器；面板/工具/路由都调它
   routes.js           HTTP 路由：只做协议转换，注册进宿主共享 /api 通道
-  tools.js            会话内的两个工具（收/发），校验与呈现，用例在 service
+  tools.js            工具注册：只决定把哪些工具挂到哪个 agent
+  tools/              每个工具一个文件
+    unread.js         mondchat_unread：取走积压消息
+    send.js           mondchat_send：在当前会话发言
+    present.js        ContentBlock 与 OneBot 消息段的呈现辅助
   bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
   model/              纯数据与纯函数，能脱离宿主单测
     conversation.js   ConversationId、Conversation、describe/titleOf
