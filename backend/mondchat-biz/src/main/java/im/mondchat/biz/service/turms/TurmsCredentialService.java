@@ -8,7 +8,11 @@ import java.time.Instant;
  */
 public interface TurmsCredentialService {
 
-    Credential sign(long accountId);
+    /**
+     * @param frozen 账号是否已冻结：开关打开时按它选两套 statements 之一（冻结只读 + 清角标）；
+     *               开关关闭时该参数不影响结果（只签 `QUERY`）。
+     */
+    Credential sign(long accountId, boolean frozen);
 
     record Credential(String token, Instant expiresAt) {
     }
