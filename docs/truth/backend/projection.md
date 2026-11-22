@@ -66,6 +66,8 @@ Turms 的语义决定了写法，不能想当然：
 
 自研插件（例如切换后接管限流的 `ClientRequestHandler`）运行在 turms-service 进程内，发布与消息引擎耦合：插件加载失败会让**整个 turms-service 起不来**，不是「功能不生效」。上线前必须用同一 pinned digest 起一次性容器验证加载（`8510/health` 200），生产只挂一个版本，回滚靠清空插件目录重启。这是客户端直写 Turms 路线的固定代价，切换时要明确接受。
 
+**假 Turms Admin 抓不到路径写错**：`FakeTurmsAdmin` 按「方法 + 路径」分派，客户端若用同一个错路径，两边自洽，单测全绿。2026-11-22 就是这样漏掉 `TurmsAdminClient` 把关系接口写成 `/relationships`（真实路径 `/users/relationships`）——对账每次 400、存量投影完全不通，而 138 条单测没有一条失败。单测只能防回归；路径、错误码编号这类错误必须由 `infra/turms/smoke` 在真实 Turms 上断言。
+
 插件模块（`mondchat-turms-plugin`）已编译并验证加载，但**尚未挂载、未启用**（启用属 P2，与客户端切换同窗口）：
 
 - 构建在容器内做，不动本机工具链（本机最高 JDK 21，Turms 要求 25）。先把 `vendor/turms` 的指针 `d6ec799` 导出到临时目录，别污染 worktree：
