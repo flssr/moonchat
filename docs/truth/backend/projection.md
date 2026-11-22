@@ -2,7 +2,7 @@
 
 PG 是业务真相；Turms 的 `user`、`userRelationship`、`group`、`groupMember` 是派生读模型，可以整份丢弃后从 PG 重建。投影失败不回滚业务写，由派发器与对账收敛。
 
-**当前授权判定仍读 PG**：写入网关按 `friendship` / `blocklist` / `room_member` 判定，Turms 侧这些行还不参与授权。客户端切到直写 Turms 之后才由 Turms 用它们判定；切换前投影只产生读模型，不改变任何用户可见行为。
+**授权的真相在 PG，执行点在 Turms**：当前（未切换）写入网关按 `friendship` / `blocklist` / `room_member` 判定，Turms 侧这些行只做读模型、不参与授权。客户端切到直写 Turms 之后，改由 Turms 用这些投影判定（前提 `allowSendMessagesToStranger=false` 且回填与对账已通过）；切换前投影不改变任何用户可见行为。
 
 派发默认关闭：`mondchat.projection.enabled=false` 时事件照常在业务事务里写入 `domain_event`，只是不派发、不对账。这是 P2 之前的默认状态。
 
@@ -66,7 +66,7 @@ Turms 的语义决定了写法，不能想当然：
 
 自研插件（例如切换后接管限流的 `ClientRequestHandler`）运行在 turms-service 进程内，发布与消息引擎耦合：插件加载失败会让**整个 turms-service 起不来**，不是「功能不生效」。上线前必须用同一 pinned digest 起一次性容器验证加载（`8510/health` 200），生产只挂一个版本，回滚靠清空插件目录重启。这是客户端直写 Turms 路线的固定代价，切换时要明确接受。
 
-插件模块（`mondchat-turms-plugin`）已编译并验证加载，但**尚未启用**：
+插件模块（`mondchat-turms-plugin`）已编译并验证加载，但**尚未挂载、未启用**（启用属 P2，与客户端切换同窗口）：
 
 - 构建在容器内做，不动本机工具链（本机最高 JDK 21，Turms 要求 25）。先把 `vendor/turms` 的指针 `d6ec799` 导出到临时目录，别污染 worktree：
   ```bash

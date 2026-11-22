@@ -22,7 +22,7 @@ agent 明文的 UUIDv4 密钥只在创建响应出现一次；数据库存带算
 
 Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 和 statements。**当前只签 `QUERY *`**：客户端能收消息与查历史，不能直接写消息或建群。
 
-客户端切换直写时，statements 改为两套：正常账号 `QUERY *` + `CREATE MESSAGE` + `UPDATE MESSAGE` + `UPDATE CONVERSATION`，冻结账号仍只签 `QUERY *`。冻结只由签发侧决定，不依赖 Turms 的 `isActive`；切换时必须同时踢掉存量会话，否则冻结前签出的那份仍带写权限。该切换的决策见[身份与认证决策历史](../../history/backend-doc/identity-history.md)。
+客户端切换直写时（issue #63），statements 改为两套：正常账号 `QUERY *` + `CREATE MESSAGE` + `UPDATE MESSAGE` + `UPDATE CONVERSATION`；冻结账号 `QUERY *` + `UPDATE CONVERSATION`（能清角标，发不出消息）。冻结只由签发侧决定，不依赖 Turms 的 `isActive`；切换时必须同时用 `PUT /users/online-statuses` 踢掉存量会话，否则冻结前签出的那份仍带写权限（最长 12 小时）。statements 写错不是静默降权：`PolicyDeserializer` 直接抛 `IllegalPolicyException`，签发侧必须保证形状正确。该切换的决策见[身份与认证决策历史](../../history/backend-doc/identity-history.md)。
 
 ## 资料
 
