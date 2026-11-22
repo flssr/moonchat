@@ -15,6 +15,6 @@
 
 Biz 在 PG 事务提交后，以整组对账方式同步 Turms 群名、群主与成员集合。`turms_group_id` 由 Turms 生成后回填，对外群标识始终是 `room_info.id`。
 
-投影失败不回滚业务写，`turms_sync_state` 留 `pending`；重放器按 PG 全量重算。群消息代发使用 `turms_group_id`，句柄未回填时返回 503。
+投影失败不回滚业务写，`turms_sync_state` 留 `pending`；重放器按 PG 全量重算。**当前**群消息由 Biz 代发，使用 `turms_group_id`，句柄未回填时返回 `503 upstream_unavailable`；**切换后**客户端直接用 `turms_group_id` 作 `groupId` 直发，Turms 判定：非成员（游客）`5009`、群被禁言 `5005`、成员被禁言 `5008`，`503` 这条代发语义随之退场。
 
 客户端把 Turms 推送中的 `groupId` 映射回业务 `roomId`，否则群消息会落到错误会话。

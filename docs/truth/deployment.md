@@ -3,7 +3,7 @@
 生产是单机 docker compose 加宿主机上的 1Panel OpenResty 反代。仓库只带编排 [`infra/prod/compose.yaml`](../../infra/prod/compose.yaml)，不带任何 nginx/Caddy 容器：反代是宿主机上 1Panel 管的 OpenResty，不在 compose 里。
 
 - 真人与 agent 都从 `/api` 做业务读写，用各自账号凭据从 `/im` 收发与查询消息。
-- Biz 无状态，会话不在进程内；限流状态在 Redis，可重建。
+- Biz 无状态，会话不在进程内。**当前**限流状态在 Redis，可重建；**切换后**限流计数在 Turms 插件的进程内存里，按进程一份。
 - 客户端与 agent 端点不在服务端部署单元里。
 - Flutter Web 产物不在这台机器上部署，本机不放静态站目录。
 
@@ -34,7 +34,7 @@
 - 启动顺序由依赖锁住：两个 `mongod` 健康 → `mongo-rs-init` 发起两个副本集并等到各自 primary → `mongos` 才能起（config 副本集没 primary 时 mongos 会直接退出）→ `mongo-shard-init` 把 shard 接进集群 → Turms 两个进程。两个初始化容器都可重跑：副本集已发起、shard 已接上就直接退出。
 - `--wiredTigerCacheSizeGB` 的下限是 0.25G，低于它 mongod 直接拒绝启动（`storage.wiredTiger.engineConfig.cacheSizeGB must be greater than or equal to 0.25`），容器会一直 unhealthy，`up -d --wait` 直接失败。两个 `mongod` 都钉 0.25G；`mongo-config` 的 `mem_limit` 因此是 320m 而不是 224m。
 - 不在初始化里做 `enableSharding` / `shardCollection`：Turms 首次启动自己 `enableSharding` 并按实体上的 `@Sharded` 建分片键与索引，重复做会撞索引未就绪。
-- Redis 分库：Turms 用 DB0，Biz 的限流桶用 DB1。
+- Redis 分库：Turms 用 DB0；Biz 的限流桶用 DB1（切换后注销，限流进 Turms 插件）。
 - Turms 的集群与数据源配置走 `TURMS_SERVICE_JVM_OPTS` / `TURMS_GATEWAY_JVM_OPTS` 里的 `-D`（与 `vendor/turms/docker-compose.standalone.yml` 同源），身份模式与密钥路径用环境变量。
 - 日志收敛到每容器 3 × 10MB 的 json-file，不占满 4G 机器的盘。
 
@@ -152,12 +152,12 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 - Turms 身份模式是 `jwt`，验签密钥与 Biz 使用同一份文件：`TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_TYPE=jwt`，密钥文件挂到 gateway 的 `/opt/turms/secrets/jwt-hmac256.key` 与 Biz 的 `MONDCHAT_JWT_SECRET_FILE`。
 - 建 Turms 用户时使用平台生成、不保存也不分发的随机密码。
 - 客户端只能从 `POST /api/sessions` 获得 Turms 凭据。
-- `allowSendMessagesToStranger = true`，因为好友关系不投影进 Turms；编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=true`，不吃上游默认值。
-- 已读时间一律由 Biz 代写、由 Turms 取服务器时间，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`，同样不吃上游默认值。
+- **当前** `allowSendMessagesToStranger = true`，因为写路径仍由 Biz 网关代发、且关系投影尚未派发；编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=true`，不吃上游默认值。**切换后**必须翻成 `false`，让 Turms 用投影后的好友与拉黑关系判定；前提是先完成投影回填并让对账三类差异为 0，否则全员私聊立刻回 `5001`。
+- 已读只改写调用者自己的读游标，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`，同样不吃上游默认值。**当前**读游标由 Biz 代写（`POST /api/conversations/{type}/{id}/read`），**切换后**由客户端直写 `CONVERSATION.UPDATE`，这条配置的口径不变。
 
-任一前提被改都会破坏写入网关的唯一入口约束。
+任一前提被改都会破坏「客户端直写 + Turms 侧判定」这条链（未切换时则破坏写入网关的唯一入口）。
 
-Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件当前未启用，限流仍在 Biz。
+Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**当前未挂载、未启用**，限流仍在 Biz；启用发生在切换窗口（P2），届时 CD 还需新增一步把 jar 投放到宿主机插件目录——现在 `cd.yml` 只 scp `compose.yaml` 再 `pull + up`，没有插件投放路径。
 
 插件的故障半径是**整个 turms-service**：`plugin.yaml` 里的 `class` 不存在或加载失败会让 Spring 上下文 refresh 中止、容器以退出码 1 起不来，不是「插件不生效」。因此：
 
