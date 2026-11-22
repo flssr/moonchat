@@ -182,13 +182,13 @@ public class TurmsAdminClient {
     }
 
     /**
-     * 关系投影的读回：`GET /relationships?ownerIds=&relatedUserIds=` 找一条 `(owner, related)` 行。
+     * 关系投影的读回：`GET /users/relationships?ownerIds=&relatedUserIds=` 找一条 `(owner, related)` 行。
      * 返回 null 表示 Turms 还没有这一行；派发器据此决定 POST 还是 PUT（避免「PUT 未命中静默成功」）。
      */
     public Relationship queryRelationship(long ownerId, long relatedUserId) {
         try {
             JsonNode body = restClient.get()
-                    .uri(uri -> uri.path("/relationships")
+                    .uri(uri -> uri.path("/users/relationships")
                             .queryParam("ownerIds", ownerId)
                             .queryParam("relatedUserIds", relatedUserId)
                             .queryParam("size", 1)
@@ -219,7 +219,7 @@ public class TurmsAdminClient {
         body.put("establishmentDate", isoTimestamp(establishmentDate));
         try {
             restClient.post()
-                    .uri("/relationships")
+                    .uri("/users/relationships")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
@@ -240,7 +240,7 @@ public class TurmsAdminClient {
         body.put("establishmentDate", isoTimestamp(establishmentDate));
         try {
             restClient.put()
-                    .uri(uri -> uri.path("/relationships")
+                    .uri(uri -> uri.path("/users/relationships")
                             .queryParam("keys[0].ownerId", ownerId)
                             .queryParam("keys[0].relatedUserId", relatedUserId)
                             .build())
@@ -259,7 +259,7 @@ public class TurmsAdminClient {
         try {
             restClient.delete()
                     .uri(uri -> {
-                        uri.path("/relationships");
+                        uri.path("/users/relationships");
                         for (int i = 0; i < keys.size(); i++) {
                             uri.queryParam("keys[" + i + "].ownerId", keys.get(i)[0])
                                     .queryParam("keys[" + i + "].relatedUserId", keys.get(i)[1]);

@@ -153,10 +153,10 @@ final class FakeTurmsAdmin {
             case "DELETE /groups/members" -> removeGroupMember(lastQuery);
             case "POST /users" -> addUser(lastBody);
             case "GET /users" -> queryUsers(lastQuery);
-            case "POST /relationships" -> createRelationship(lastBody);
-            case "PUT /relationships" -> updateRelationship(lastQuery, lastBody);
-            case "DELETE /relationships" -> deleteRelationships(lastQuery);
-            case "GET /relationships" -> queryRelationships(lastQuery);
+            case "POST /users/relationships" -> createRelationship(lastBody);
+            case "PUT /users/relationships" -> updateRelationship(lastQuery, lastBody);
+            case "DELETE /users/relationships" -> deleteRelationships(lastQuery);
+            case "GET /users/relationships" -> queryRelationships(lastQuery);
             default -> null;
         };
         // 查不到时 Turms 回 204 无 body（NO_CONTENT），写接口回 200 无 body
