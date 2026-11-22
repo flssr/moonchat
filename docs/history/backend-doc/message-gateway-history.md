@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 写入与限流执行点交给 Turms
+
+2026-11-22 23:57 CST   [2026-11-22 15:57 UTC]
+
+决策：客户端与 agent 改为在已有的 Turms WebSocket 上直发 `createMessageRequest` / `updateMessageRequest`（撤回）/ `updateConversationRequest`（已读），gateway 先校验 JWT statements，再由 Turms 按投影后的好友、拉黑与群成员判定；Biz 不再有会话写路径，`/messages` 与 `/read` 两条路由在切换后删除（26 → 24）。限流从 Biz 的 Redis 两级桶改为 Turms 插件内的账号级与会话级内存令牌桶，不分来源，命中回 `1101`，计数按进程。当前未切换：写路径与两个桶都还在 Biz，插件未挂载。
+
+原因：Admin 代发跳过 Turms 的判定，撤回、改消息、已读这些原语只能由 Biz 自己重写；直写后这些能力由 Turms 提供，Biz 只保留真相与投影。两级限流放插件是为了在不改 vendor 的前提下复用 Turms 自己的请求分发流程，代价是计数按进程、自研代码进入消息引擎进程（加载失败会让整台 service 起不来）。切换顺序被拆成三个独立开关：statements 可以最早放开，`allowSendMessagesToStranger=false` 必须等投影回填与对账通过，插件与客户端流量同窗口启用。
+
 ### 已读上报代写
 
 2026-11-21 22:58 CST   [2026-11-21 14:58 UTC]

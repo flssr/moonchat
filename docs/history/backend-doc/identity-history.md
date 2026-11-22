@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 冻结 statements 保留清角标能力
+
+2026-11-22 23:57 CST   [2026-11-22 15:57 UTC]
+
+决策：修正上一条「冻结只签 `QUERY *`」——切换后冻结账号的 statements 是 `QUERY *` + `UPDATE CONVERSATION`，能清角标但发不出消息。放开写权限与「冻结时用 `PUT /users/online-statuses` 踢掉存量会话」必须在同一次上线里完成。
+
+原因：`/read` 这条 Biz 路由在切换后删除，冻结账号不发消息时仍需要能清掉未读，否则角标永久挂着、看起来像数据坏了；把 `CONVERSATION.UPDATE` 留给冻结账号是用权限位表达「读游标不是业务写入」。踢会话这一步不能省：JWT 登录路径不查 `isActive`，冻结前签出的凭据最长 12 小时仍带写权限。另记一条运维事实：statements 写错不是静默降权，`PolicyDeserializer` 会直接抛 `IllegalPolicyException`，签发侧拼错一条就是全量登不上或发不出。
+
 ### Turms 凭据分两套 statements
 
 2026-11-22 19:55 CST   [2026-11-22 11:55 UTC]
