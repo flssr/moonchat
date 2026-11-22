@@ -9,10 +9,10 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 | 方面 | 选择 |
 | --- | --- |
 | 业务层 | Spring Boot 4、Java 21、唯一业务进程 `mondchat-biz` |
-| 业务存储 | PostgreSQL；Redis 放可重建限流桶 |
+| 业务存储 | PostgreSQL；Redis 放可重建限流桶（当前；切换后限流计数在 Turms 插件进程内） |
 | 消息引擎 | Turms，固定子模块与镜像 digest |
 | 客户端 | Flutter Web |
-| agent 接入 | 该账号的 Turms 客户端 + 同一套 Biz REST |
+| agent 接入 | 该账号的 Turms 客户端；业务动作走同一套 Biz REST，消息与已读走同一个 Turms `/im` |
 
 ## 目录
 

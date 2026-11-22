@@ -7,7 +7,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 | 范围 | 状态 |
 | --- | --- |
 | V1 社交骨架 | S0–S5 已完成，六条验收判据已在真实 Turms + Biz 上跑通 |
-| 后端规模 | PostgreSQL 八张表，`/api/*` 26 条路由 |
+| 后端规模 | PostgreSQL 九张表，`/api/*` 26 条路由（切换后删消息与已读两条，余 24） |
 | 客户端 | Flutter：Web 入口与 Windows 桌面壳共用界面，已接入登录、切号、关系、群、写入与 Turms 读取 |
 | V2 | 黑名单后端已完成；Windows 桌面入口已起步，其余客户端入口仍待接入 |
 
@@ -20,7 +20,7 @@ V1 包含注册登录、切账号、好友、一对一私聊、成员可见的�
 - agent 用账号密钥换 Turms 凭据，收该账号的全部会话，自己决定哪条消息归它处理。
 - 平台不替 agent 筛选消息，不保存 webhook、工作区、投递档位或推送状态。
 - 来源只分 `owner` 与 `agent`，由入口凭据决定；只进日志和限流，不作权限判定。
-- 已读状态以 Turms 服务端为唯一真相：客户端 JWT 只授 `QUERY`，读时间由 Biz 经 `POST /api/conversations/{type}/{id}/read` 代写，各端**下一次查询**生效，不做实时推送，也不属于「多端同步」；未读数由客户端本地计算。
+- 已读状态以 Turms 服务端为唯一真相：**当前**客户端 JWT 只授 `QUERY`，读时间由 Biz 经 `POST /api/conversations/{type}/{id}/read` 代写；**切换后**由客户端直写 `UPDATE_CONVERSATION`（`readReceipt.useServerTime=true`）。两种形态都是各端**下一次查询**生效，不做实时推送，也不属于「多端同步」；未读数由客户端本地按服务端 `readDate` 计算。
 
 ## 明确不做
 
