@@ -30,7 +30,7 @@
         </dependency>
         <dependency>
             <groupId>im.turms</groupId>
-            <artifactId>turms-server-common</artifactId>
+            <artifactId>server-common</artifactId>
             <version>${turms.version}</version>
             <scope>provided</scope>
         </dependency>

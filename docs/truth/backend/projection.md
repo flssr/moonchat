@@ -66,4 +66,19 @@ Turms 的语义决定了写法，不能想当然：
 
 自研插件（例如切换后接管限流的 `ClientRequestHandler`）运行在 turms-service 进程内，发布与消息引擎耦合：插件加载失败会让**整个 turms-service 起不来**，不是「功能不生效」。上线前必须用同一 pinned digest 起一次性容器验证加载（`8510/health` 200），生产只挂一个版本，回滚靠清空插件目录重启。这是客户端直写 Turms 路线的固定代价，切换时要明确接受。
 
-插件模块（`mondchat-turms-plugin`）当前**未编译验证**：`vendor/turms` 的 `pom.xml` 要求 JDK 25，而本机 JDK 只有 11/20/21，`target/classes` 与本地仓库里现成的 Turms 构件都是 class version 69，javac 21 读不了。P2 启用插件前必须先有一套 JDK 25 构建环境，建议用 `maven + JDK 25` 镜像在容器内编译 vendor 与插件、把产物拷出，不动本机工具链；跟 Turms 升级时同理，每次都要这条构建链。
+插件模块（`mondchat-turms-plugin`）已编译并验证加载，但**尚未启用**：
+
+- 构建在容器内做，不动本机工具链（本机最高 JDK 21，Turms 要求 25）。先把 `vendor/turms` 的指针 `d6ec799` 导出到临时目录，别污染 worktree：
+  ```bash
+  git clone --no-hardlinks .git/modules/vendor/turms /tmp/turms && cd /tmp/turms && git checkout d6ec799
+  docker run --rm -v "$PWD:/src" -v "$HOME/.m2/repository:/root/.m2/repository" -w /src \
+    maven:3.9-eclipse-temurin-25 mvn -B install -Dmaven.test.skip=true \
+      -Dmaven.javadoc.skip=true -Dmaven.source.skip=true -Dcheckstyle.skip=true -pl turms-service
+  docker run --rm -v "$PWD/backend/mondchat-turms-plugin:/plugin" \
+    -v "$HOME/.m2/repository:/root/.m2/repository" -w /plugin \
+    maven:3.9-eclipse-temurin-25 mvn -B package
+  ```
+  `-Dmaven.test.skip=true` 与 `-pl turms-service` 是必需的：`-DskipTests` 挡不住会起 docker compose 的 Elasticsearch 集成测试。耗时参考：`server-common` 约 18 分钟、`turms-service` 约 2 分钟、插件几十秒；产物 `mondchat-turms-plugin.jar`（`release 21`，内含 `plugin.yaml`）。
+- 加载实测：把 jar 放进空目录，挂到 `/opt/turms/turms-service/plugins:ro` 起一次性服务，日志里出现 `registered` / `extension ... has been started` / `All plugins are started` 三条，宿主 `8510/health` 为 200；恢复即去掉挂载重启。`pinned-images.compose.yaml` 自带 `pull_policy: always`，离线环境要加 `--pull never`。
+- 插件 pom 依赖的 Turms 模块 artifactId 是 `server-common`（目录名叫 `turms-server-common`）。
+- **未验证**：命中限流返回 `1101` 需要客户端能发消息，得等 P2 放开 `MESSAGE.CREATE` 后做端到端验证；当前只确认了装配与启动。
