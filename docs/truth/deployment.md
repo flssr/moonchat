@@ -157,6 +157,17 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 
 任一前提被改都会破坏写入网关的唯一入口约束。
 
+Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件当前未启用，限流仍在 Biz。
+
+插件的故障半径是**整个 turms-service**：`plugin.yaml` 里的 `class` 不存在或加载失败会让 Spring 上下文 refresh 中止、容器以退出码 1 起不来，不是「插件不生效」。因此：
+
+- 插件 jar 上线前必须先用同一个 pinned digest 起一次性容器、挂载后确认 `8510/health` 为 200，通过才挂到生产；
+- 生产只挂一个插件版本、不并行多版本；
+- 回滚是清空插件目录再重启，一行 volume 的改动；**「目录换回空 + 重启即恢复」必须在 staging 演练通过，才算满足挂载到生产的前置条件**；
+- 插件模块不进后端 CI 的 reactor，避免 vendor 编译污染流水线。
+
+插件崩在 Spring 上下文 refresh 阶段，此时 Flyway 与 Mongo 连接已经建立：不会留下半截数据，但连接池会随进程一起断掉，所以它属于「整机不可用」而不是「数据损坏」类故障。
+
 ## 本地开发环境
 
 - 清 dev 库必须连 Turms 用户一起清。账号 id 由 PG 序列从 1 亿起分配，同时也是 Turms 用户的 `_id`；只清 PG、留着 Turms 里的旧用户时，Biz 再分配到同一个 id 会被 Turms 回 `409 / 1103`（Mongo `E11000 duplicate key user _id`），Biz 侧表现为注册 `503 upstream_unavailable`——看起来像 Turms 故障，实际是撞号。

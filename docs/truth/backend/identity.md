@@ -20,7 +20,9 @@ agent 明文的 UUIDv4 密钥只在创建响应出现一次；数据库存带算
 
 当前账号由 `HandlerMethodArgumentResolver` 解析。请求头中的 JWT 产生 `owner` 来源，账号密钥产生 `agent` 来源。
 
-Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 和只允许 `QUERY` 的 statements。客户端能收消息与查历史，不能直接写消息或建群。
+Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 和 statements。**当前只签 `QUERY *`**：客户端能收消息与查历史，不能直接写消息或建群。
+
+客户端切换直写时，statements 改为两套：正常账号 `QUERY *` + `CREATE MESSAGE` + `UPDATE MESSAGE` + `UPDATE CONVERSATION`，冻结账号仍只签 `QUERY *`。冻结只由签发侧决定，不依赖 Turms 的 `isActive`；切换时必须同时踢掉存量会话，否则冻结前签出的那份仍带写权限。该切换的决策见[身份与认证决策历史](../../history/backend-doc/identity-history.md)。
 
 ## 资料
 

@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### Turms 凭据分两套 statements
+
+2026-11-22 19:55 CST   [2026-11-22 11:55 UTC]
+
+决策：Turms 凭据 JWT 的 statements 定为两套——正常账号 `QUERY *` + `CREATE MESSAGE` + `UPDATE MESSAGE` + `UPDATE CONVERSATION`；冻结账号只签 `QUERY *`。本轮不切换：当前仍只签 `QUERY`，随客户端接入直写时一起放开。
+
+原因：客户端切到直写 Turms 后，发消息、撤回、直写已读都只能靠 Turms 侧的 statements 放行（`MESSAGE.CREATE` / `MESSAGE.UPDATE` / `CONVERSATION.UPDATE`）。冻结不依赖 Turms 的 `isActive`——JWT 登录路径不查它，所以「不能写」只能由签发侧不给写权限位来保证；踢掉存量会话是配套动作，客户端切换时一并落地。
+
 ### 头像落库
 
 2026-11-17 17:19 CET   [2026-11-17 16:19 UTC]

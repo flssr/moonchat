@@ -4,6 +4,8 @@
 
 接口测试覆盖账号、好友、黑名单、群、投影重放、两级限流、发言校验顺序、503 映射和 PG 零写入。并发重复请求测试断言不会落到 5xx，并用唯一键断言覆盖错误翻译。
 
+投影另有一组测试：业务变更与 `domain_event` 同事务落库、派发失败按退避重试并在第 10 次转日级、三类对账期望集合（好友双向、黑名单方向、群成员数）的差异只修 Turms，以及清拉黑的两种写法（仍是好友用 epoch-0、不是好友删行）。
+
 OpenAPI 端点 `/v3/api-docs` 由 controller 与 DTO 生成；`docs/openapi.json` 是它的落盘副本，由 `OpenApiDocTest` 生成并逐字节校验，改了控制器或 DTO 后用写开关重新生成并一起提交。
 
 Flutter 使用 `flutter analyze`、`flutter test` 和 Web release build。真实 Turms 的 Node 冒烟覆盖 JWT 登录、QUERY-only 拦截、Admin 代发、建群、成员对齐与移出群后拒绝。

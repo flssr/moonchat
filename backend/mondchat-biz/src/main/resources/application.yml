@@ -56,3 +56,11 @@ mondchat:
     # 只作用于 agent 来源的两级桶（好友申请、发言）；速率暂定，见 docs/truth/backend/messaging.md。
     account-per-minute: ${MONDCHAT_LIMIT_ACCOUNT_PER_MINUTE:60}
     conversation-per-minute: ${MONDCHAT_LIMIT_CONVERSATION_PER_MINUTE:20}
+  projection:
+    # PG → Turms 读模型的投影（docs/truth/backend/projection.md）。
+    # 默认关：P1 只累积事件、不派发，进入 P2 验证 Turms 判定时再打开（打开会一次性派发积压）。
+    enabled: ${MONDCHAT_PROJECTION_ENABLED:false}
+    dispatch-interval-ms: ${MONDCHAT_PROJECTION_DISPATCH_INTERVAL_MS:2000}
+    batch-size: ${MONDCHAT_PROJECTION_BATCH_SIZE:100}
+    # 每天 03:00 对账一次；对账只修 Turms，永不反写 PG。
+    reconcile-cron: ${MONDCHAT_PROJECTION_RECONCILE_CRON:0 0 3 * * *}

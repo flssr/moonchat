@@ -11,6 +11,8 @@
 | 群 | 群与成员 CRUD、PG → Turms 投影 | `controller/room`、`service/room`、`service/turms` |
 | 消息 | 唯一写入网关、已读时间代写、限流、代发 | `controller/message`、`service/message`、`service/limiter` |
 | 持久层 | MyBatis-Plus、迁移与事务 | `entity`、`mapper`、`db/migration` |
+| 投影 | outbox 派发、关系/群成员/账号投影与对账 | `service/projection`、`mapper/projection`、`entity/DomainEvent` |
+| 限流插件 | 客户端直写后由 Turms 进程内执行两级令牌桶；未启用、未编译验证 | `mondchat-turms-plugin` |
 | Turms 客户端 | Admin API 与凭据签发 | `client/turms`、`service/turms` |
 
 ## 接口面
