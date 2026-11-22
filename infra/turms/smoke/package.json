@@ -6,7 +6,8 @@
   "scripts": {
     "smoke": "node smoke.mjs",
     "identity": "node identity.mjs",
-    "agent": "node agent-example.mjs"
+    "agent": "node agent-example.mjs",
+    "projection": "node projection.mjs"
   },
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
