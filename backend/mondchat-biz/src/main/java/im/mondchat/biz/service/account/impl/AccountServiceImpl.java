@@ -18,6 +18,7 @@ import im.mondchat.biz.service.account.AccountService;
 import im.mondchat.biz.service.account.CredentialHasher;
 import im.mondchat.biz.service.auth.LoginTokenService;
 import im.mondchat.biz.service.friendship.FriendshipService;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import im.mondchat.biz.service.turms.TurmsCredentialService;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -55,6 +56,7 @@ public class AccountServiceImpl implements AccountService {
     private final TurmsCredentialService turmsCredentials;
     private final LoginTokenService loginTokens;
     private final TurmsProperties turmsProperties;
+    private final ProjectionEvents projectionEvents;
 
     /**
      * 同一事务写 `account` 与 `account_info`，并在事务内用这个 id 建 Turms 用户；
@@ -317,6 +319,8 @@ public class AccountServiceImpl implements AccountService {
                 .turmsSyncState(TurmsSyncState.SYNCED)
                 .updatedAt(OffsetDateTime.now())
                 .build());
+        // 建号仍在事务内同步建 Turms 用户；这条事件供读模型被 drop 后重建（派发器先查存在再建）
+        projectionEvents.accountCreated(account.getId(), displayName);
         return account;
     }
 

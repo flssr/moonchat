@@ -1,6 +1,6 @@
 # 持久层与数据
 
-PostgreSQL 当前有八张表，Flyway 六个迁移文件，持久层统一使用 MyBatis-Plus。
+PostgreSQL 当前有九张表，Flyway 七个迁移文件，持久层统一使用 MyBatis-Plus。
 
 | 迁移 | 表 |
 | --- | --- |
@@ -10,6 +10,7 @@ PostgreSQL 当前有八张表，Flyway 六个迁移文件，持久层统一使�
 | `V4__biz_blocklist.sql` | `blocklist` |
 | `V5__biz_account_profile.sql` | 不建表：`account_info` 增加 `gender`（`text not null default 'private'`，枚举 male/female/other/private）与 `birthday`（`date` 可空） |
 | `V6__biz_account_avatar.sql` | 不建表：`account_info` 增加 `avatar`（`text` 可空，平台默认头像 key，null = 客户端生成首字头像） |
+| `V7__biz_domain_event.sql` | `domain_event`（投影事件 outbox） |
 
 ## 共同约定
 
@@ -19,6 +20,7 @@ PostgreSQL 当前有八张表，Flyway 六个迁移文件，持久层统一使�
 - 外键是逻辑外键，DDL 不写 `references` 或级联删除。
 - 账号、群和认证信息不建第二套 Turms 映射表。
 - 消息、会话、限流桶、来源日志都不进 PG。
+- 投影事件表 `domain_event` 是业务事件的暂存，不是业务真相；它可清空、不参与授权，设计与派发规则见[投影](projection.md)。
 
 `friendship_reverse` 与 `account_room` 是可重建查询镜像，主表才是授权真相。好友与成员删除写 tombstone，物理 purge 的保留期和频率尚未确定。
 
