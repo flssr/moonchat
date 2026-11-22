@@ -47,7 +47,7 @@ PostgreSQL 是业务真相，Turms 是消息引擎。目标形态是 **Biz = 控
 切换后：
 
 1. 客户端经已有 WebSocket 发 `createMessageRequest`，gateway 校验 JWT statements。
-2. Turms 按投影后的好友、黑名单与群成员判定，失败回 `5001` / `5002` / `5009` 等码。
+2. Turms 按投影后的好友、黑名单与群成员判定，失败回 `5001`（非好友；被拉黑时 `stranger=false` 压成同码）或 `5009`（游客不能发言）等码。
 3. service 落库并向在线端投递，Biz 不在链路上。
 4. 已读与撤回同样走 `CONVERSATION.UPDATE` / `MESSAGE.UPDATE`，Biz 不在链路上。
 
