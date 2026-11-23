@@ -198,6 +198,28 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 
 推 GHCR 用仓库自带的 `GITHUB_TOKEN`（`packages: write`）；清理旧版本要删包，`GITHUB_TOKEN` 没有这个权限，所以另配 `GHCR_PAT`。
 
+## 部署前静态卡口：JVM opts 里不能有 `#`
+
+`TURMS_SERVICE_JVM_OPTS` 是 YAML 折叠块（`>-`），**块内的 `#` 是字符串内容而不是注释**：它会变成 JVM 参数的一部分，容器起来时报 `Unrecognized option` 直接退出。`docker compose config` 不会因此报错，所以要在部署前单独检查。
+
+服务器上（用真实 `.env`）：
+
+```bash
+docker compose --env-file /opt/mondchat/.env -f infra/prod/compose.yaml config > /tmp/cfg.yml \
+  || { echo "config 渲染失败，先修必填变量"; exit 1; }
+val=$(sed -n 's/^ *TURMS_SERVICE_JVM_OPTS: //p' /tmp/cfg.yml)
+[ "$(printf '%s' "$val" | wc -l)" -le 1 ] || { echo "JVM opts 不是单行，先看折叠块"; exit 1; }
+case "$val" in *'#'*) echo "JVM opts 被注释污染，停"; exit 1;; esac
+echo "clean: ${val: -120}"
+```
+
+断言只有两条：**`config` 能渲染**、**该变量的值里没有 `#`**。
+
+- **不要拿长度做断言**：`stranger=true` 与 `false` 只差一个字符，长度会变，固定长度只会制造假红。
+- 本地复现要给齐 6 个必填变量（compose 里 `${VAR:?...}` 会在渲染阶段校验），缺一个只会看到「config failed」，容易被误认为卡口在工作。
+- `config` 只证明 YAML 能渲染，**不证明 JVM 能解析**；最终的真卡口仍是容器起来 + `8510/health` 为 200。
+- 排障顺序：`turms-service` `Exited(1)` 且日志首行是 `Unrecognized option` → 先查 JVM opts。后面跟中文或 `P2` 是注释污染；跟合法参数名带 `[]`（如 `-D...uri-list[0]` 被 shell 拆开）是转义问题，两类成因分开查。
+
 ## 必要部署前提
 
 - Turms 身份模式是 `jwt`，验签密钥与 Biz 使用同一份文件：`TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_TYPE=jwt`，密钥文件挂到 gateway 的 `/opt/turms/secrets/jwt-hmac256.key` 与 Biz 的 `MONDCHAT_JWT_SECRET_FILE`。
