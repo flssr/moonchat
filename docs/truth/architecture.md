@@ -2,7 +2,7 @@
 
 PostgreSQL 是业务真相，Turms 是消息引擎。目标形态是 **Biz = 控制面**（账号、关系、群、资料、凭据签发、PG → Turms 投影与对账），**Turms = 数据面**（消息、会话、已读、撤回、投递）；客户端与 agent 用各自的 Turms 会话直写，授权由 Turms 按投影判定。
 
-**当前阶段（P1 已合入、未切换）**：投影地基（`domain_event` + 派发 + 对账）与限流插件骨架在仓库里，但 `mondchat.projection.enabled` 默认 `false`、插件未挂载；消息与已读仍由 Biz 代写（`POST /api/conversations/{type}/{id}/messages`、`.../read`），客户端 JWT 只授 `QUERY`。切换步骤与分端接入见 issue #63。
+**当前阶段（P1 已合入、未切换）**：投影地基（`domain_event` + 派发 + 对账）与限流插件骨架在仓库里，但 `mondchat.projection.enabled` 默认 `false`、插件未挂载；消息与已读仍由 Biz 代写（`POST /api/conversations/{type}/{id}/messages`、`.../read`），客户端 JWT 只授 `QUERY`。两套 statements 的签发代码已就绪，由 `mondchat.turms.write-credential-enabled` 控制、默认 `false`，关闭时签发与切换前一致。切换步骤与分端接入见 issue #63。
 
 ## 分层与数据归属
 
@@ -28,7 +28,7 @@ PostgreSQL 是业务真相，Turms 是消息引擎。目标形态是 **Biz = 控
 
 - **消息唯一写入者是 Turms**。当前入口是 Biz 写入网关经 `im-facade` 的 Admin `POST /messages`；切换后入口是客户端的 Turms `/im`，Biz 不再有会话写路径。任何服务不得直写 Mongo。
 - **授权真在 PG，执行在 Turms**。当前私聊授权只在 Biz 写入网关按 PG 好友关系判定；切换后由 Turms 用投影后的关系判定，前提是 `allowSendMessagesToStranger=false` 且投影回填、对账已通过。
-- **客户端 Turms 权限按阶段**：当前只授 `QUERY`；切换后正常账号含 `MESSAGE.CREATE/UPDATE` 与 `CONVERSATION.UPDATE`，冻结账号只保留 `QUERY` 与 `CONVERSATION.UPDATE`（能清角标、发不出消息）。statements 写错不是静默降权，签发侧会直接抛错。
+- **客户端 Turms 权限按阶段**：当前只授 `QUERY`；切换后（`mondchat.turms.write-credential-enabled=true`）正常账号含 `MESSAGE.CREATE/UPDATE` 与 `CONVERSATION.UPDATE`，冻结账号只保留 `QUERY` 与 `CONVERSATION.UPDATE`（能清角标、发不出消息）。statements 写错不是静默降权，签发侧会直接抛错。翻 `allowSendMessagesToStranger=false` 不影响走 Biz 的旧客户端：Admin `POST /messages` 直接进 `saveMessage`，不经过好友校验那条 `authAndSaveMessage`。
 - 群与成员只从 PG 单向投影到 Turms，失败不回滚业务写，由派发器与对账收敛。
 - 账号、好友与黑名单也单向投影进 Turms 读模型；投影只写 Turms、永不反写 PG。规则见[投影](./backend/projection.md)。
 - Turms 中没有 PG 记录的群不进入平台业务视图。

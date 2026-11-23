@@ -132,11 +132,13 @@ public class AccountServiceImpl implements AccountService {
             account = ownedAccount(caller.orElseThrow(ApiException::unauthenticated), request.accountId());
         }
         AccountInfo info = accountInfoMapper.selectById(account.getId());
-        if (FROZEN.equals(info.getStatus())) {
+        boolean frozen = FROZEN.equals(info.getStatus());
+        // 直写打开后冻结账号仍能拿凭据（只读 + 清角标）；关闭时保持切换前的 403
+        if (frozen && !turmsProperties.writeCredentialEnabled()) {
             throw ApiException.accountFrozen();
         }
 
-        TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId());
+        TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId(), frozen);
         // 归属者切账号时顺带签一份该账号的登录 JWT：没有它，切进去之后连 /api 都调不了
         LoginTokenService.Issued loginToken = keyShape ? null : loginTokens.issue(account.getId());
         return new AccountResponses.SessionResponse(account.getId(), info.getDisplayName(), account.getType(),

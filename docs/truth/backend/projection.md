@@ -35,7 +35,7 @@ P2 第一次打开时会一次性派发积压事件，等于一次天然增量�
 | `blocklist.changed`，`blocked_now=false`，`friends=false` | 同上 | `DELETE /relationships?keys=[k(owner→blocked)]` |
 | `room_member.changed` | `room_id`、`account_id`、`turms_group_id`（可空）、`member` | 在册 → `POST /groups/members`；退出 → `DELETE /groups/members`；`turms_group_id` 为空时抛错让事件退避，等群投影回填 |
 
-创建接口一律单条（`POST /users`、`POST /relationships`、`POST /groups/members`）；批量只出现在 `PUT/DELETE /relationships`、`PUT/DELETE /users`、`PUT /users/online-statuses`。回填与新增都逐条调用，没有「批量建关系」这个接口。
+创建接口一律单条（`POST /users`、`POST /relationships`、`POST /groups/members`）；批量只出现在 `PUT/DELETE /relationships`、`PUT/DELETE /users`、`PUT /users/online-infos/statuses`。回填与新增都逐条调用，没有「批量建关系」这个接口。
 
 ## 两条清空与判定规则
 

@@ -367,6 +367,27 @@ public class TurmsAdminClient {
         }
     }
 
+    /**
+     * 踢掉该账号的在线会话（冻结时用）：旧 token 最长还活 12 小时，不踢等于冻结没生效。
+     * Admin 的真实挂载点是 `PUT /users/online-infos/statuses`（body `{"onlineStatus":"OFFLINE"}`）；
+     * 文档里写的 `/users/online-statuses` 是 400（2026-11-23 实测）。
+     */
+    public void disconnectSessions(long accountId) {
+        try {
+            restClient.put()
+                    .uri(uri -> uri.path("/users/online-infos/statuses")
+                            .queryParam("ids", accountId)
+                            .build())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("onlineStatus", "OFFLINE"))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("踢会话失败：accountId={}", accountId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
     private static String throwawayPassword() {
         byte[] bytes = new byte[9];
         RANDOM.nextBytes(bytes);
