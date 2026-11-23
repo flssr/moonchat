@@ -23,6 +23,8 @@ PG 是业务真相；Turms 的 `user`、`userRelationship`、`group`、`groupMem
 
 P2 第一次打开时会一次性派发积压事件，等于一次天然增量回填。打开前先看 `select count(*) from domain_event where processed_at is null`；积压大就按 id 分批放（例如先处理一个范围、确认成功再放下一段），不要一次全推。
 
+**Admin 调用有超时**：`mondchat.turms.http.connect-timeout` 默认 2s、`read-timeout` 默认 5s，**所有 Admin 调用共用同一个客户端**（建用户与改名、建群、关系与成员派生、代发、对账），不只投影。没有超时时 Turms 只卡不回（不是连不上）会让请求一直占着 Tomcat 线程，200 个线程用满后连健康检查都过不去；派发器也会挂在那一条事件上，`pending` 只增不减，而 PG 与 Biz 健康检查都正常，看起来不像故障。有超时后这类失败回到既有路径：写路径回 `503 upstream_unavailable`（外部契约不变），派发器落 `last_error`、`attempt_count+1` 后按指数退避重试，积压看得见且能自愈。不加自动重试——重试只在派发器那层，客户端再重试会把一次慢请求放大成三次。
+
 ## 事件与投影形状
 
 | 事件 | payload | Turms Admin 调用 |
