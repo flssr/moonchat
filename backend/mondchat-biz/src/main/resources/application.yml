@@ -45,6 +45,9 @@ mondchat:
     credential-ttl: 12h
     # 群投影重放器的扫描间隔（未确认：只为了「失败的群最多晚半分钟收敛」）。
     replay-interval: ${MONDCHAT_TURMS_REPLAY_INTERVAL:30s}
+    # 客户端直写开关：默认关闭时只签 QUERY（与切换前一致）；打开后按账号状态签两套 statements。
+    # 必须与 `allow-send-messages-to-stranger=false` 同一次切换（docs/truth/backend/identity.md）。
+    write-credential-enabled: ${MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED:false}
   auth:
     # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
     jwt-secret: ${MONDCHAT_AUTH_JWT_SECRET}
