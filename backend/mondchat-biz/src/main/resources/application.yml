@@ -48,6 +48,11 @@ mondchat:
     # 客户端直写开关：默认关闭时只签 QUERY（与切换前一致）；打开后按账号状态签两套 statements。
     # 必须与 `allow-send-messages-to-stranger=false` 同一次切换（docs/truth/backend/identity.md）。
     write-credential-enabled: ${MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED:false}
+    # 所有 Admin 调用共用的超时（发消息、建群、好友/黑名单派生、投影派发与对账都走同一个 RestClient）。
+    # 没有它时 Turms 只卡不回会占满 Tomcat 线程，投影积压涨起来也看不出来。
+    http:
+      connect-timeout: ${MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT:2s}
+      read-timeout: ${MONDCHAT_TURMS_HTTP_READ_TIMEOUT:5s}
   auth:
     # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
     jwt-secret: ${MONDCHAT_AUTH_JWT_SECRET}

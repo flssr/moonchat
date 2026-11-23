@@ -1,6 +1,7 @@
 package im.mondchat.biz.client.turms;
 
 import im.mondchat.biz.common.ApiException;
+import im.mondchat.biz.config.TurmsAdminHttpProperties;
 import im.mondchat.biz.config.TurmsProperties;
 import java.security.SecureRandom;
 import java.time.Instant;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -35,9 +37,15 @@ public class TurmsAdminClient {
 
     private final RestClient restClient;
 
-    public TurmsAdminClient(TurmsProperties properties) {
+    public TurmsAdminClient(TurmsProperties properties, TurmsAdminHttpProperties httpProperties) {
+        // 没超时的 RestClient 是最先倒的地方：Turms 卡住不回时请求会一直占着 Tomcat 线程，
+        // 200 个线程满掉之后连健康检查都过不去；投影派发器也会挂在那一条事件上。
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(httpProperties.connectTimeout());
+        requestFactory.setReadTimeout(httpProperties.readTimeout());
         this.restClient = RestClient.builder()
                 .baseUrl(properties.adminUrl())
+                .requestFactory(requestFactory)
                 .defaultHeaders(headers -> headers.setBasicAuth(properties.adminUsername(), properties.adminPassword()))
                 .build();
     }
