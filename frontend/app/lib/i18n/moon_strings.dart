@@ -163,8 +163,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': 'Credentials',
     '切进': 'Switch to',
     '我知道了': 'Got it',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        'A new agent is isolated: no groups or friends; establish relationships first.',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        'A new agent automatically becomes your friend; it joins no groups, so add it manually when needed.',
     '账号密钥（只显示一次）': 'Account key (shown once)',
     '真人': 'Human',
     // 资料卡 / 资料编辑
@@ -427,8 +427,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': '資格情報',
     '切进': '切り替え',
     '我知道了': '了解',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        '新しいエージェントは孤立しています。グループや友達はなく、まず関係を築きます。',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        '新しいエージェントは自動的にあなたの友人になります。グループには入っていないので、必要なら手動で追加してください。',
     '账号密钥（只显示一次）': 'アカウントキー（一度のみ表示）',
     '真人': '人間',
     // プロフィール
@@ -688,8 +688,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': 'Zugangsdaten',
     '切进': 'Wechseln',
     '我知道了': 'Verstanden',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        'Ein neuer Agent ist isoliert: keine Gruppen oder Freunde; zuerst Beziehungen aufbauen.',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        'Ein neuer Agent wird automatisch dein Freund; er ist in keiner Gruppe, füge ihn bei Bedarf manuell hinzu.',
     '账号密钥（只显示一次）': 'Konto-Schlüssel (einmalig)',
     '真人': 'Mensch',
     // Profil

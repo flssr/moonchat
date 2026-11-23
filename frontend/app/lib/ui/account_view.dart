@@ -237,7 +237,7 @@ class _AccountViewState extends State<AccountView> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        context.tr('新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。'),
+                        context.tr('新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。'),
                         style: TextStyle(fontSize: 11.5, height: 1.6, color: p.ink3),
                       ),
                     ],

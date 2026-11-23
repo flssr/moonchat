@@ -1408,6 +1408,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // 账号列表下次 refreshAll 会补回来；这里保住 created 才是第一优先级。
     }
+    // 后端在建 agent 的同一事务里把归属者与 agent 设成 accepted 好友：立刻重拉关系，
+    // 不等 15 秒轮询，创建完就能在好友列表里看到它。
+    await refreshRelations();
     notifyListeners();
     return created;
   }
