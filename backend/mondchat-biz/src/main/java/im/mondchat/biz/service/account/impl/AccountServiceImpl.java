@@ -18,6 +18,7 @@ import im.mondchat.biz.service.account.AccountService;
 import im.mondchat.biz.service.account.CredentialHasher;
 import im.mondchat.biz.service.auth.LoginTokenService;
 import im.mondchat.biz.service.friendship.FriendshipService;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import im.mondchat.biz.service.turms.TurmsCredentialService;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -55,6 +56,7 @@ public class AccountServiceImpl implements AccountService {
     private final TurmsCredentialService turmsCredentials;
     private final LoginTokenService loginTokens;
     private final TurmsProperties turmsProperties;
+    private final ProjectionEvents projectionEvents;
 
     /**
      * 同一事务写 `account` 与 `account_info`，并在事务内用这个 id 建 Turms 用户；
@@ -130,11 +132,13 @@ public class AccountServiceImpl implements AccountService {
             account = ownedAccount(caller.orElseThrow(ApiException::unauthenticated), request.accountId());
         }
         AccountInfo info = accountInfoMapper.selectById(account.getId());
-        if (FROZEN.equals(info.getStatus())) {
+        boolean frozen = FROZEN.equals(info.getStatus());
+        // 直写打开后冻结账号仍能拿凭据（只读 + 清角标）；关闭时保持切换前的 403
+        if (frozen && !turmsProperties.writeCredentialEnabled()) {
             throw ApiException.accountFrozen();
         }
 
-        TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId());
+        TurmsCredentialService.Credential credential = turmsCredentials.sign(account.getId(), frozen);
         // 归属者切账号时顺带签一份该账号的登录 JWT：没有它，切进去之后连 /api 都调不了
         LoginTokenService.Issued loginToken = keyShape ? null : loginTokens.issue(account.getId());
         return new AccountResponses.SessionResponse(account.getId(), info.getDisplayName(), account.getType(),
@@ -317,6 +321,8 @@ public class AccountServiceImpl implements AccountService {
                 .turmsSyncState(TurmsSyncState.SYNCED)
                 .updatedAt(OffsetDateTime.now())
                 .build());
+        // 建号仍在事务内同步建 Turms 用户；这条事件供读模型被 drop 后重建（派发器先查存在再建）
+        projectionEvents.accountCreated(account.getId(), displayName);
         return account;
     }
 

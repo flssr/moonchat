@@ -29,9 +29,15 @@ final class FakeTurmsAdmin {
     /** Turms 的 group id 是雪花值，比 Number.MAX_SAFE_INTEGER 还大；Biz 侧是 long，照收。 */
     private static final long FIRST_GROUP_ID = 900000000000000000L;
 
+    /** epoch-0 是「清空 blockDate」的唯一写法，Turms 对 null 是 no-op。 */
+    private static final String EPOCH_ZERO = "1970-01-01T00:00:00Z";
+
     private final HttpServer server;
     private final AtomicLong nextGroupId = new AtomicLong(FIRST_GROUP_ID);
     private final Map<Long, Set<Long>> groupMembers = new ConcurrentHashMap<>();
+    /** 关系投影的状态：(owner, related) -> {blockDate, establishmentDate}，null 值表示未设置。 */
+    private final Map<String, Map<String, String>> relationships = new ConcurrentHashMap<>();
+    private final Set<Long> users = ConcurrentHashMap.newKeySet();
 
     private volatile int status = 200;
     private volatile String lastMethod;
@@ -68,6 +74,23 @@ final class FakeTurmsAdmin {
         lastBody = null;
         lastAuthorization = null;
         return this;
+    }
+
+    /** 直接看投影状态：`null` 表示这一行不存在。 */
+    Map<String, String> relationship(long ownerId, long relatedUserId) {
+        return relationships.get(ownerId + ":" + relatedUserId);
+    }
+
+    int relationshipCount() {
+        return relationships.size();
+    }
+
+    void clearRelationships() {
+        relationships.clear();
+    }
+
+    boolean hasUser(long accountId) {
+        return users.contains(accountId);
     }
 
     /** 让下一次调用失败，用来验「建用户失败要连同账号行回滚」与「投影失败留在 pending」。 */
@@ -128,6 +151,12 @@ final class FakeTurmsAdmin {
             case "GET /groups/members/page" -> queryMembersPage(lastQuery);
             case "POST /groups/members" -> addGroupMember(lastBody);
             case "DELETE /groups/members" -> removeGroupMember(lastQuery);
+            case "POST /users" -> addUser(lastBody);
+            case "GET /users" -> queryUsers(lastQuery);
+            case "POST /users/relationships" -> createRelationship(lastBody);
+            case "PUT /users/relationships" -> updateRelationship(lastQuery, lastBody);
+            case "DELETE /users/relationships" -> deleteRelationships(lastQuery);
+            case "GET /users/relationships" -> queryRelationships(lastQuery);
             default -> null;
         };
         // 查不到时 Turms 回 204 无 body（NO_CONTENT），写接口回 200 无 body
@@ -190,6 +219,110 @@ final class FakeTurmsAdmin {
         groupMembers.computeIfAbsent(Long.valueOf(params.get("keys[0].groupId")), key -> new LinkedHashSet<>())
                 .remove(Long.valueOf(params.get("keys[0].userId")));
         return "{\"code\":1000,\"data\":{\"deletedCount\":1}}";
+    }
+
+    private String addUser(String body) {
+        long id = JSON.readTree(body).path("id").asLong();
+        users.add(id);
+        return "{\"code\":1000,\"data\":{\"id\":" + id + "}}";
+    }
+
+    private String queryUsers(String query) {
+        String ids = params(query).get("ids");
+        if (ids == null) {
+            return null;
+        }
+        StringBuilder data = new StringBuilder();
+        for (long id : users) {
+            if (Long.toString(id).equals(ids)) {
+                data.append(data.isEmpty() ? "" : ",").append("{\"id\":").append(id).append("}");
+            }
+        }
+        return data.isEmpty() ? null : "{\"code\":1000,\"data\":[" + data + "]}";
+    }
+
+    /** 建关系：`establishmentDate` 缺省时 Turms 会填当前时间（这也是「拉黑陌生人」要显式传 epoch-0 的原因）。 */
+    private String createRelationship(String body) {
+        JsonNode json = JSON.readTree(body);
+        long ownerId = json.path("ownerId").asLong();
+        long relatedUserId = json.path("relatedUserId").asLong();
+        Map<String, String> row = new ConcurrentHashMap<>();
+        putIfPresent(row, "blockDate", json.path("blockDate").asString(null));
+        String establishment = json.path("establishmentDate").asString(null);
+        row.put("establishmentDate", establishment == null ? EPOCH_ZERO : establishment);
+        relationships.put(ownerId + ":" + relatedUserId, row);
+        return null;
+    }
+
+    /** 改关系：字段为 null 是 no-op，epoch-0 才 unset（与 Turms 的 setOrUnsetDate 同语义）。 */
+    private String updateRelationship(String query, String body) {
+        Map<String, String> queryParams = params(query);
+        String owner = queryParams.get("keys[0].ownerId");
+        String related = queryParams.get("keys[0].relatedUserId");
+        Map<String, String> row = owner == null ? null : relationships.get(owner + ":" + related);
+        if (row == null) {
+            return null;
+        }
+        JsonNode json = JSON.readTree(body);
+        applyDate(row, "blockDate", json.path("blockDate").asString(null));
+        applyDate(row, "establishmentDate", json.path("establishmentDate").asString(null));
+        return null;
+    }
+
+    private String deleteRelationships(String query) {
+        Map<String, String> queryParams = params(query);
+        for (int i = 0; queryParams.containsKey("keys[" + i + "].ownerId"); i++) {
+            relationships.remove(queryParams.get("keys[" + i + "].ownerId") + ":"
+                    + queryParams.get("keys[" + i + "].relatedUserId"));
+        }
+        return null;
+    }
+
+    private String queryRelationships(String query) {
+        Map<String, String> queryParams = params(query);
+        String ownerId = queryParams.get("ownerIds");
+        String relatedUserId = queryParams.get("relatedUserIds");
+        StringBuilder data = new StringBuilder();
+        for (Map.Entry<String, Map<String, String>> entry : relationships.entrySet()) {
+            String[] parts = entry.getKey().split(":");
+            if (ownerId != null && !ownerId.equals(parts[0])) {
+                continue;
+            }
+            if (relatedUserId != null && !relatedUserId.equals(parts[1])) {
+                continue;
+            }
+            data.append(data.isEmpty() ? "" : ",")
+                    .append("{\"key\":{\"ownerId\":").append(parts[0])
+                    .append(",\"relatedUserId\":").append(parts[1]).append("}");
+            Map<String, String> row = entry.getValue();
+            appendDate(data, "blockDate", row.get("blockDate"));
+            appendDate(data, "establishmentDate", row.get("establishmentDate"));
+            data.append("}");
+        }
+        return data.isEmpty() ? null : "{\"code\":1000,\"data\":[" + data + "]}";
+    }
+
+    private static void putIfPresent(Map<String, String> row, String field, String value) {
+        if (value != null) {
+            row.put(field, value);
+        }
+    }
+
+    private static void applyDate(Map<String, String> row, String field, String value) {
+        if (value == null) {
+            return;
+        }
+        if (EPOCH_ZERO.equals(value)) {
+            row.remove(field);
+        } else {
+            row.put(field, value);
+        }
+    }
+
+    private static void appendDate(StringBuilder data, String field, String value) {
+        if (value != null) {
+            data.append(",\"").append(field).append("\":\"").append(value).append("\"");
+        }
     }
 
     private Long firstGroupId(String query) {

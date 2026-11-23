@@ -16,6 +16,30 @@
 <原因>：...
 ```
 
+### 写权限 statements 落地为默认关闭的开关；踢会话路径更正
+
+2026-11-23 00:40 CST   [2026-11-22 16:40 UTC]
+
+决策：两套 statements 从「切换时再改」改为现在就实现，由 `mondchat.turms.write-credential-enabled`（`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED`，默认 `false`）控制：关闭时两种账号状态都只签 `QUERY *`、冻结仍在签发入口回 `403 account_frozen`（与切换前一致）；打开时正常账号签 `QUERY *` + `MESSAGE CREATE/UPDATE` + `CONVERSATION UPDATE`，冻结账号签 `QUERY *` + `CONVERSATION UPDATE` 并在签发时踢掉存量会话。踢会话的真实路径是 `PUT /users/online-infos/statuses`（query `ids`，body `{"onlineStatus":"OFFLINE"}`，Turms 收到 `OFFLINE` 走 `sessionService.disconnect(..., DISCONNECTED_BY_ADMIN)`）；此前文档与更早的记录写的 `PUT /users/online-statuses` 是错的（旧记录按「只追加不改写」保留原文），实测回 400 `1102 no any resource matched`。
+
+原因：把「代码就绪」与「线上生效」分开，客户端一开工就能切，不必再等一轮后端。踢会话挂在签发路径上，是因为冻结没有 API、只有运维改库 `account_info.status`，没有能可靠触发踢人的业务入口；代价是冻结后不再签凭据的客户端旧 token 仍活到过期（最长 12 小时），这条作为已知边界写进 `backend/identity.md`。踢失败只告警不回滚签发：客户端拿到的已经是只读凭据，回滚只会让冻结账号连读都读不了。
+
+### 冻结 statements 保留清角标能力
+
+2026-11-22 23:57 CST   [2026-11-22 15:57 UTC]
+
+决策：修正上一条「冻结只签 `QUERY *`」——切换后冻结账号的 statements 是 `QUERY *` + `UPDATE CONVERSATION`，能清角标但发不出消息。放开写权限与「冻结时用 `PUT /users/online-statuses` 踢掉存量会话」必须在同一次上线里完成。
+
+原因：`/read` 这条 Biz 路由在切换后删除，冻结账号不发消息时仍需要能清掉未读，否则角标永久挂着、看起来像数据坏了；把 `CONVERSATION.UPDATE` 留给冻结账号是用权限位表达「读游标不是业务写入」。踢会话这一步不能省：JWT 登录路径不查 `isActive`，冻结前签出的凭据最长 12 小时仍带写权限。另记一条运维事实：statements 写错不是静默降权，`PolicyDeserializer` 会直接抛 `IllegalPolicyException`，签发侧拼错一条就是全量登不上或发不出。
+
+### Turms 凭据分两套 statements
+
+2026-11-22 19:55 CST   [2026-11-22 11:55 UTC]
+
+决策：Turms 凭据 JWT 的 statements 定为两套——正常账号 `QUERY *` + `CREATE MESSAGE` + `UPDATE MESSAGE` + `UPDATE CONVERSATION`；冻结账号只签 `QUERY *`。本轮不切换：当前仍只签 `QUERY`，随客户端接入直写时一起放开。
+
+原因：客户端切到直写 Turms 后，发消息、撤回、直写已读都只能靠 Turms 侧的 statements 放行（`MESSAGE.CREATE` / `MESSAGE.UPDATE` / `CONVERSATION.UPDATE`）。冻结不依赖 Turms 的 `isActive`——JWT 登录路径不查它，所以「不能写」只能由签发侧不给写权限位来保证；踢掉存量会话是配套动作，客户端切换时一并落地。
+
 ### 头像落库
 
 2026-11-17 17:19 CET   [2026-11-17 16:19 UTC]

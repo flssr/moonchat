@@ -16,6 +16,22 @@
 <原因>：...
 ```
 
+### `stranger=false` 不是断线开关，门槛在客户端直写
+
+2026-11-23 00:40 CST   [2026-11-22 16:40 UTC]
+
+决策：更正上一条里「statements 可以最早放开」与「`allowSendMessagesToStranger=false` 必须等投影回填与对账通过」的说法。翻 `stranger=false` 对今天走 Biz 的客户端**零影响**：Biz 代发走 Admin `POST /messages` → `MessageService.saveMessage`，不经过带好友判定的 `authAndSaveMessage`，好友与拉黑仍由 Biz 在 PG 里查。真正的门槛是投影回填与对账通过——那是**客户端开始直写**的前置，不是翻开关的前置。顺序收敛成一条硬约束：`allowSendMessagesToStranger=false` 生效前不得签发含 `MESSAGE.CREATE` 的 statements。
+
+原因：旧写法把两个不同事件的顺序写在一起，读者会以为翻开关本身有断线风险而不敢翻，或者反过来先给客户端写权限、Turms 又不校验好友，等于让持凭据客户端给任意账号发消息。实测依据：`vendor/turms` 的 `MessageService.java:1112`（`authAndSaveMessage`，客户端直写走这条）与 `:1165`（`saveMessage`，Admin 走这条）。
+
+### 写入与限流执行点交给 Turms
+
+2026-11-22 23:57 CST   [2026-11-22 15:57 UTC]
+
+决策：客户端与 agent 改为在已有的 Turms WebSocket 上直发 `createMessageRequest` / `updateMessageRequest`（撤回）/ `updateConversationRequest`（已读），gateway 先校验 JWT statements，再由 Turms 按投影后的好友、拉黑与群成员判定；Biz 不再有会话写路径，`/messages` 与 `/read` 两条路由在切换后删除（26 → 24）。限流从 Biz 的 Redis 两级桶改为 Turms 插件内的账号级与会话级内存令牌桶，不分来源，命中回 `1101`，计数按进程。当前未切换：写路径与两个桶都还在 Biz，插件未挂载。
+
+原因：Admin 代发跳过 Turms 的判定，撤回、改消息、已读这些原语只能由 Biz 自己重写；直写后这些能力由 Turms 提供，Biz 只保留真相与投影。两级限流放插件是为了在不改 vendor 的前提下复用 Turms 自己的请求分发流程，代价是计数按进程、自研代码进入消息引擎进程（加载失败会让整台 service 起不来）。切换顺序被拆成三个独立开关：statements 可以最早放开，`allowSendMessagesToStranger=false` 必须等投影回填与对账通过，插件与客户端流量同窗口启用。
+
 ### 已读上报代写
 
 2026-11-21 22:58 CST   [2026-11-21 14:58 UTC]
