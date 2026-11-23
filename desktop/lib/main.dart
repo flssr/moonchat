@@ -47,7 +47,7 @@ Future<void> main() async {
   final DesktopSettingsStore settings = DesktopSettingsStore();
   // AppState 的生命周期就是进程本身，桌面入口自己持有，不交给 MondChatApp 释放。
   final AppState state = AppState(
-    api: ApiClient(baseUrl: _apiBase, deviceType: 'desktop'),
+    api: ApiClient(baseUrl: _apiBase),
     realtime: DesktopRealtime(),
     store: settings,
     session: DesktopSessionStore(),

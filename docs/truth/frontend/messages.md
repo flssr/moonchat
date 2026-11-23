@@ -1,6 +1,6 @@
 # 消息与会话
 
-消息读取完全走客户端的 Turms 会话。Web 端通过 `dart:js_interop` 调用仓库内置的 `turms-client-js`；Windows 桌面端在 `desktop/lib/realtime.dart` 里按同一线上格式直连 `/im` WebSocket（一帧一个 protobuf，按 `requestId` 配对）。Turms 官方的 Dart 客户端只支持 TCP 11510，部署只暴露 10510 的 WebSocket，所以桌面端不复用它。
+消息读写都走客户端的 Turms 会话。Web 端通过 `dart:js_interop` 调用仓库内置的 `turms-client-js`；Windows 桌面端在 `desktop/lib/realtime.dart` 里按同一线上格式直连 `/im` WebSocket（一帧一个 protobuf，按 `requestId` 配对）。Turms 官方的 Dart 客户端只支持 TCP 11510，部署只暴露 10510 的 WebSocket，所以桌面端不复用它。
 
 ## 会话与历史
 
@@ -9,9 +9,9 @@
 - 会话行显示最后一句话（超长省略），收到非当前会话的消息累加未读角标；打开会话清零。窗口在前台且正看着该会话时不累计未读。
 - 收到消息时，如果窗口不在前台或不是当前会话，按设置弹桌面通知（Windows `local_notifier`）；设置里可选「收到消息并且提示 / 不提示」。
 - Windows 桌面端把每个会话最后 200 条和当前会话同步缓存到本机 `MondChat\cache.json`（按账号分）；存储根目录依次取 `APPDATA`、`LOCALAPPDATA`、用户 Roaming、exe 同目录里第一个可写的，避免某些启动方式下 `%APPDATA%` 为空导致整机不落盘。重登先用缓存铺回会话列表与上次聊天，再由 Turms 历史/推送覆盖。Web 不落盘。
-- 登录/恢复会话后对每个会话补拉最新一页：填会话列表预览，并把基线之后的对端消息计为未读、按设置弹桌面通知（正文带条数和最后一条内容）；即使恢复的当前会话就是它也要提示。历史回填本身不触发未读，只有实时推送和登录补拉算“收到”。**基线当前取本机缓存的保存时间**；切换后改成服务端读时间（私聊 `readDate`、群取 `memberIdToReadDate[自己]`），并由客户端在首次登录时对已有会话逐个上报一次已读，避免首登全红。
+- 登录/恢复会话后对每个会话补拉最新一页：填会话列表预览，并把基线之后的对端消息计为未读、按设置弹桌面通知（正文带条数和最后一条内容）；即使恢复的当前会话就是它也要提示。历史回填本身不触发未读，只有实时推送和登录补拉算“收到”。未读基线取服务端读时间（私聊 `readDate`、群取 `memberIdToReadDate[自己]`）；服务端没有这个会话的读时间说明从未上报过，客户端静默上报一次，不把历史全算成未读。之后只在「打开会话且未读 > 0」「窗口回到前台且未读 > 0」或「正看着会话收到新消息」时上报，1 秒 debounce。
 - 会话列表按最后一条消息时间倒序，新消息会话排到最前；单会话未读显示在行尾（99+ 上限），导航栏“消息”图标显示总未读。
-- 桌面端读通道发心跳（30 秒空闲一次），90 秒收不到任何回包就判半开连接；断开后指数退避自动重连，重连成功补拉当前会话最新一页，断线期间漏掉的推送从历史补齐。
+- 桌面端 Turms 通道发心跳（30 秒空闲一次），90 秒收不到任何回包就判半开连接；断开后指数退避自动重连，重连成功补拉当前会话最新一页，断线期间漏掉的推送从历史补齐。
 - 群推送带 Turms `groupId`，客户端先按 `GET /api/rooms` 返回的 `turms_group_id` 映射回业务群，再更新会话。
 - 历史用 `deliveryDate` 与 `descending` 往回翻，游标取当前最早消息的时间；不能用消息 id 翻页。
 
@@ -21,14 +21,12 @@
 
 ## 发送
 
-**当前**发送调用 `POST /api/conversations/{type}/{id}/messages`，本地先出现“发送中”气泡，成功改时间，失败保留正文并允许重试。发送请求声明 `X-Device-Type`。
+发送走已有的 Turms WebSocket：Web 调 `messageService.sendMessage({isGroupMessage, targetId, text})`，桌面端按同一帧格式直接发 `createMessageRequest`。`dm` 的 `targetId` 是对端账号 id、群聊是 `turms_group_id`；不传 `messageId` / `deliveryDate`，由服务端生成。气泡仍是本地占位，直写响应给的 `messageId` 先落定，收到通知里的同一个 id 只做去重与时间校正。没有 Biz 回执，也没有经 Biz 的兜底路径。
 
-**切换后**发送走已有的 Turms WebSocket：`messageService.sendMessage({isGroupMessage, targetId, text})`，`dm` 的 `targetId` 是对端账号 id、群聊是 `turms_group_id`；不传 `messageId` / `deliveryDate`，由服务端生成。气泡仍是本地占位，收到通知里的 `messageId` 再对齐。`deviceType` 由客户端在请求里自己声明，不再由 Biz 映射。
+直写需要服务端打开 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`，给客户端凭据签 `MESSAGE.CREATE` / `MESSAGE.UPDATE` / `CONVERSATION.UPDATE`；开关未开时直写回 `1106`，这是预期的中间态。
 
 输入框里 Enter 直接发送，Shift+Enter 换行；输入法还在组词时的 Enter 交给候选上屏，不发出去。
 
-**当前** `not_friend`、`not_room_member` 与 `blocked` 会禁用输入或提示关系失效；`rate_limited` 保留草稿；`upstream_unavailable` 标记失败，但界面不声称消息一定没有发出。
-
-**切换后**一律按 Turms 的 `code` 分流，不看 HTTP 状态（`4000/4001/4004/5007/5201` 的状态是 510）：非好友 `5001`、被拉黑 `5002`（`stranger=false` 时压成 `5001`，所以不要实现 `5002` 分支）、群不允许游客发言或游客被禁言 `5009`（文案不能写成「你不是群成员」）、无写权限含冻结 `1106`、限流 `1101`（退避重试）。
+错误一律按 Turms 的 `code` 分流，不看 HTTP 状态（`4000/4001/4004/5007/5201` 的状态是 510）：非好友 `5001`、被拉黑 `5002`（`stranger=false` 时压成 `5001`）、群不允许游客发言或游客被禁言 `5009`（文案不能写成「你不是群成员」）、群或成员被禁言 `5005/5008`、群不可用 `5004/5006`、给自己发消息 `5007`、敏感词 `5010`、无写权限含冻结 `1106`、限流 `1101`（保留草稿，退避重试）。`1105` / `1300` 触发换 Turms 凭据重连。
 
 没有已读回执给他人、正在输入、消息搜索、附件、音视频或结构化 mentions；读游标只用于自己的未读基线。

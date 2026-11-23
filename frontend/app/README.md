@@ -25,20 +25,21 @@ lib/
 ├─ theme.dart             设计 token（docs/truth/frontend/design.md 的唯一出处）
 ├─ api/
 │  ├─ models.dart         与运行时接口一一对应的传输模型
-│  └─ api_client.dart     23 条 /api/* 的唯一调用点；错误码 → 界面文案
+│  └─ api_client.dart     `/api/*` 的唯一调用点；错误码 → 界面文案（消息发送改走 Turms）
 ├─ state/app_state.dart   身份、账号、好友、群、发言；登录 JWT 与 Turms 凭据续期
 ├─ ui/                    登录、消息、联系人、账号、资料页、通用组件
-└─ turms/                 Turms 会话：收消息与历史分页（Web 经 js_interop 调 turms-client-js）
+└─ turms/                 Turms 通道：收消息、历史分页、发送与已读直写（Web 经 js_interop 调 turms-client-js）
 ```
 
 ## 现状
 
 - 已完成：注册 / 登录、切账号、建 agent（一次性密钥）、好友四条、资料页、群七条、
-  发言（唯一写入口）、发送中 / 失败 / 重试、明暗主题、按容器宽度收栏。
-- **读取通道已接**：`lib/turms/` 用 `dart:js_interop` 调 `turms-client-js`，登录取 `POST /api/sessions`
-  给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻。非 Web 平台走
+  发言（Turms 直写）、发送中 / 失败 / 重试、明暗主题、按容器宽度收栏。
+- **Turms 通道已接**：`lib/turms/` 用 `dart:js_interop` 调 `turms-client-js`，登录取 `POST /api/sessions`
+  给的凭据，收该账号全部会话的推送，历史按最早一条的 `deliveryDate` 往回翻；发送用
+  `messageService.sendMessage`，已读用 `updateConversationRequest`，都走同一条会话。非 Web 平台走
   `realtime_stub.dart`（官方 Dart 客户端是 TCP 传输，Web 上不可用）。
-- **尚未在真实 Turms 上跑过的是浏览器里的读取通道**：服务端链路、凭据签发、群投影与写入网关已经在真 Turms + 真 Biz 上跑通（`infra/turms/smoke` 的 `identity` / `e2e-biz` / 示例端点），六条验收判据也已用 node 的 Turms 客户端跑通；但 Flutter Web 里的 `js_interop` 这一层只对着假 `TurmsClient` 验过，没有在真 Turms 上驱动过浏览器。
+- **尚未在真实 Turms 上跑过的是浏览器里的读写通道**：服务端链路、凭据签发、群投影与写入网关已经在真 Turms + 真 Biz 上跑通（`infra/turms/smoke` 的 `identity` / `e2e-biz` / 示例端点），六条验收判据也已用 node 的 Turms 客户端跑通；但 Flutter Web 里的 `js_interop` 这一层只对着假 `TurmsClient` 验过，没有在真 Turms 上驱动过浏览器。
 - 界面规则只从 `docs/truth/backend/friendship.md`（私聊入口只有好友列表与资料页）与
   `docs/truth/backend/identity.md`（主页字段）里读；需要新规则时先改文档。
 
@@ -64,9 +65,9 @@ node node_modules/rollup/dist/bin/rollup --config rollup.config.ts --configPlugi
 
 | 层 | 做法 | 覆盖 |
 | --- | --- | --- |
-| 流程测试 | `flutter test`：`MockClient` 假扮 Biz 驱动真实的 `ApiClient` / `AppState` | 注册不签发 JWT、登录、切账号、好友四条、群四条、发言成功与 429、401 回登录页、推送去重，共 15 条 |
+| 流程测试 | `flutter test`：`MockClient` 假扮 Biz 驱动真实的 `ApiClient` / `AppState` | 注册不签发 JWT、登录、切账号、好友四条、群四条、发言成功与 1101 限流、读游标上报、401 回登录页、推送去重 |
 | 界面联调 | 起一个同源假 Biz（静态页 + `/api/*`），用 headless Edge 走真实界面并截图 | 登录 → 会话列表 → 选人 → 发言 → 气泡落定 |
-| 读取通道 | 用 CDP 把 `web/vendor/turms-client.iife.min.js` 的请求换成假 `TurmsClient`，记录每次调用 | 构造参数、`login(userId, WEB)`、`addMessageListener`、`queryMessages` 的 `fromIds` / `areGroupMessages` / `descending`、`deliveryDateEnd` 逐页递减、推送落盘 |
+| Turms 通道 | 用 CDP 把 `web/vendor/turms-client.iife.min.js` 的请求换成假 `TurmsClient`，记录每次调用 | 构造参数、`login(userId, BROWSER)`、`addMessageListener`、`queryMessages` 的 `fromIds` / `areGroupMessages` / `descending`、`deliveryDateEnd` 逐页递减、`sendMessage` 的 `targetId` / `text`、`updateConversationRequest` 的读时间、推送落盘 |
 
 第三层能证明**客户端怎么说话**，证明不了**Turms 怎么回话**。要补上这一层，得先有 Docker：
 

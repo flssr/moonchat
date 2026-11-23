@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 客户端消息与已读改直写 Turms
+
+2026-11-23 20:48 CET   [2026-11-23 19:48 UTC]
+
+决策：Web 与桌面端都改为在已有的 Turms `/im` 会话上直写。发送用 `createMessageRequest`（私聊 `recipientId`、群 `groupId`，正文 `text`，不传 `messageId` / `deliveryDate`），返回的 `messageId` 直接落定本地气泡；错误按 Turms `code` 分流，`1105` / `1300` 换凭据重连。已读用 `updateConversationRequest`，基线取服务端 `readDate` / `memberIdToReadDate[自己]`；没有基线的会话首登静默上报一次，之后只在打开且未读 > 0（或正看着会话收到新消息）时 1 秒 debounce 上报。删掉 `ApiClient.sendMessage` 与 `SentMessage`，不再经 Biz 发送。
+
+原因：issue #73 / #72 的 P3 前置：客户端先切、服务端开关后开；Biz 写路径在 P4 删除，保留旧客户端会直接坏。错误码与已读基线都以 Turms 为唯一事实，避免两套写路径和本地缓存时间造成的跨端未读偏差。
+
 ### 建群弹窗与群内好友邀请
 
 2026-11-17 01:15 CET   [2026-11-17 00:15 UTC]

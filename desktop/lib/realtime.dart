@@ -10,7 +10,8 @@ import 'package:turms_client_dart/turms_client.dart';
 /// Turms 只提供 TCP 的 Dart 客户端（11510），部署出来的只有 `/im` WebSocket（10510）。
 /// 这里按 `turms-client-js` 的线上格式走 WebSocket：一帧一个 `TurmsRequest` /
 /// `TurmsNotification`，用仓库固定版本的 Dart proto 类编解码，请求与响应按 `requestId` 配对。
-/// 只覆盖客户端要的两件事：登录会话、查历史；发消息仍然只走 Biz。
+/// 覆盖客户端要的四件事：登录会话、查历史、直写消息与已读
+/// （`docs/truth/backend/messaging.md`）。
 class DesktopRealtime implements RealtimeClient {
   static const Duration _connectTimeout = Duration(seconds: 15);
   static const Duration _requestTimeout = Duration(seconds: 20);
@@ -132,6 +133,101 @@ class DesktopRealtime implements RealtimeClient {
   }
 
   @override
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
+  }) async {
+    final bool isGroup = conversationType == 'room';
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..createMessageRequest = CreateMessageRequest(
+          groupId: isGroup ? Int64.parseInt(targetId) : null,
+          recipientId: isGroup ? null : Int64.parseInt(targetId),
+          text: text,
+        ),
+    );
+    _ensureSuccess(response, '发送消息');
+    if (!response.hasData() || !response.data.hasLong()) {
+      throw TurmsException(turmsCode: 0, message: '发送响应没有消息 id');
+    }
+    return response.data.long.toString();
+  }
+
+  @override
+  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
+    if (peerAccountIds.isEmpty) {
+      return const <int, DateTime?>{};
+    }
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..queryConversationsRequest = QueryConversationsRequest(
+          userIds: peerAccountIds.map((int id) => Int64(id)),
+        ),
+    );
+    _ensureSuccess(response, '查私聊读时间');
+    final Map<int, DateTime?> out = <int, DateTime?>{};
+    if (!response.hasData() || !response.data.hasConversations()) {
+      return out;
+    }
+    for (final PrivateConversation conversation
+        in response.data.conversations.privateConversations) {
+      final int epoch = conversation.hasReadDate() ? conversation.readDate.toInt() : 0;
+      out[conversation.targetId.toInt()] = epoch <= 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
+    }
+    return out;
+  }
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async {
+    if (turmsGroupIds.isEmpty) {
+      return const <String, DateTime?>{};
+    }
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..queryConversationsRequest = QueryConversationsRequest(
+          groupIds: turmsGroupIds.map(Int64.parseInt),
+        ),
+    );
+    _ensureSuccess(response, '查群读时间');
+    final Map<String, DateTime?> out = <String, DateTime?>{};
+    if (!response.hasData() || !response.data.hasConversations()) {
+      return out;
+    }
+    for (final GroupConversation conversation
+        in response.data.conversations.groupConversations) {
+      final int? epoch =
+          conversation.memberIdToReadDate[Int64(selfAccountId)]?.toInt();
+      out[conversation.groupId.toString()] =
+          epoch == null || epoch <= 0
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
+    }
+    return out;
+  }
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    final bool isGroup = conversationType == 'room';
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..updateConversationRequest = UpdateConversationRequest(
+          userId: isGroup ? null : Int64.parseInt(targetId),
+          groupId: isGroup ? Int64.parseInt(targetId) : null,
+        ),
+    );
+    _ensureSuccess(response, '更新已读');
+  }
+
+  @override
   Future<void> disconnect() async {
     _manualClose = true;
     _reconnectTimer?.cancel();
@@ -160,19 +256,17 @@ class DesktopRealtime implements RealtimeClient {
 
   // 请求
 
-  Future<TurmsNotification> _sessionRequest(CreateSessionRequest request) {
+  Future<TurmsNotification> _request(TurmsRequest request) {
     final int id = _nextRequestIdToUse();
-    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
-    wrapped.createSessionRequest = request;
-    return _send(wrapped, id);
+    request.requestId = Int64(id);
+    return _send(request, id);
   }
 
-  Future<TurmsNotification> _queryRequest(QueryMessagesRequest request) {
-    final int id = _nextRequestIdToUse();
-    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
-    wrapped.queryMessagesRequest = request;
-    return _send(wrapped, id);
-  }
+  Future<TurmsNotification> _sessionRequest(CreateSessionRequest request) =>
+      _request(TurmsRequest.create()..createSessionRequest = request);
+
+  Future<TurmsNotification> _queryRequest(QueryMessagesRequest request) =>
+      _request(TurmsRequest.create()..queryMessagesRequest = request);
 
   int _nextRequestIdToUse() {
     // 正数、单连接内不重复即可；与 JS 客户端一样按请求关联响应。
@@ -183,7 +277,7 @@ class DesktopRealtime implements RealtimeClient {
   Future<TurmsNotification> _send(TurmsRequest request, int id) async {
     final WebSocket? socket = _socket;
     if (socket == null) {
-      throw StateError('Turms 会话尚未连接');
+      throw TurmsException(turmsCode: 1105, message: 'Turms 会话尚未连接');
     }
     final Completer<TurmsNotification> completer = Completer<TurmsNotification>();
     _pending[id] = completer;
@@ -193,7 +287,7 @@ class DesktopRealtime implements RealtimeClient {
       return await completer.future.timeout(_requestTimeout);
     } on TimeoutException {
       _pending.remove(id);
-      throw StateError('Turms 请求超时');
+      throw TurmsException(turmsCode: 1105, message: 'Turms 请求超时');
     }
   }
 
@@ -279,9 +373,10 @@ class DesktopRealtime implements RealtimeClient {
     if (code >= 1000 && code < 2000) {
       return;
     }
-    final String reason =
-        notification.hasReason() ? notification.reason : 'code=$code';
-    throw StateError('$what失败：$reason');
+    throw TurmsException(
+      turmsCode: code,
+      message: notification.hasReason() ? notification.reason : what,
+    );
   }
 
   void _markDown(int generation, [Object? error]) {

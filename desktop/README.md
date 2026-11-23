@@ -6,14 +6,15 @@
 | 能力 | Web（`frontend/app`） | 桌面（这里） |
 | --- | --- | --- |
 | 本地设置 / 登录态 | `localStorage` | `%APPDATA%\MondChat\*.json`（`lib/storage.dart`） |
-| Turms 读通道 | 页面里的 `turms-client-js` | 原生 WebSocket + Dart proto（`lib/realtime.dart`） |
+| Turms 通道 | 页面里的 `turms-client-js` | 原生 WebSocket + Dart proto（`lib/realtime.dart`） |
 | 窗口 | 浏览器标签页 | 无边框窗口，自定义 32px 标题栏（`lib/title_bar.dart`） |
 
 Turms 的 Dart 客户端只有 TCP 传输（11510），生产与本地编排暴露的只有 `/im` WebSocket（10510），
-所以桌面端的读通道按 `turms-client-js` 的线上格式直接走 WebSocket：一帧一个 protobuf，
-请求/响应按 `requestId` 配对。写入仍然只走 Biz，客户端不拿 Turms 写权限。
+所以桌面端的通道按 `turms-client-js` 的线上格式直接走 WebSocket：一帧一个 protobuf，
+请求/响应按 `requestId` 配对。消息发送与已读也在这条通道上直写 Turms（`createMessageRequest` /
+`updateConversationRequest`），不再经 Biz。
 
-读通道带存活检测：30 秒空闲发一次心跳，90 秒没有任何回包就判半开连接并断开；之后指数退避自动重连，
+通道带存活检测：30 秒空闲发一次心跳，90 秒没有任何回包就判半开连接并断开；之后指数退避自动重连，
 重连成功补拉当前会话最新一页，把断线期间丢掉的推送从历史补回来。显式登出/切号才会停止重连。
 
 窗口由 `window_manager` 的 `TitleBarStyle.hidden` 去掉系统标题栏；`DesktopTitleBar` 负责
@@ -53,7 +54,7 @@ flutter analyze
 flutter test
 ```
 
-`test/realtime_test.dart` 用一个本地 WebSocket 冒充 Turms 网关，校验登录、查历史与推送映射；
+`test/realtime_test.dart` 用一个本地 WebSocket 冒充 Turms 网关，校验登录、查历史、直写消息与已读、推送映射；
 `test/storage_test.dart` 校验本机文件里的设置、头像与登录态往返。
 
 没开 Windows 开发者模式（不允许建符号链接）时，`flutter pub get` 会卡在建插件符号链接上。

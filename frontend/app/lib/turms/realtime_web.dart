@@ -13,6 +13,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
   external _TurmsClient(JSObject options);
   external _UserService get userService;
   external _MessageService get messageService;
+  external _ConversationService get conversationService;
   external _Driver get driver;
   external JSPromise<JSAny?> close();
 }
@@ -31,6 +32,15 @@ extension type _UserService._(JSObject _) implements JSObject {
 extension type _MessageService._(JSObject _) implements JSObject {
   external void addMessageListener(JSFunction listener);
   external JSPromise<JSObject> queryMessages(JSObject options);
+  external JSPromise<JSObject> sendMessage(JSObject options);
+}
+
+@JS()
+extension type _ConversationService._(JSObject _) implements JSObject {
+  external JSPromise<JSObject> queryPrivateConversations(JSObject options);
+  external JSPromise<JSObject> queryGroupConversations(JSObject options);
+  external JSPromise<JSObject> updatePrivateConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updateGroupConversationReadDate(JSObject options);
 }
 
 @JS('Date')
@@ -73,14 +83,72 @@ int? _readInt(JSObject o, String key) {
   return null;
 }
 
-/// `deliveryDate` 是 JS `Date`，`dartify` 不会替我们认，直接取毫秒。
-DateTime? _readDate(JSObject o, String key) {
-  final JSAny? v = o.getProperty<JSAny?>(key.toJS);
-  if (v == null || v.isUndefinedOrNull) {
+/// `deliveryDate` / `readDate` 是 JS `Date`，`dartify` 不会替我们认，直接取毫秒。
+DateTime? _dateFrom(JSAny? value) {
+  if (value == null || value.isUndefinedOrNull) {
     return null;
   }
-  final JSNumber ms = (v as JSObject).callMethod<JSNumber>('getTime'.toJS);
-  return DateTime.fromMillisecondsSinceEpoch(ms.toDartInt, isUtc: true);
+  final JSNumber ms = (value as JSObject).callMethod<JSNumber>('getTime'.toJS);
+  final int epoch = ms.toDartInt;
+  return epoch <= 0 ? null : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
+}
+
+DateTime? _readDate(JSObject o, String key) =>
+    _dateFrom(o.getProperty<JSAny?>(key.toJS));
+
+List<JSObject> _dataItems(JSObject response) {
+  final JSAny? data = response.getProperty<JSAny?>('data'.toJS);
+  if (data == null || data.isUndefinedOrNull) {
+    return const <JSObject>[];
+  }
+  return (data as JSArray<JSAny?>).toDart.whereType<JSObject>().toList(growable: false);
+}
+
+/// Turms 客户端把失败包成 `ResponseError`：`code` 是数值码，`reason` 只给人看。
+/// 不要用 HTTP 状态分流；`fetch` 层甚至可能把非标准状态当异常抛。
+TurmsException _turmsError(Object error) {
+  if (error is TurmsException) {
+    return error;
+  }
+  int? code;
+  String reason = '';
+  if (error is Map) {
+    final Object? rawCode = error['code'];
+    final Object? rawReason = error['reason'];
+    if (rawCode is num) {
+      code = rawCode.toInt();
+    } else if (rawCode is String) {
+      code = int.tryParse(rawCode);
+    }
+    if (rawReason is String) {
+      reason = rawReason;
+    }
+  }
+  try {
+    // 显式 cast 而不是 `is`：Dart 值与 JS 互操作类型的 runtime `is` 在跨平台时不可靠。
+    final JSObject jsError = error as JSObject;
+    final JSAny? rawCode = jsError.getProperty<JSAny?>('code'.toJS);
+    final Object? value =
+        rawCode == null || rawCode.isUndefinedOrNull ? null : rawCode.dartify();
+    if (value is num) {
+      code = value.toInt();
+    } else if (value is String) {
+      code = int.tryParse(value);
+    }
+    final JSAny? rawReason = jsError.getProperty<JSAny?>('reason'.toJS);
+    if (rawReason != null && !rawReason.isUndefinedOrNull) {
+      reason = rawReason.dartify()?.toString() ?? '';
+    }
+  } catch (_) {
+    // 不是 `ResponseError` 形状就退回字符串解析。
+  }
+  code ??= int.tryParse(
+    RegExp(r'(?:^|[^0-9])(\d{4})(?:[^0-9]|$)').firstMatch(error.toString())?.group(1) ?? '',
+  );
+  return TurmsException(
+    turmsCode: code ?? 0,
+    message: reason.isEmpty ? error.toString() : reason,
+  );
 }
 
 IncomingMessage _toMessage(JSObject raw) {
@@ -114,6 +182,15 @@ class WebRealtime implements RealtimeClient {
 
   /// 连接代次：disconnect 或新 connect 会自增；旧连接晚到的回调按代次丢弃。
   int _generation = 0;
+
+  _TurmsClient _requireClient() {
+    final _TurmsClient? client = _client;
+    if (client == null) {
+      // 抛 ApiException 的子类：界面能把「还没连上」显示成可读文案，而不是未捕获异常。
+      throw TurmsException(turmsCode: 1105, message: 'Turms 会话尚未连接');
+    }
+    return client;
+  }
 
   @override
   Future<void> connect({
@@ -197,11 +274,7 @@ class WebRealtime implements RealtimeClient {
     DateTime? before,
     int maxCount = 50,
   }) async {
-    final _TurmsClient? client = _client;
-    if (client == null) {
-      // 抛而不是返回空数组：空数组会被 `AppState` 当成「这个会话到底了」，从此拉不到历史。
-      throw StateError('Turms 会话尚未连接');
-    }
+    final _TurmsClient client = _requireClient();
     final JSObject params = _object(<String, JSAny?>{
       'areGroupMessages': (conversationType == 'room').toJS,
       'areSystemMessages': false.toJS,
@@ -225,6 +298,104 @@ class WebRealtime implements RealtimeClient {
       out.add(_toMessage(item as JSObject));
     }
     return out;
+  }
+
+  @override
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject response = await client.messageService
+          .sendMessage(_object(<String, JSAny?>{
+            'isGroupMessage': (conversationType == 'room').toJS,
+            'targetId': targetId.toJS,
+            'text': text.toJS,
+          }))
+          .toDart;
+      return _readString(response, 'data') ?? '';
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
+    if (peerAccountIds.isEmpty) {
+      return const <int, DateTime?>{};
+    }
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject response = await client.conversationService
+          .queryPrivateConversations(_object(<String, JSAny?>{
+            'userIds': peerAccountIds.map((int id) => '$id'.toJS).toList().toJS,
+          }))
+          .toDart;
+      final Map<int, DateTime?> out = <int, DateTime?>{};
+      for (final JSObject raw in _dataItems(response)) {
+        final int? peer = _readInt(raw, 'targetId');
+        if (peer != null) {
+          out[peer] = _readDate(raw, 'readDate');
+        }
+      }
+      return out;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async {
+    if (turmsGroupIds.isEmpty) {
+      return const <String, DateTime?>{};
+    }
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject response = await client.conversationService
+          .queryGroupConversations(_object(<String, JSAny?>{
+            'groupIds': turmsGroupIds.map((String id) => id.toJS).toList().toJS,
+          }))
+          .toDart;
+      final Map<String, DateTime?> out = <String, DateTime?>{};
+      for (final JSObject raw in _dataItems(response)) {
+        final String? groupId = _readString(raw, 'groupId');
+        if (groupId == null) {
+          continue;
+        }
+        final JSAny? rawDates = raw.getProperty<JSAny?>('memberIdToReadDate'.toJS);
+        final DateTime? readDate = rawDates == null || rawDates.isUndefinedOrNull
+            ? null
+            : _dateFrom((rawDates as JSObject).getProperty<JSAny?>('$selfAccountId'.toJS));
+        out[groupId] = readDate;
+      }
+      return out;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject params = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      });
+      final JSPromise<JSObject> call = conversationType == 'room'
+          ? client.conversationService.updateGroupConversationReadDate(params)
+          : client.conversationService.updatePrivateConversationReadDate(params);
+      await call.toDart;
+    } catch (e) {
+      throw _turmsError(e);
+    }
   }
 
   @override
