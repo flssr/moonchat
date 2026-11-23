@@ -121,6 +121,57 @@ server {
 
 部署串行排队，不取消进行中的那一次。回滚：把 `/opt/mondchat/.env` 的 `MONDCHAT_BIZ_TAG` 改成要回退的 sha，再执行一次 `docker compose up -d`。
 
+## 开关来源
+
+三类来源，不要混淆：**服务器 `/opt/mondchat/.env`**（CD 不碰，改完 `up -d` 生效）、**仓库 compose 里写死**（跟着 CD 走，改它要过 PR）、**GitHub Secrets**（只给流水线用，不进容器）。
+
+| 变量 | 来源 | 默认 / 说明 |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD`、`MONDCHAT_TURMS_ADMIN_PASSWORD`、`MONDCHAT_BIZ_IMAGE`、`MONDCHAT_TURMS_GATEWAY_URL`、`MONDCHAT_AUTH_JWT_SECRET`、`MONDCHAT_AGENT_KEY_PEPPER` | 服务器 `.env` | 必填，缺失时 `docker compose config` 直接报错 |
+| `MONDCHAT_BIZ_TAG` | 服务器 `.env` | 默认 `latest`；回滚填上一个提交的 sha |
+| `MONDCHAT_JWT_SECRET_FILE` | 服务器 `.env` | 默认 `/opt/mondchat/secrets/jwt-hmac256.key` |
+| `MONDCHAT_TURMS_SERVICE_IMAGE` | 服务器 `.env` | **默认空 = 上游 pinned digest（无插件）**；设成 `ghcr.io/<owner>/mondchat-turms-service:latest` 才加载限流插件 |
+| `MONDCHAT_PROJECTION_ENABLED` | 服务器 `.env` | 默认 `true`（compose 写 `${MONDCHAT_PROJECTION_ENABLED:-true}`）；设 `false` 只停派发与对账，事件照常累积 |
+| `MONDCHAT_PROJECTION_RECONCILE_CRON` | 服务器 `.env` | 默认 `0 0 3 * * *`（每天 03:00）；首次回填可临时调成分钟级 |
+| `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 服务器 `.env` | 默认 `false`；打开才有两套 statements 与冻结踢会话 |
+| `allow-send-messages-to-stranger` | 仓库 compose 写死 `false` | 对仍走 Biz 代发的客户端无影响（Admin 进 `saveMessage`，不跑好友校验） |
+| `SSH_HOST`、`SSH_USER`、`SSH_PRIVATE_KEY`、`SSH_KNOWN_HOSTS`、`GHCR_PAT` | GitHub Secrets | 只给 CD 与官网流水线用 |
+
+`compose.yaml` 每次部署都被 CD 覆盖，**所以任何故障时要快速关掉的开关都必须走 `.env`**，不能写死在 compose 里。
+
+## 插件镜像投放（一次性人工操作）
+
+限流插件用自建镜像投放（`infra/turms/Dockerfile`，由 `.github/workflows/turms-plugin.yml` 按路径过滤构建并推 GHCR）——插件不进后端 CD 流水线，因为它要编 vendor，约 20 分钟。
+
+启用步骤：
+
+1. 确认 `ghcr.io/<owner>/mondchat-turms-service:latest` 已构建完成（Actions 里那次专用 workflow 绿）。
+2. 服务器 `/opt/mondchat/.env` 加一行 `MONDCHAT_TURMS_SERVICE_IMAGE=ghcr.io/<owner>/mondchat-turms-service:latest`。
+3. `docker compose pull turms-service && docker compose up -d --wait turms-service`。
+4. 验插件：日志出现 `registered` 与 `extension ... has been started`，`curl 127.0.0.1:8510/health` 为 200。
+
+**摘除插件（回滚）= 删掉那一行再 `up -d`**，回到上游 pinned digest。
+
+## P2 生产上线顺序
+
+1. **先合并、再部署**：CD 会把新的 `compose.yaml` 推上服务器，此时 `stranger=false` 与投影开关一起生效。
+2. **Biz 启动即跑迁移**：生产 PG 空白，Flyway 一次跑到 V7（`domain_event`），不需要手工执行 DDL。
+3. **看积压再放派发**：`select count(*) from domain_event where processed_at is null;`。生产库为空，首次部署时 `pending = 0`。
+4. **回填存量关系**：建号、好友、黑名单、群成员的存量没有事件（投影从 P1 之后才开始记事件），回填靠对账。默认每天 03:00（`0 0 3 * * *`，六段、秒在最前），要快就临时设 `MONDCHAT_PROJECTION_RECONCILE_CRON='0 */2 * * * *'` 跑一两轮再改回默认。对账只修 Turms、不反写 PG。
+   派发器 2 秒一轮（`dispatch-interval-ms: 2000`）、一批 100 条，所以 `pending` 从 0 跳到几百属正常波动；判「卡住」要连续三次采样都只增不减，不能看单次快照。
+5. **上线即变的一项**：`stranger=false` 在每次部署里都生效，对仍走 Biz 代发的客户端应当零影响；但这是唯一可能被误伤的地方——部署后用真实账号发一条私聊确认成功，一条就够。
+6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。
+7. **插件最后才上**：限流对所有来源生效，但它与消息引擎同进程，按「插件镜像投放」单独一步做，出问题单独回滚。
+
+## 生产回滚
+
+| 目标 | 动作 |
+| --- | --- |
+| 摘掉限流插件 | `.env` 删 `MONDCHAT_TURMS_SERVICE_IMAGE` → `up -d` |
+| 关投影派发 | `.env` 加 `MONDCHAT_PROJECTION_ENABLED=false` → `up -d`（事件继续累积，不丢数据） |
+| 回退 Biz 版本 | `.env` 改 `MONDCHAT_BIZ_TAG=<上一个 sha>` → `up -d` |
+| 关写权限 | `.env` 设 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=false` → `up -d`；已签出的旧凭据最长 12 小时失效，需要时同时踢会话 |
+
 CI 与 CD 都支持手动触发：`gh workflow run ci.yml --ref <分支>` 跑接口 / 前端 / 桌面三条检查，`gh workflow run cd.yml --ref main` 重新构建并上线（等价于 push 一次 main）。
 
 PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之间 `pull_request` 事件整段不创建 workflow run（`workflow_dispatch` 与 push 到 main 正常），之后自行恢复；过程和证据见 #42。
@@ -157,14 +208,14 @@ PR 合并前可以手动跑一次 CI 兜底：2026-11-17 12:17–17:26 UTC 之�
 
 任一前提被改都会破坏「客户端直写 + Turms 侧判定」这条链（未切换时则破坏写入网关的唯一入口）。
 
-Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**当前未挂载、未启用**，限流仍在 Biz；启用发生在切换窗口（P2），届时 CD 还需新增一步把 jar 投放到宿主机插件目录——现在 `cd.yml` 只 scp `compose.yaml` 再 `pull + up`，没有插件投放路径。
+Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**当前未挂载、未启用**，限流仍在 Biz。启用方式是把插件打进自建镜像（`infra/turms/Dockerfile`，基础层仍是上游 pinned digest，只往插件目录多拷一个 jar），由服务器 `.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向它——投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
 
 插件的故障半径是**整个 turms-service**：`plugin.yaml` 里的 `class` 不存在或加载失败会让 Spring 上下文 refresh 中止、容器以退出码 1 起不来，不是「插件不生效」。因此：
 
-- 插件 jar 上线前必须先用同一个 pinned digest 起一次性容器、挂载后确认 `8510/health` 为 200，通过才挂到生产；
-- 生产只挂一个插件版本、不并行多版本；
-- 回滚是清空插件目录再重启，一行 volume 的改动；**「目录换回空 + 重启即恢复」必须在 staging 演练通过，才算满足挂载到生产的前置条件**；
-- 插件模块不进后端 CI 的 reactor，避免 vendor 编译污染流水线。
+- 插件镜像上线前必须先用同一个 pinned digest 起一次性容器验证加载、`8510/health` 为 200，通过才把 `MONDCHAT_TURMS_SERVICE_IMAGE` 指过去；
+- 生产只跑一个插件版本、不并行多版本；
+- 回滚是删掉 `MONDCHAT_TURMS_SERVICE_IMAGE` 那一行再 `up -d`；**「换回上游镜像 + 重启即恢复」必须在 staging 演练通过，才算满足上生产的前置条件**；
+- 插件模块不进后端 CI 的 reactor，避免 vendor 编译污染流水线；它由独立 workflow 按路径过滤构建。
 
 插件崩在 Spring 上下文 refresh 阶段，此时 Flyway 与 Mongo 连接已经建立：不会留下半截数据，但连接池会随进程一起断掉，所以它属于「整机不可用」而不是「数据损坏」类故障。
 
