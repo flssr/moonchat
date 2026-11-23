@@ -7,9 +7,12 @@ import im.mondchat.biz.dto.blocklist.BlocklistRequests;
 import im.mondchat.biz.dto.blocklist.BlocklistResponses;
 import im.mondchat.biz.entity.AccountInfo;
 import im.mondchat.biz.entity.Blocklist;
+import im.mondchat.biz.entity.Friendship;
 import im.mondchat.biz.mapper.account.AccountInfoMapper;
 import im.mondchat.biz.mapper.blocklist.BlocklistMapper;
+import im.mondchat.biz.mapper.friendship.FriendshipMapper;
 import im.mondchat.biz.service.blocklist.BlocklistService;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +39,8 @@ public class BlocklistServiceImpl implements BlocklistService {
 
     private final BlocklistMapper blocklistMapper;
     private final AccountInfoMapper accountInfoMapper;
+    private final FriendshipMapper friendshipMapper;
+    private final ProjectionEvents projectionEvents;
 
     @Override
     public BlocklistResponses.ListResponse list(CurrentAccount me, int page, int size) {
@@ -91,6 +96,7 @@ public class BlocklistServiceImpl implements BlocklistService {
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("已经在黑名单里");
         }
+        projectionEvents.blocklistChanged(ownerId, targetId, true, areFriends(ownerId, targetId));
         return new BlocklistResponses.Item(targetId, target.getDisplayName(), now.toInstant());
     }
 
@@ -104,6 +110,18 @@ public class BlocklistServiceImpl implements BlocklistService {
         if (deleted == 0) {
             throw ApiException.notFound("这个人不在你的黑名单里");
         }
+        projectionEvents.blocklistChanged(me.accountId(), accountId, false, areFriends(me.accountId(), accountId));
+    }
+
+    /** 取消拉黑时要区分「仍是好友」与「不是好友」：前者清 blockDate，后者删行（projection.md）。 */
+    private boolean areFriends(long one, long another) {
+        long lower = Math.min(one, another);
+        long higher = Math.max(one, another);
+        return friendshipMapper.selectCount(new LambdaQueryWrapper<Friendship>()
+                .eq(Friendship::getAccountId, lower)
+                .eq(Friendship::getPeerAccountId, higher)
+                .eq(Friendship::getStatus, "accepted")
+                .isNull(Friendship::getDeletedAt)) > 0;
     }
 
     @Override

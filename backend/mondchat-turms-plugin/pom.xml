@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  自研 Turms 插件（C 版统一限流），**故意不进 backend 的 reactor**：
+  它要编译在 vendor/turms 的构件上，而 vendor 是上游子模块、不进我们的 CI。
+  构建：先在 vendor/turms 根跑 `mvn install -DskipUTs -DskipITs -DskipSTs`，再在本目录 `mvn package`。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>im.mondchat</groupId>
+    <artifactId>mondchat-turms-plugin</artifactId>
+    <version>0.1.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <turms.version>0.10.0-SNAPSHOT</turms.version>
+    </properties>
+
+    <dependencies>
+        <!-- provided：插件运行在 Turms 进程里，宿主已经带了这些包 -->
+        <dependency>
+            <groupId>im.turms</groupId>
+            <artifactId>turms-service</artifactId>
+            <version>${turms.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>im.turms</groupId>
+            <artifactId>server-common</artifactId>
+            <version>${turms.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <finalName>mondchat-turms-plugin</finalName>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>im.turms:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

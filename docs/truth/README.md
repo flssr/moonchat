@@ -14,6 +14,7 @@
 - [账号与认证](./backend/identity.md)
 - [好友与黑名单](./backend/friendship.md)
 - [群与成员投影](./backend/room.md)
+- [关系与群的 Turms 投影](./backend/projection.md)
 - [消息与写入网关](./backend/messaging.md)
 - [持久层与数据](./backend/persistence.md)
 - [测试与验证](./backend/testing.md)

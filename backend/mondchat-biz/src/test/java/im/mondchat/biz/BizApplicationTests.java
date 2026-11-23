@@ -20,7 +20,7 @@ class BizApplicationTests extends ApiTestSupport {
     }
 
     @Test
-    void 四个迁移文件建齐八张表() {
+    void 迁移建齐九张表() {
         List<String> tables = jdbc.queryForList("""
                 select table_name from information_schema.tables
                 where table_schema = 'public' and table_name <> 'flyway_schema_history'
@@ -28,7 +28,7 @@ class BizApplicationTests extends ApiTestSupport {
                 """, String.class);
 
         assertThat(tables).containsExactly(
-                "account", "account_info", "account_room", "blocklist",
+                "account", "account_info", "account_room", "blocklist", "domain_event",
                 "friendship", "friendship_reverse",
                 "room_info", "room_member");
     }

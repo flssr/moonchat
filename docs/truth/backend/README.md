@@ -9,8 +9,10 @@
 | 身份 | 注册登录、agent 建号、资料、切账号、凭据续期 | `controller/account`、`service/account`、`service/auth` |
 | 关系 | 好友申请与好友关系、单向黑名单 | `controller/friendship`、`controller/blocklist` |
 | 群 | 群与成员 CRUD、PG → Turms 投影 | `controller/room`、`service/room`、`service/turms` |
-| 消息 | 唯一写入网关、已读时间代写、限流、代发 | `controller/message`、`service/message`、`service/limiter` |
+| 消息 | 当前代发消息与已读（切换后退场）、限流（当前在 Biz） | `controller/message`、`service/message`、`service/limiter` |
 | 持久层 | MyBatis-Plus、迁移与事务 | `entity`、`mapper`、`db/migration` |
+| 投影 | outbox 派发、关系/群成员/账号投影与对账 | `service/projection`、`mapper/projection`、`entity/DomainEvent` |
+| 限流插件 | 客户端直写后由 Turms 进程内执行两级令牌桶；已验证编译与加载，未启用；命中限流 `1101` 未验证（待 P2） | `mondchat-turms-plugin` |
 | Turms 客户端 | Admin API 与凭据签发 | `client/turms`、`service/turms` |
 
 ## 接口面
@@ -23,10 +25,10 @@
 | 好友 | `GET/POST /api/friendships`、`POST/DELETE /api/friendships/{peerAccountId}` |
 | 群 | `POST/GET /api/rooms`、`GET /api/rooms/{roomId}`、`GET/POST /api/rooms/{roomId}/members`、`DELETE /api/rooms/{roomId}/members/me`、`DELETE /api/rooms/{roomId}/members/{accountId}` |
 | 黑名单 | `GET/POST /api/blocklist`、`DELETE /api/blocklist/{accountId}` |
-| 发言 | `POST /api/conversations/{type}/{id}/messages` |
-| 已读 | `POST /api/conversations/{type}/{id}/read` |
+| 发言 | `POST /api/conversations/{type}/{id}/messages`（切换后删除） |
+| 已读 | `POST /api/conversations/{type}/{id}/read`（切换后删除） |
 
-消息历史、会话列表、未读数与在线状态不由 Biz 提供，客户端直接查 Turms；Biz 只代写消息与已读时间两条会话写路径。完整路径、字段与响应以控制器、DTO 和 `/v3/api-docs` 为准，不做提交到仓库的手写副本。
+消息历史、会话列表、未读数与在线状态不由 Biz 提供，客户端直接查 Turms。**当前** Biz 代写消息与已读两条会话写路径；**切换后**（issue #63）两条路由删除、路由数 26 → 24，消息与已读由客户端经 Turms `/im` 直写，Biz 不再写会话。完整路径、字段与响应以控制器、DTO 和 `/v3/api-docs` 为准，不做提交到仓库的手写副本。
 
 ## 通用行为
 
@@ -34,4 +36,4 @@
 - JSON 字段为 snake_case，路径参数为 camelCase；错误码与数据库列名不跟随 JSON 命名。
 - 登录 JWT 7 天并可滑动续期；Turms 凭据 12 小时，可重复调用 `POST /api/sessions` 更换。
 - 密码用 bcrypt；agent 密钥用确定性 HMAC-SHA256 + pepper。PG 不存任何明文凭据。
-- 冻结账号仍可登录和读取，但停止写入与好友申请。已读上报（`POST /api/conversations/{type}/{id}/read`）属于读游标，不在冻结范围内——否则冻结期间角标永远清不掉。
+- 冻结账号仍可登录和读取，但停止写入与好友申请，两条失败路径不同：**发消息**在切换后由 Turms 回 `1106 UNAUTHORIZED_REQUEST`（当前仍由 Biz 拦），**好友申请**始终在 Biz、回 `403 account_frozen`（冻结检查不移交）。**已读**属于读游标，不属于冻结停写范围：当前冻结账号可调 `/read` 清角标；切换后冻结账号的 statements 保留 `CONVERSATION.UPDATE`（只清角标、发不出消息），并配 `PUT /users/online-infos/statuses` 踢掉存量会话——否则冻结前签出的 token 最长 12 小时仍带写权限。两套 statements 由 `mondchat.turms.write-credential-enabled` 切换，默认关闭；关闭时与切换前一致。

@@ -17,6 +17,7 @@ import im.mondchat.biz.mapper.room.RoomInfoMapper;
 import im.mondchat.biz.mapper.room.RoomMemberMapper;
 import im.mondchat.biz.service.friendship.FriendshipService;
 import im.mondchat.biz.service.room.RoomService;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import im.mondchat.biz.service.turms.RoomProjectionService;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -49,6 +50,7 @@ public class RoomServiceImpl implements RoomService {
     private final AccountInfoMapper accountInfoMapper;
     private final FriendshipService friendshipService;
     private final RoomProjectionService projectionService;
+    private final ProjectionEvents projectionEvents;
 
     /** 「群主一定是成员」是事务产物：群、群主的成员行、镜像行一次写完，再投影。 */
     @Override
@@ -68,6 +70,8 @@ public class RoomServiceImpl implements RoomService {
                 .build();
         roomInfoMapper.insert(room);
         join(room.getId(), me.accountId(), now);
+        // 建群时还没有 Turms group 句柄：事件带 null，派发器退避重试到投影回填后再落
+        projectionEvents.roomMemberChanged(room.getId(), me.accountId(), null, true);
         projectAfterCommit(room.getId());
 
         return new RoomResponses.CreateResponse(room.getId(), room.getName(), room.getDescription(),
@@ -148,7 +152,7 @@ public class RoomServiceImpl implements RoomService {
             RoomRequests.AddMemberRequest request) {
         ensureHuman(me);
         ensureNotFrozen(me.accountId());
-        requireRoom(roomId);
+        RoomInfo room = requireRoom(roomId);
         if (!isMember(roomId, me.accountId())) {
             throw ApiException.forbidden("你不是这个群的成员");
         }
@@ -163,6 +167,7 @@ public class RoomServiceImpl implements RoomService {
 
         OffsetDateTime now = OffsetDateTime.now();
         join(roomId, accountId, now);
+        projectionEvents.roomMemberChanged(roomId, accountId, room.getTurmsGroupId(), true);
         markPending(roomId, now);
         projectAfterCommit(roomId);
         return new RoomResponses.MemberResponse(roomId, accountId, now.toInstant());
@@ -183,6 +188,7 @@ public class RoomServiceImpl implements RoomService {
 
         OffsetDateTime now = OffsetDateTime.now();
         quit(roomId, me.accountId(), now);
+        projectionEvents.roomMemberChanged(roomId, me.accountId(), room.getTurmsGroupId(), false);
         markPending(roomId, now);
         projectAfterCommit(roomId);
     }
@@ -206,6 +212,7 @@ public class RoomServiceImpl implements RoomService {
 
         OffsetDateTime now = OffsetDateTime.now();
         quit(roomId, accountId, now);
+        projectionEvents.roomMemberChanged(roomId, accountId, room.getTurmsGroupId(), false);
         markPending(roomId, now);
         projectAfterCommit(roomId);
     }

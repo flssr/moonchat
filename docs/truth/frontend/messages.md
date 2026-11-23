@@ -24,10 +24,14 @@
 
 ## 发送
 
-发送调用 `POST /api/conversations/{type}/{id}/messages`，本地先出现“发送中”气泡，成功改时间，失败保留正文并允许重试。发送请求声明 `X-Device-Type`。
+**当前**发送调用 `POST /api/conversations/{type}/{id}/messages`，本地先出现“发送中”气泡，成功改时间，失败保留正文并允许重试。发送请求声明 `X-Device-Type`。
+
+**切换后**发送走已有的 Turms WebSocket：`messageService.sendMessage({isGroupMessage, targetId, text})`，`dm` 的 `targetId` 是对端账号 id、群聊是 `turms_group_id`；不传 `messageId` / `deliveryDate`，由服务端生成。气泡仍是本地占位，收到通知里的 `messageId` 再对齐。`deviceType` 由客户端在请求里自己声明，不再由 Biz 映射。
 
 输入框里 Enter 直接发送，Shift+Enter 换行；输入法还在组词时的 Enter 交给候选上屏，不发出去。
 
-`not_friend`、`not_room_member` 与 `blocked` 会禁用输入或提示关系失效；`rate_limited` 保留草稿；`upstream_unavailable` 标记失败，但界面不声称消息一定没有发出。
+**当前** `not_friend`、`not_room_member` 与 `blocked` 会禁用输入或提示关系失效；`rate_limited` 保留草稿；`upstream_unavailable` 标记失败，但界面不声称消息一定没有发出。
 
-没有已读回执、正在输入、消息搜索、附件、音视频或结构化 mentions。
+**切换后**一律按 Turms 的 `code` 分流，不看 HTTP 状态（`4000/4001/4004/5007/5201` 的状态是 510）：非好友 `5001`、被拉黑 `5002`（`stranger=false` 时压成 `5001`，所以不要实现 `5002` 分支）、群不允许游客发言或游客被禁言 `5009`（文案不能写成「你不是群成员」）、无写权限含冻结 `1106`、限流 `1101`（退避重试）。
+
+没有已读回执给他人、正在输入、消息搜索、附件、音视频或结构化 mentions；读游标只用于自己的未读基线。

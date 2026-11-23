@@ -60,15 +60,39 @@ jobs:
           test -s /tmp/site-root
           echo "SITE_ROOT=$(cat /tmp/site-root)" >> "$GITHUB_ENV"
 
+      # 资源地址带内容指纹：CSS/JS 内容一变地址就变，浏览器不会拿旧 CSS 去配新 HTML。
+      # 指纹只写在部署时的 index.html 上，仓库里保持裸文件名（本地直接打开也能用）。
+      - name: 给静态资源加内容指纹
+        run: |
+          set -eu
+          css=$(sha256sum site/styles.css | cut -c1-10)
+          app=$(sha256sum site/app.js | cut -c1-10)
+          sky=$(sha256sum site/sky.js | cut -c1-10)
+          svg=$(sha256sum site/assets/mondchat-logo.svg | cut -c1-10)
+          sed -i \
+            -e "s#assets/mondchat-logo.svg#assets/mondchat-logo.svg?v=$svg#g" \
+            -e "s#href=\"styles.css\"#href=\"styles.css?v=$css\"#" \
+            -e "s#src=\"app.js\"#src=\"app.js?v=$app\"#" \
+            -e "s#src=\"sky.js\"#src=\"sky.js?v=$sky\"#" \
+            site/index.html
+          grep -oE '\?v=[0-9a-f]+' site/index.html | sort -u
+          {
+            echo "ASSET_CSS=$css"
+            echo "ASSET_APP=$app"
+            echo "ASSET_SKY=$sky"
+            echo "ASSET_SVG=$svg"
+          } >> "$GITHUB_ENV"
+
       # 只覆盖 site/ 里有的文件：不删站点目录里的其它东西（1Panel 自己的入口文件等）。
       # 站点目录是 1Panel 建的、多半归 root；部署账号没有写权限时用免密 sudo 覆盖（没有就明确失败）。
-      - name: 同步 site/
+      - name: 同步 site/（资源先铺，index.html 最后）
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          tar -C site -czf - . \
-            | ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "set -eu
+          # 把解压脚本收成一个函数，两趟各调一次：stdin 留给 tar，不能用来传脚本。
+          unpack() {
+            ssh -i ~/.ssh/id_deploy "$SSH_USER@$SSH_HOST" "set -eu
                 if sudo -n true >/dev/null 2>&1; then
                   exec sudo -n tar -xzf - -C '$SITE_ROOT'
                 elif [ -w '$SITE_ROOT' ]; then
@@ -77,9 +101,13 @@ jobs:
                   echo '$SITE_ROOT 不可写，且部署账号没有免密 sudo' >&2
                   exit 1
                 fi"
+          }
+          # 分两趟：先铺资源，再铺 index.html。中途刷新的人不会拿到「新 HTML 指向还没落地的文件」。
+          tar -C site -czf - --exclude=./index.html . | unpack
+          tar -C site -czf - index.html | unpack
           echo "已铺到 $SITE_ROOT"
 
-      - name: 冒烟：线上文件与仓库逐字节一致
+      - name: 冒烟：线上文件与部署产物逐字节一致，资源地址带内容指纹
         run: |
           for f in styles.css index.html app.js sky.js; do
             want=$(sha256sum "site/$f" | awk '{print $1}')
@@ -89,4 +117,12 @@ jobs:
               exit 1
             fi
             echo "$f OK"
+          done
+          html=$(curl -fsS "https://mondchat.com/?t=$(date +%s)")
+          for want in "styles.css?v=$ASSET_CSS" "app.js?v=$ASSET_APP" "sky.js?v=$ASSET_SKY" "mondchat-logo.svg?v=$ASSET_SVG"; do
+            if ! printf '%s' "$html" | grep -qF "$want"; then
+              echo "线上 index.html 里找不到 $want" >&2
+              exit 1
+            fi
+            echo "$want OK"
           done

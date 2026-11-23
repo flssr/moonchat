@@ -176,7 +176,9 @@ services:
   # 只有 JWT 那三项用环境变量（infra/turms/jwt-identity.compose.yaml 已验证的写法）。
   turms-service:
     <<: *service
-    image: ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c
+    # 带限流插件的自建镜像（infra/turms/Dockerfile，见 .github/workflows/turms-plugin.yml）。
+    # 不设这个变量就仍用上游 pinned digest：零插件、零改动，回滚插件就是删掉这一行。
+    image: ${MONDCHAT_TURMS_SERVICE_IMAGE:-ghcr.io/turms-im/turms-service@sha256:2be538a0607c8a7b5538b4429466341944d7f3c585c61f137056b31681e2399c}
     mem_limit: 1280m
     depends_on:
       mongo-shard-init:
@@ -185,6 +187,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # `allow-send-messages-to-stranger=false`：客户端改直写前先关掉陌生人私聊，好友校验由 Turms
+    # 用投影判定。对仍走 Biz 代发的旧客户端零影响（Admin 进 saveMessage，不跑好友校验）。
+    # 注意：下面 `>-` 块里不能写 `#` 注释——折叠块内的 `#` 是字符串内容，会让 JVM 报 unrecognized option。
     environment:
       TURMS_SERVICE_JVM_OPTS: >-
         -Xmx448m -XX:MaxMetaspaceSize=160m
@@ -203,7 +208,7 @@ services:
         -Dturms.service.redis.location.uri-list[0]=redis://redis:6379
         -Dturms.service.redis.ip-blocklist.uri=redis://redis:6379
         -Dturms.service.redis.user-id-blocklist.uri=redis://redis:6379
-        -Dturms.service.message.allow-send-messages-to-stranger=true
+        -Dturms.service.message.allow-send-messages-to-stranger=false
         -Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false
     healthcheck:
       test:
@@ -290,6 +295,9 @@ services:
       MONDCHAT_JWT_SECRET_FILE: /opt/mondchat/secrets/jwt-hmac256.key
       MONDCHAT_AUTH_JWT_SECRET: ${MONDCHAT_AUTH_JWT_SECRET:?请在 .env 设置 MONDCHAT_AUTH_JWT_SECRET}
       MONDCHAT_AGENT_KEY_PEPPER: ${MONDCHAT_AGENT_KEY_PEPPER:?请在 .env 设置 MONDCHAT_AGENT_KEY_PEPPER}
+      # 默认开；要单独关投影，往 .env 加 MONDCHAT_PROJECTION_ENABLED=false 再 up -d，
+      # 不用改仓库走一轮 PR（CD 每次用仓库 compose 覆盖服务器，写死就没法单独回滚）。
+      MONDCHAT_PROJECTION_ENABLED: "${MONDCHAT_PROJECTION_ENABLED:-true}"
     volumes:
       - ${MONDCHAT_JWT_SECRET_FILE:-/opt/mondchat/secrets/jwt-hmac256.key}:/opt/mondchat/secrets/jwt-hmac256.key:ro
 
