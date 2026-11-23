@@ -21,6 +21,8 @@ PG 是业务真相；Turms 的 `user`、`userRelationship`、`group`、`groupMem
 
 配置在 `mondchat.projection.*`：`enabled` 默认 **`false`**——P1 阶段只累积事件、不派发；`enabled=true` 是 P2 打开派发与对账的开关，关掉同样只停派发与对账、事件继续累积（灰度回退用它，不删数据）。`dispatch-interval-ms` 默认 2000；`batch-size` 默认 100；`reconcile-cron` 默认每天 03:00。
 
+所有 Turms Admin 调用共用 `mondchat.turms.http.connect-timeout`（默认 2s）与 `read-timeout`（默认 5s），可用 `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` / `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` 覆盖。Turms 只卡不回时，超时抛的 `ResourceAccessException` 是 `RestClientException` 子类，落进既有 catch 回 `503 upstream_unavailable`；派发器按 `attempt_count` 与退避继续重试，积压可见且能自愈。
+
 P2 第一次打开时会一次性派发积压事件，等于一次天然增量回填。打开前先看 `select count(*) from domain_event where processed_at is null`；积压大就按 id 分批放（例如先处理一个范围、确认成功再放下一段），不要一次全推。
 
 ## 事件与投影形状

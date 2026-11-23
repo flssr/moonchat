@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [Turms Admin 调用加超时](#turms-admin-调用加超时)
 - [写路径回归 Turms](#写路径回归-turms)
 - [自研插件与消息引擎发布耦合](#自研插件与消息引擎发布耦合)
 - [关系与账号投影进 Turms 读模型](#关系与账号投影进-turms-读模型)
@@ -49,6 +50,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### Turms Admin 调用加超时
+
+2026-11-24 04:35 CST   [2026-11-23 20:35 UTC]
+
+决策：`TurmsAdminClient` 的 `RestClient` 用 JDK `HttpClient` 配 `connect-timeout`（默认 2s）与 `read-timeout`（默认 5s），可用 `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` / `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` 覆盖。超时抛的 `ResourceAccessException` 落进既有 `RestClientException` catch，外部契约仍是 `503 upstream_unavailable`；不加客户端自动重试，派发器继续按 `attempt_count` 与退避重试。
+
+原因：Turms 只卡不回（TCP 通、不响应）时旧实现会无限占线程，派发器挂在那条事件上、`pending` 只增不减，而 Biz 健康检查仍正常，故障不可见。超时把失败推回正常重试路径，积压可观测且能自愈；这也修复了投影，而不只是防线程占满。
 
 ### 写路径回归 Turms
 

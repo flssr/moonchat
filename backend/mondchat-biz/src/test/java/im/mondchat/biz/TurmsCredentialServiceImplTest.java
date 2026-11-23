@@ -10,6 +10,7 @@ import com.nimbusds.jose.crypto.MACVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import im.mondchat.biz.client.turms.TurmsAdminClient;
+import im.mondchat.biz.config.TurmsAdminHttpProperties;
 import im.mondchat.biz.config.TurmsProperties;
 import im.mondchat.biz.service.turms.TurmsCredentialService;
 import im.mondchat.biz.service.turms.impl.TurmsCredentialServiceImpl;
@@ -38,7 +39,8 @@ class TurmsCredentialServiceImplTest {
 
     private static TurmsProperties properties(boolean writeCredentialEnabled) {
         return new TurmsProperties("http://localhost:8510", "turms", "turms", "ws://localhost:20510",
-                TestStack.JWT_SECRET_FILE, Duration.ofHours(12), Duration.ofSeconds(30), writeCredentialEnabled);
+                TestStack.JWT_SECRET_FILE, Duration.ofHours(12), Duration.ofSeconds(30), writeCredentialEnabled,
+                new TurmsAdminHttpProperties(null, null));
     }
 
     private static JWTClaimsSet claims(TurmsCredentialService.Credential credential) throws Exception {
