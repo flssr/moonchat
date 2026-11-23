@@ -110,6 +110,9 @@ class AppState extends ChangeNotifier {
   bool windowFocused = true;
 
   final Map<String, int> _unread = <String, int>{};
+
+  /// 已读上报的去抖计时器：同一会话 1 秒内只打一次接口（issue #37）。
+  final Map<String, Timer> _readReportTimers = <String, Timer>{};
   final Set<int> _blocked = <int>{};
   final Map<String, String> _drafts = <String, String>{};
   final Map<String, String> _dmTitles = <String, String>{};
@@ -198,7 +201,10 @@ class AppState extends ChangeNotifier {
     if (key != null) {
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
-      _unread.remove(key);
+      // 角标等服务端确认（204）再清：上报失败时不能假装已经读过。
+      if ((_unread[key] ?? 0) > 0) {
+        _scheduleReadReport(key);
+      }
     }
     notifyListeners();
     _scheduleCacheSave();
@@ -223,8 +229,8 @@ class AppState extends ChangeNotifier {
     }
     windowFocused = value;
     final String? key = activeConversationKey;
-    if (value && key != null) {
-      _unread.remove(key);
+    if (value && key != null && (_unread[key] ?? 0) > 0) {
+      _scheduleReadReport(key);
     }
     notifyListeners();
   }
@@ -247,7 +253,34 @@ class AppState extends ChangeNotifier {
     } else {
       await api.blockAccount(token: loginToken!, accountId: accountId);
       _blocked.add(accountId);
+      _hideBlockedConversation(accountId);
     }
+    notifyListeners();
+  }
+
+  /// 拉黑之后聊天界面不再出现这个人：会话列表里过滤掉（`conversations` getter），
+  /// 正开着的那条也要退出，否则会停在一条已经不该出现的会话上。
+  void _hideBlockedConversation(int accountId) {
+    final String key = 'dm:$accountId';
+    _unread.remove(key);
+    if (activeConversationKey == key) {
+      activeConversationKey = null;
+    }
+  }
+
+  /// 黑名单管理弹窗的列表：一次取到上限（100 人），顺带让本地集合与服务端对齐。
+  Future<List<BlocklistItem>> loadBlocklist() async {
+    final BlocklistPage page = await api.blocklist(token: loginToken!, size: 100);
+    _blocked
+      ..clear()
+      ..addAll(page.items.map((BlocklistItem item) => item.accountId));
+    notifyListeners();
+    return page.items;
+  }
+
+  Future<void> unblockAccount(int accountId) async {
+    await api.unblockAccount(token: loginToken!, accountId: accountId);
+    _blocked.remove(accountId);
     notifyListeners();
   }
 
@@ -338,10 +371,12 @@ class AppState extends ChangeNotifier {
   List<ChatMessage> messagesOf(String key) => _messages[key] ?? const <ChatMessage>[];
 
   /// 会话列表：好友 → 私聊，我加入的群 → 群聊。顺序稳定，不按活跃度排。
+  /// 我拉黑的人不出现在聊天界面（解黑后自动回来）；拉黑不删好友，联系人页仍然看得见。
   List<Conversation> get conversations {
     final List<Conversation> out = <Conversation>[
       for (final Friendship f in friends)
-        Conversation(type: 'dm', targetId: f.peerAccountId, title: f.displayName),
+        if (!_blocked.contains(f.peerAccountId))
+          Conversation(type: 'dm', targetId: f.peerAccountId, title: f.displayName),
       for (final Room r in rooms)
         Conversation(
           type: 'room',
@@ -360,7 +395,7 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final int? id = int.tryParse(key.substring(3));
-      if (id == null) {
+      if (id == null || _blocked.contains(id)) {
         continue;
       }
       out.add(Conversation(
@@ -580,25 +615,59 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 登录后把每个会话的最新一页拉回来：会话列表的预览、离线期间的消息和未读都靠这一步。
+  /// 登录后把每个会话的最新一页拉回来：列表预览、离线未读与登录通知都靠这一步。
+  ///
+  /// 未读以服务端已读时间为准（issue #37）：私聊查会话 `readDate`，群查成员表里自己那条；
+  /// 查不到（读通道没连上/旧服务端）才退回本机基线。查到了但从未上报过的会话，
+  /// 第一次登录时补报一次已读，避免历史消息一登录全红。
   Future<void> _primeConversations() async {
     if (!realtimeUp || _disposed) {
       return;
     }
-    final Map<String, DateTime?> baseline = <String, DateTime?>{};
-    for (final Conversation c in conversations) {
-      final List<ChatMessage>? list = _messages[c.key];
-      baseline[c.key] = list != null && list.isNotEmpty
-          ? list.last.sentAt
-          : (_cacheRestored ? _cacheSavedAt : null);
+    final List<Conversation> convs = conversations;
+    Map<String, DateTime?> serverRead = <String, DateTime?>{};
+    try {
+      serverRead = await realtime.readDates(
+        myAccountId: account?.accountId ?? 0,
+        peerAccountIds: <int>[
+          for (final Conversation c in convs)
+            if (c.type == 'dm') c.targetId,
+        ],
+        turmsGroupIds: <String>[
+          for (final Conversation c in convs)
+            if (c.type == 'room' && c.turmsGroupId != null) c.turmsGroupId!,
+        ],
+      );
+    } catch (_) {
+      // 查不到已读就按本机基线走，下一次登录还有机会。
     }
-    for (final Conversation c in conversations) {
+
+    final Map<String, DateTime?> baseline = <String, DateTime?>{};
+    final Set<String> seeded = <String>{};
+    for (final Conversation c in convs) {
+      // 群的会话 key 是 `room:<pg id>`，服务端结果按 Turms 群 id 存在。
+      final DateTime? read = serverRead[c.key] ??
+          (c.turmsGroupId == null ? null : serverRead['room:${c.turmsGroupId}']);
+      if (read != null) {
+        seeded.add(c.key);
+      }
+      final List<ChatMessage>? list = _messages[c.key];
+      baseline[c.key] = read ??
+          (list != null && list.isNotEmpty
+              ? list.last.sentAt
+              : (_cacheRestored ? _cacheSavedAt : DateTime.now().toUtc()));
+    }
+
+    for (final Conversation c in convs) {
       if (_disposed || !realtimeUp) {
         return;
       }
       await loadHistory(c);
     }
-    for (final Conversation c in conversations) {
+
+    // 缓存里的未读只是估算，服务端已读才是真相：重算一遍，不叠加。
+    _unread.clear();
+    for (final Conversation c in convs) {
       if (_disposed) {
         return;
       }
@@ -615,11 +684,15 @@ class AppState extends ChangeNotifier {
         }
       }
       if (missed == 0 || latest == null) {
+        // 从没有过已读游标的会话（首次登录）补一次，否则下次登录仍按“没读过”算。
+        if (!seeded.contains(c.key) && !_cacheRestored) {
+          _scheduleReadReport(c.key);
+        }
         continue;
       }
       // 登录补拉到的离线消息用户还没看过，即使恢复的当前会话就是它也要提示；
       // 在线实时推送才按“当前会话 + 窗口在前台”算已读。
-      _unread[c.key] = (_unread[c.key] ?? 0) + missed;
+      _unread[c.key] = missed;
       if (notifyOnMessage) {
         // 和在线提示一样走桌面通知，把离线期间收到的条数和最后一条内容带上。
         unawaited(_notifier.show(
@@ -630,6 +703,34 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _scheduleCacheSave();
+  }
+
+  /// 同一会话 1 秒内只上报一次已读（issue #37 的口径），避免每条消息都打一次接口。
+  void _scheduleReadReport(String key) {
+    _readReportTimers[key]?.cancel();
+    _readReportTimers[key] = Timer(const Duration(seconds: 1), () {
+      _readReportTimers.remove(key);
+      unawaited(_reportRead(key));
+    });
+  }
+
+  /// `POST /api/conversations/{type}/{id}/read`：204 表示已读到服务端此刻，这时才清本地角标。
+  /// 失败（503 / 网络）保留角标，等下次打开会话或收到消息再试，不猜成功。
+  Future<void> _reportRead(String key) async {
+    final String? token = loginToken;
+    final Conversation? conv = conversationOf(key);
+    if (token == null || conv == null) {
+      return;
+    }
+    try {
+      await api.markRead(token: token, type: conv.type, id: conv.targetId);
+      if (_unread.remove(key) != null) {
+        notifyListeners();
+        _scheduleCacheSave();
+      }
+    } catch (_) {
+      // 留给下一次：角标还在，用户点开时会再报。
+    }
   }
 
   Map<String, dynamic> _exportCache() {
@@ -841,6 +942,9 @@ class AppState extends ChangeNotifier {
           unawaited(_notifier.show(title: conv.title, body: incoming.text));
         }
       }
+    } else if (live && incoming.senderId != me && reading) {
+      // 正看着这条会话：把服务端已读也推到这条消息上，下次登录才不会又算成未读。
+      _scheduleReadReport(key);
     }
     notifyListeners();
     _scheduleCacheSave();
@@ -1300,8 +1404,9 @@ class AppState extends ChangeNotifier {
 
   // —— 群 ——
 
-  Future<Room> createRoom(String name) async {
-    final Room room = await api.createRoom(token: loginToken!, name: name);
+  Future<Room> createRoom(String name, {String? description}) async {
+    final Room room =
+        await api.createRoom(token: loginToken!, name: name, description: description);
     await refreshAll();
     return room;
   }
@@ -1408,6 +1513,10 @@ class AppState extends ChangeNotifier {
       return;
     }
     _disposed = true;
+    for (final Timer timer in _readReportTimers.values) {
+      timer.cancel();
+    }
+    _readReportTimers.clear();
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
     _stopPolling();

@@ -13,6 +13,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
   external _TurmsClient(JSObject options);
   external _UserService get userService;
   external _MessageService get messageService;
+  external _ConversationService get conversationService;
   external _Driver get driver;
   external JSPromise<JSAny?> close();
 }
@@ -31,6 +32,13 @@ extension type _UserService._(JSObject _) implements JSObject {
 extension type _MessageService._(JSObject _) implements JSObject {
   external void addMessageListener(JSFunction listener);
   external JSPromise<JSObject> queryMessages(JSObject options);
+}
+
+/// `turms-client-js` 的会话查询：私聊与群分开两个方法（issue #37 读已读时间）。
+@JS()
+extension type _ConversationService._(JSObject _) implements JSObject {
+  external JSPromise<JSArray<JSAny?>> queryPrivateConversations(JSObject options);
+  external JSPromise<JSArray<JSAny?>> queryGroupConversations(JSObject options);
 }
 
 @JS('Date')
@@ -76,11 +84,20 @@ int? _readInt(JSObject o, String key) {
 /// `deliveryDate` 是 JS `Date`，`dartify` 不会替我们认，直接取毫秒。
 DateTime? _readDate(JSObject o, String key) {
   final JSAny? v = o.getProperty<JSAny?>(key.toJS);
+  return _dateFromJs(v);
+}
+
+/// JS `Date` → UTC `DateTime`；null / undefined / 0 都当没上报过。
+DateTime? _dateFromJs(JSAny? v) {
   if (v == null || v.isUndefinedOrNull) {
     return null;
   }
   final JSNumber ms = (v as JSObject).callMethod<JSNumber>('getTime'.toJS);
-  return DateTime.fromMillisecondsSinceEpoch(ms.toDartInt, isUtc: true);
+  final int millis = ms.toDartInt;
+  if (millis <= 0) {
+    return null;
+  }
+  return DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
 }
 
 IncomingMessage _toMessage(JSObject raw) {
@@ -223,6 +240,62 @@ class WebRealtime implements RealtimeClient {
         continue;
       }
       out.add(_toMessage(item as JSObject));
+    }
+    return out;
+  }
+
+  @override
+  Future<Map<String, DateTime?>> readDates({
+    required int myAccountId,
+    required List<int> peerAccountIds,
+    required List<String> turmsGroupIds,
+  }) async {
+    final _TurmsClient? client = _client;
+    if (client == null) {
+      throw StateError('Turms 会话尚未连接');
+    }
+    final Map<String, DateTime?> out = <String, DateTime?>{};
+
+    if (peerAccountIds.isNotEmpty) {
+      final JSArray<JSAny?> list = await client.conversationService
+          .queryPrivateConversations(_object(<String, JSAny?>{
+            'userIds': <JSAny>[for (final int id in peerAccountIds) '$id'.toJS].toJS,
+          }))
+          .toDart;
+      for (final JSAny? item in list.toDart) {
+        if (item == null) {
+          continue;
+        }
+        final JSObject raw = item as JSObject;
+        final String? target = _readString(raw, 'targetId');
+        if (target != null) {
+          // 对方从没打开过时是 null：调用方按「没有游标」处理。
+          out['dm:$target'] = _readDate(raw, 'readDate');
+        }
+      }
+    }
+
+    if (turmsGroupIds.isNotEmpty) {
+      final JSArray<JSAny?> list = await client.conversationService
+          .queryGroupConversations(_object(<String, JSAny?>{
+            'groupIds': <JSAny>[for (final String id in turmsGroupIds) id.toJS].toJS,
+          }))
+          .toDart;
+      for (final JSAny? item in list.toDart) {
+        if (item == null) {
+          continue;
+        }
+        final JSObject raw = item as JSObject;
+        final String? groupId = _readString(raw, 'groupId');
+        if (groupId == null) {
+          continue;
+        }
+        // 整张成员已读表只取自己那条，别人的阅读状态不展示也不使用。
+        final JSAny? table = raw.getProperty<JSAny?>('memberIdToReadDate'.toJS);
+        final JSAny? mine =
+            table == null || table.isUndefinedOrNull ? null : (table as JSObject).getProperty<JSAny?>('$myAccountId'.toJS);
+        out['room:$groupId'] = _dateFromJs(mine);
+      }
     }
     return out;
   }

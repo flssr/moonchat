@@ -26,6 +26,14 @@ class UnsupportedRealtime implements RealtimeClient {
       throw StateError('这个平台没有 Turms Web 客户端');
 
   @override
+  Future<Map<String, DateTime?>> readDates({
+    required int myAccountId,
+    required List<int> peerAccountIds,
+    required List<String> turmsGroupIds,
+  }) async =>
+      throw StateError('这个平台没有 Turms Web 客户端');
+
+  @override
   Future<void> disconnect() async {}
 }
 

@@ -16,7 +16,8 @@ public final class RoomResponses {
     private RoomResponses() {
     }
 
-    public record CreateResponse(long roomId, String name, long ownerAccountId, Instant createdAt) {
+    public record CreateResponse(long roomId, String name, String description, long ownerAccountId,
+            Instant createdAt) {
     }
 
     @Schema(name = "RoomItem")
@@ -27,8 +28,9 @@ public final class RoomResponses {
     public record ListResponse(List<Item> items) {
     }
 
-    public record InfoResponse(long roomId, String name, long ownerAccountId, long memberCount,
-            Instant createdAt) {
+    /** 简介随详情返回；列表项不带（列表不展示简介，省一次投影）。 */
+    public record InfoResponse(long roomId, String name, String description, long ownerAccountId,
+            long memberCount, Instant createdAt) {
     }
 
     public record MemberItem(long accountId, String displayName, String avatar, boolean isFriend,

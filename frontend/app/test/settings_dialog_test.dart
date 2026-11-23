@@ -83,7 +83,15 @@ void main() {
     expect(find.text('黑名单管理'), findsOneWidget);
     expect(find.text('我的友情关系'), findsOneWidget);
     expect(find.text('敬请期待'), findsOneWidget);
-    expect(find.text('待接入'), findsOneWidget);
+    // 黑名单入口已接上：点开是一个列表弹窗，不再是「待接入」占位。
+    expect(find.text('待接入'), findsNothing);
+    await tester.tap(find.text('黑名单管理'));
+    await tester.pumpAndSettle();
+    expect(find.text('黑名单管理'), findsNWidgets(2));
+    // 这个用例的 API 客户端拒绝一切请求：弹窗应落到错误态而不是崩掉。
+    expect(find.text('连不上服务器'), findsOneWidget);
+    await tester.tap(find.byTooltip('关闭').last);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('小'));
     await tester.pump();

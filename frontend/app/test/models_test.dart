@@ -48,4 +48,24 @@ void main() {
     });
     expect(malformed.birthday, isNull);
   });
+
+  test('群详情带回简介，旧群没有就是 null（issue #38）', () {
+    final RoomDetail withIntro = RoomDetail.fromJson(<String, dynamic>{
+      'name': '月球基地',
+      'description': '值班群，夜里两点也有人在线。',
+      'owner_account_id': 1,
+      'member_count': 2,
+      'created_at': '2026-11-09T10:00:00Z',
+    });
+    expect(withIntro.description, '值班群，夜里两点也有人在线。');
+
+    final RoomDetail oldRoom = RoomDetail.fromJson(<String, dynamic>{
+      'name': '补给站',
+      'description': null,
+      'owner_account_id': 3,
+      'member_count': 1,
+      'created_at': '2026-11-09T11:00:00Z',
+    });
+    expect(oldRoom.description, isNull);
+  });
 }

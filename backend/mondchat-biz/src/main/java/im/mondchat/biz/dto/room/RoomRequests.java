@@ -11,15 +11,19 @@ public final class RoomRequests {
     private RoomRequests() {
     }
 
-    /** 群名 20 是我们自己定的（与账号名字对齐），Turms 侧没有这个配置。 */
+    /** 群名 20 是我们自己定的（与账号名字对齐），Turms 侧没有这个配置。简介可空，只存 PG。 */
     @Schema(name = "RoomCreateRequest")
     public record CreateRequest(
             @NotBlank(message = "群名不能为空")
             @Size(max = 20, message = "群名最长 20 字符")
-            String name) {
+            String name,
+
+            @Size(max = 200, message = "群简介最长 200 字符")
+            String description) {
 
         public CreateRequest {
             name = name == null ? null : name.trim();
+            description = description == null || description.isBlank() ? null : description.trim();
         }
     }
 

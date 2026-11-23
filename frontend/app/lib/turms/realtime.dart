@@ -58,6 +58,15 @@ abstract class RealtimeClient {
     int maxCount = 50,
   });
 
+  /// 会话的服务端已读时间（issue #37）：私聊取会话的 `readDate`，群取成员表里自己那条。
+  /// 键是 `dm:<对端账号 id>` / `room:<turms 群 id>`；查不到的会话不出现在结果里，
+  /// 查到了但从未上报过已读的，值是 null。未读与登录通知都以它为准。
+  Future<Map<String, DateTime?>> readDates({
+    required int myAccountId,
+    required List<int> peerAccountIds,
+    required List<String> turmsGroupIds,
+  });
+
   Future<void> disconnect();
 }
 

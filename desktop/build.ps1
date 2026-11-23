@@ -1,4 +1,4 @@
-# 构建 Windows 客户端（MondChat.exe）。需要 Flutter SDK 与 Visual Studio 2022
+﻿# 构建 Windows 客户端（MondChat.exe）。需要 Flutter SDK 与 Visual Studio 2022
 # 的「使用 C++ 的桌面开发」工作负载；没有这些的机器用 CI 的 desktop job 产物。
 #
 # 用法：

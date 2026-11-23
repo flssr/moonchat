@@ -132,6 +132,44 @@ class DesktopRealtime implements RealtimeClient {
   }
 
   @override
+  Future<Map<String, DateTime?>> readDates({
+    required int myAccountId,
+    required List<int> peerAccountIds,
+    required List<String> turmsGroupIds,
+  }) async {
+    if (!_up) {
+      throw StateError('Turms 会话尚未连接');
+    }
+    final TurmsNotification response = await _conversationsRequest(
+      QueryConversationsRequest(
+        userIds: <Int64>[for (final int id in peerAccountIds) Int64(id)],
+        groupIds: <Int64>[
+          for (final String id in turmsGroupIds) Int64.parseInt(id),
+        ],
+      ),
+    );
+    _ensureSuccess(response, '查会话已读');
+    final Map<String, DateTime?> out = <String, DateTime?>{};
+    if (!response.hasData() || !response.data.hasConversations()) {
+      return out;
+    }
+    for (final PrivateConversation c
+        in response.data.conversations.privateConversations) {
+      out['dm:${c.targetId}'] = c.hasReadDate()
+          ? DateTime.fromMillisecondsSinceEpoch(c.readDate.toInt(), isUtc: true)
+          : null;
+    }
+    for (final GroupConversation g
+        in response.data.conversations.groupConversations) {
+      final Int64? mine = g.memberIdToReadDate[Int64(myAccountId)];
+      out['room:${g.groupId}'] = mine == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(mine.toInt(), isUtc: true);
+    }
+    return out;
+  }
+
+  @override
   Future<void> disconnect() async {
     _manualClose = true;
     _reconnectTimer?.cancel();
@@ -171,6 +209,14 @@ class DesktopRealtime implements RealtimeClient {
     final int id = _nextRequestIdToUse();
     final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
     wrapped.queryMessagesRequest = request;
+    return _send(wrapped, id);
+  }
+
+  Future<TurmsNotification> _conversationsRequest(
+      QueryConversationsRequest request) {
+    final int id = _nextRequestIdToUse();
+    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
+    wrapped.queryConversationsRequest = request;
     return _send(wrapped, id);
   }
 
