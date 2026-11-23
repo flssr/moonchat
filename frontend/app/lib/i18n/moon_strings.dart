@@ -243,37 +243,34 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': 'Aquarius',
     '双鱼座': 'Pisces',
     // 引言与作者
+    '我们塑造工具，然后工具塑造我们。':
+        'We shape our tools and thereafter our tools shape us.',
+    '计算机是人类心灵的自行车。': 'The computer is a bicycle for our minds.',
+    '我不害怕计算机，我害怕的是没有它们。':
+        'I do not fear computers. I fear the lack of them.',
+    '我们都是赛博格。': 'We are all cyborgs.',
+    '我们的书写工具也在参与我们的思考。':
+        'Our writing tools are also working on our thoughts.',
+    '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
+        'We had better be quite sure that the purpose put into the machine is the purpose which we really desire.',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        'The rise of powerful AI will be either the best or the worst thing ever to happen to humanity.',
+    '天地与我并生，而万物与我为一。':
+        'Heaven and earth come into being with me, and the myriad things are one with me.',
     '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
         'We can only see a short distance ahead, but we can see plenty there that needs to be done.',
-    '分析机没有声称自己能创造任何东西。它只能执行我们知道如何命令它执行的事情。':
-        'The Analytical Engine has no pretensions whatever to originate anything. It can do whatever we know how to order it to perform.',
-    '计算机能否思考，这个问题并不比潜艇能否游泳更有趣。':
-        'The question of whether a computer can think is no more interesting than the question of whether a submarine can swim.',
-    '计算机科学并不只是关于计算机，就像天文学并不只是关于望远镜一样。':
-        'Computer science is no more about computers than astronomy is about telescopes.',
-    '人工智能是让机器去做那些如果由人来做就需要智能的事情的科学。':
-        'Artificial intelligence is the science of making machines do things that would require intelligence if done by men.',
     '预测未来的最好方式，就是创造它。':
         'The best way to predict the future is to invent it.',
-    '真正的问题不是机器是否会思考，而是人是否会思考。':
-        'The real question is not whether machines think but whether men do.',
-    '人工智能是新的电力。': 'AI is the new electricity.',
-    '最危险的一句话是：我们一直都是这么做的。':
-        "The most dangerous phrase is: we've always done it this way.",
-    '过早优化是万恶之源。': 'Premature optimization is the root of all evil.',
-    '我无法创造的东西，我就无法理解。': 'What I cannot create, I do not understand.',
-    '注意力就是你所需要的一切。': 'Attention is all you need.',
+    '马歇尔·麦克卢汉': 'Marshall McLuhan',
+    '史蒂夫·乔布斯': 'Steve Jobs',
+    '艾萨克·阿西莫夫': 'Isaac Asimov',
+    '唐娜·哈拉维': 'Donna Haraway',
+    '尼采': 'Friedrich Nietzsche',
+    '诺伯特·维纳': 'Norbert Wiener',
+    '斯蒂芬·霍金': 'Stephen Hawking',
+    '庄子': 'Zhuangzi',
     '艾伦·图灵': 'Alan Turing',
-    '埃达·洛芙莱斯': 'Ada Lovelace',
-    '艾兹格·迪杰斯特拉': 'Edsger Dijkstra',
-    '马文·明斯基': 'Marvin Minsky',
     '艾伦·凯': 'Alan Kay',
-    'B.F. 斯金纳': 'B.F. Skinner',
-    '吴恩达': 'Andrew Ng',
-    '格蕾丝·霍珀': 'Grace Hopper',
-    '唐纳德·克努特': 'Donald Knuth',
-    '理查德·费曼': 'Richard Feynman',
-    '阿希什·瓦西瓦尼等': 'Ashish Vaswani et al.',
   },
   'ja': <String, String>{
     // ナビゲーションと設定
@@ -491,35 +488,33 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': '水瓶座',
     '双鱼座': '魚座',
     // 引用と著者
+    '我们塑造工具，然后工具塑造我们。':
+        'われわれは道具を形づくり、その後、道具がわれわれを形づくる。',
+    '计算机是人类心灵的自行车。': 'コンピュータは人間の心の自転車である。',
+    '我不害怕计算机，我害怕的是没有它们。':
+        '私はコンピュータを恐れない。恐れるのは、コンピュータがないことだ。',
+    '我们都是赛博格。': 'われわれはみなサイボーグである。',
+    '我们的书写工具也在参与我们的思考。':
+        'われわれの筆記具もまた、われわれの思考に加わっている。',
+    '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
+        '機械に与える目的が、われわれが本当に望む目的であることを、よく確かめておくべきだ。',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        '強力なAIの台頭は、人類にとって最良の出来事にも、最悪の出来事にもなりうる。',
+    '天地与我并生，而万物与我为一。':
+        '天地と我とは並び生じ、万物と我とは一つである。',
     '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
         'われわれは前方を少ししか見通せないが、やるべきことは十分にある。',
-    '分析机没有声称自己能创造任何东西。它只能执行我们知道如何命令它执行的事情。':
-        '解析機関は何かを独創するとは主張していません。私たちが命じる方法を知っていることだけを実行できます。',
-    '计算机能否思考，这个问题并不比潜艇能否游泳更有趣。':
-        'コンピュータが考えられるかという問いは、潜水艦が泳げるかという問いと同じくらい面白くない。',
-    '计算机科学并不只是关于计算机，就像天文学并不只是关于望远镜一样。':
-        '計算機科学がコンピュータについて語るのは、天文学が望遠鏡について語るのと同じ程度だ。',
-    '人工智能是让机器去做那些如果由人来做就需要智能的事情的科学。':
-        '人工知能とは、人間が行えば知能を要することを機械に行わせる科学である。',
     '预测未来的最好方式，就是创造它。': '未来を予測する最善の方法は、それを発明することだ。',
-    '真正的问题不是机器是否会思考，而是人是否会思考。':
-        '本当の問題は、機械が考えるかどうかではなく、人間が考えるかどうかだ。',
-    '人工智能是新的电力。': 'AIは新しい電気だ。',
-    '最危险的一句话是：我们一直都是这么做的。': '最も危険な言葉は「昔からこうやってきた」だ。',
-    '过早优化是万恶之源。': '早すぎる最適化は諸悪の根源だ。',
-    '我无法创造的东西，我就无法理解。': '私が創造できないものは、理解していない。',
-    '注意力就是你所需要的一切。': '注意こそがすべて。',
+    '马歇尔·麦克卢汉': 'マーシャル・マクルーハン',
+    '史蒂夫·乔布斯': 'スティーブ・ジョブズ',
+    '艾萨克·阿西莫夫': 'アイザック・アシモフ',
+    '唐娜·哈拉维': 'ドナ・ハラウェイ',
+    '尼采': 'フリードリヒ・ニーチェ',
+    '诺伯特·维纳': 'ノーバート・ウィーナー',
+    '斯蒂芬·霍金': 'スティーブン・ホーキング',
+    '庄子': '荘子',
     '艾伦·图灵': 'アラン・チューリング',
-    '埃达·洛芙莱斯': 'エイダ・ラブレス',
-    '艾兹格·迪杰斯特拉': 'エドガー・ダイクストラ',
-    '马文·明斯基': 'マービン・ミンスキー',
     '艾伦·凯': 'アラン・ケイ',
-    'B.F. 斯金纳': 'B.F. スキナー',
-    '吴恩达': 'アンドリュー・ウン',
-    '格蕾丝·霍珀': 'グレース・ホッパー',
-    '唐纳德·克努特': 'ドナルド・クヌース',
-    '理查德·费曼': 'リチャード・ファインマン',
-    '阿希什·瓦西瓦尼等': 'アシシュ・ヴァスワニほか',
   },
   'de': <String, String>{
     // Navigation und Einstellungen
@@ -739,35 +734,33 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '水瓶座': 'Wassermann',
     '双鱼座': 'Fische',
     // Zitate und Autoren
+    '我们塑造工具，然后工具塑造我们。':
+        'Wir formen unsere Werkzeuge, und danach formen unsere Werkzeuge uns.',
+    '计算机是人类心灵的自行车。': 'Der Computer ist ein Fahrrad für unseren Geist.',
+    '我不害怕计算机，我害怕的是没有它们。':
+        'Ich fürchte Computer nicht. Ich fürchte ihren Mangel.',
+    '我们都是赛博格。': 'Wir sind alle Cyborgs.',
+    '我们的书写工具也在参与我们的思考。':
+        'Auch unsere Schreibwerkzeuge arbeiten an unseren Gedanken mit.',
+    '我们最好确信，交给机器的目的，正是我们真正想要的目的。':
+        'Wir sollten uns besser vergewissern, dass der Zweck, den wir der Maschine geben, der Zweck ist, den wir wirklich wünschen.',
+    '人工智能或许是我们最好的事，也或许是最坏的。':
+        'Der Aufstieg starker KI wird entweder das Beste oder das Schlimmste sein, was der Menschheit je widerfahren ist.',
+    '天地与我并生，而万物与我为一。':
+        'Himmel und Erde entstehen mit mir, und die zehntausend Dinge sind eins mit mir.',
     '我们只能看到前方很短的一段，但那里已经有足够多的事情要做。':
         'Wir können nur ein kurzes Stück voraussehen, aber es gibt dort genug zu tun.',
-    '分析机没有声称自己能创造任何东西。它只能执行我们知道如何命令它执行的事情。':
-        'Die Analytical Engine erhebt keinen Anspruch, etwas zu erschaffen. Sie kann nur ausführen, was wir ihr zu tun befehlen.',
-    '计算机能否思考，这个问题并不比潜艇能否游泳更有趣。':
-        'Die Frage, ob ein Computer denken kann, ist nicht interessanter als die Frage, ob ein U-Boot schwimmen kann.',
-    '计算机科学并不只是关于计算机，就像天文学并不只是关于望远镜一样。':
-        'Informatik handelt nicht mehr von Computern als Astronomie von Teleskopen.',
-    '人工智能是让机器去做那些如果由人来做就需要智能的事情的科学。':
-        'Künstliche Intelligenz ist die Wissenschaft, Maschinen Dinge tun zu lassen, die Intelligenz erfordern würden, täte man sie als Mensch.',
-    '预测未来的最好方式，就是创造它。': 'Die beste Art, die Zukunft vorherzusagen, ist, sie zu erfinden.',
-    '真正的问题不是机器是否会思考，而是人是否会思考。':
-        'Die eigentliche Frage ist nicht, ob Maschinen denken, sondern ob Menschen es tun.',
-    '人工智能是新的电力。': 'KI ist der neue Strom.',
-    '最危险的一句话是：我们一直都是这么做的。':
-        'Der gefährlichste Satz lautet: Das haben wir schon immer so gemacht.',
-    '过早优化是万恶之源。': 'Vorzeitige Optimierung ist die Wurzel allen Übels.',
-    '我无法创造的东西，我就无法理解。': 'Was ich nicht erschaffen kann, verstehe ich nicht.',
-    '注意力就是你所需要的一切。': 'Attention ist alles, was du brauchst.',
+    '预测未来的最好方式，就是创造它。':
+        'Die beste Art, die Zukunft vorherzusagen, ist, sie zu erfinden.',
+    '马歇尔·麦克卢汉': 'Marshall McLuhan',
+    '史蒂夫·乔布斯': 'Steve Jobs',
+    '艾萨克·阿西莫夫': 'Isaac Asimov',
+    '唐娜·哈拉维': 'Donna Haraway',
+    '尼采': 'Friedrich Nietzsche',
+    '诺伯特·维纳': 'Norbert Wiener',
+    '斯蒂芬·霍金': 'Stephen Hawking',
+    '庄子': 'Zhuangzi',
     '艾伦·图灵': 'Alan Turing',
-    '埃达·洛芙莱斯': 'Ada Lovelace',
-    '艾兹格·迪杰斯特拉': 'Edsger Dijkstra',
-    '马文·明斯基': 'Marvin Minsky',
     '艾伦·凯': 'Alan Kay',
-    'B.F. 斯金纳': 'B.F. Skinner',
-    '吴恩达': 'Andrew Ng',
-    '格蕾丝·霍珀': 'Grace Hopper',
-    '唐纳德·克努特': 'Donald Knuth',
-    '理查德·费曼': 'Richard Feynman',
-    '阿希什·瓦西瓦尼等': 'Ashish Vaswani et al.',
   },
 };
