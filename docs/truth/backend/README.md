@@ -36,4 +36,4 @@
 - JSON 字段为 snake_case，路径参数为 camelCase；错误码与数据库列名不跟随 JSON 命名。
 - 登录 JWT 7 天并可滑动续期；Turms 凭据 12 小时，可重复调用 `POST /api/sessions` 更换。
 - 密码用 bcrypt；agent 密钥用确定性 HMAC-SHA256 + pepper。PG 不存任何明文凭据。
-- 冻结账号仍可登录和读取，但停止写入与好友申请，两条失败路径不同：**发消息**在切换后由 Turms 回 `1106 UNAUTHORIZED_REQUEST`（当前仍由 Biz 拦），**好友申请**始终在 Biz、回 `403 account_frozen`（冻结检查不移交）。**已读**属于读游标，不属于冻结停写范围：当前冻结账号可调 `/read` 清角标；切换后冻结账号的 statements 保留 `CONVERSATION.UPDATE`（只清角标、发不出消息），并配 `PUT /users/online-statuses` 踢掉存量会话——否则冻结前签出的 token 最长 12 小时仍带写权限。
+- 冻结账号仍可登录和读取，但停止写入与好友申请，两条失败路径不同：**发消息**在切换后由 Turms 回 `1106 UNAUTHORIZED_REQUEST`（当前仍由 Biz 拦），**好友申请**始终在 Biz、回 `403 account_frozen`（冻结检查不移交）。**已读**属于读游标，不属于冻结停写范围：当前冻结账号可调 `/read` 清角标；切换后冻结账号的 statements 保留 `CONVERSATION.UPDATE`（只清角标、发不出消息），并配 `PUT /users/online-infos/statuses` 踢掉存量会话——否则冻结前签出的 token 最长 12 小时仍带写权限。两套 statements 由 `mondchat.turms.write-credential-enabled` 切换，默认关闭；关闭时与切换前一致。

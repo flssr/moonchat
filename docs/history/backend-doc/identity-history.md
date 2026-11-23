@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 写权限 statements 落地为默认关闭的开关；踢会话路径更正
+
+2026-11-23 00:40 CST   [2026-11-22 16:40 UTC]
+
+决策：两套 statements 从「切换时再改」改为现在就实现，由 `mondchat.turms.write-credential-enabled`（`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED`，默认 `false`）控制：关闭时两种账号状态都只签 `QUERY *`、冻结仍在签发入口回 `403 account_frozen`（与切换前一致）；打开时正常账号签 `QUERY *` + `MESSAGE CREATE/UPDATE` + `CONVERSATION UPDATE`，冻结账号签 `QUERY *` + `CONVERSATION UPDATE` 并在签发时踢掉存量会话。踢会话的真实路径是 `PUT /users/online-infos/statuses`（query `ids`，body `{"onlineStatus":"OFFLINE"}`，Turms 收到 `OFFLINE` 走 `sessionService.disconnect(..., DISCONNECTED_BY_ADMIN)`）；此前文档与更早的记录写的 `PUT /users/online-statuses` 是错的（旧记录按「只追加不改写」保留原文），实测回 400 `1102 no any resource matched`。
+
+原因：把「代码就绪」与「线上生效」分开，客户端一开工就能切，不必再等一轮后端。踢会话挂在签发路径上，是因为冻结没有 API、只有运维改库 `account_info.status`，没有能可靠触发踢人的业务入口；代价是冻结后不再签凭据的客户端旧 token 仍活到过期（最长 12 小时），这条作为已知边界写进 `backend/identity.md`。踢失败只告警不回滚签发：客户端拿到的已经是只读凭据，回滚只会让冻结账号连读都读不了。
+
 ### 冻结 statements 保留清角标能力
 
 2026-11-22 23:57 CST   [2026-11-22 15:57 UTC]
