@@ -65,9 +65,9 @@ node node_modules/rollup/dist/bin/rollup --config rollup.config.ts --configPlugi
 
 | 层 | 做法 | 覆盖 |
 | --- | --- | --- |
-| 流程测试 | `flutter test`：`MockClient` 假扮 Biz 驱动真实的 `ApiClient` / `AppState` | 注册不签发 JWT、登录、切账号、好友四条、群四条、发言成功与 1101 限流、读游标上报、401 回登录页、推送去重 |
+| 流程测试 | `flutter test`：`MockClient` 假扮 Biz 驱动真实的 `ApiClient` / `AppState` | 注册不签发 JWT、登录、切账号、好友四条、群四条、发言成功与 1101 限流、读游标上报、撤回与撤回通知、401 回登录页、推送去重 |
 | 界面联调 | 起一个同源假 Biz（静态页 + `/api/*`），用 headless Edge 走真实界面并截图 | 登录 → 会话列表 → 选人 → 发言 → 气泡落定 |
-| Turms 通道 | 用 CDP 把 `web/vendor/turms-client.iife.min.js` 的请求换成假 `TurmsClient`，记录每次调用 | 构造参数、`login(userId, BROWSER)`、`addMessageListener`、`queryMessages` 的 `fromIds` / `areGroupMessages` / `descending`、`deliveryDateEnd` 逐页递减、`sendMessage` 的 `targetId` / `text`、`updateConversationRequest` 的读时间、推送落盘 |
+| Turms 通道 | 用 CDP 把 `web/vendor/turms-client.iife.min.js` 的请求换成假 `TurmsClient`，记录每次调用 | 构造参数、`login(userId, BROWSER)`、`addMessageListener`、`queryMessages` 的 `fromIds` / `areGroupMessages` / `descending`、`deliveryDateEnd` 逐页递减、`sendMessage` 的 `targetId` / `text`、`updateConversationRequest` 的读时间、`recallMessage` 的 `messageId`、推送落盘 |
 
 第三层能证明**客户端怎么说话**，证明不了**Turms 怎么回话**。要补上这一层，得先有 Docker：
 

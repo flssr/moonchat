@@ -41,6 +41,7 @@ class DesktopRealtime implements RealtimeClient {
       <int, Completer<TurmsNotification>>{};
 
   void Function(IncomingMessage)? _onMessage;
+  void Function(MessageUpdate)? _onMessageUpdated;
   void Function(bool)? _onConnected;
   void Function(Object)? _onError;
 
@@ -49,6 +50,7 @@ class DesktopRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -60,12 +62,14 @@ class DesktopRealtime implements RealtimeClient {
       credential: credential,
       myAccountId: myAccountId,
       onMessage: onMessage,
+      onMessageUpdated: onMessageUpdated,
       onConnected: onConnected,
       onError: onError,
     );
     _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
     final int generation = ++_generation;
     _onMessage = onMessage;
+    _onMessageUpdated = onMessageUpdated;
     _onConnected = onConnected;
     _onError = onError;
     try {
@@ -152,6 +156,20 @@ class DesktopRealtime implements RealtimeClient {
       throw TurmsException(turmsCode: 0, message: '发送响应没有消息 id');
     }
     return response.data.long.toString();
+  }
+
+  @override
+  Future<void> recall({required String messageId}) async {
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..updateMessageRequest = UpdateMessageRequest(
+          messageId: Int64.parseInt(messageId),
+          // 服务端校验 pastOrPresent 且 recallDate 不能早于 deliveryDate；
+          // 省略会被当成「没有更新」，所以用本地当前时间。
+          recallDate: Int64(DateTime.now().millisecondsSinceEpoch),
+        ),
+    );
+    _ensureSuccess(response, '撤回消息');
   }
 
   @override
@@ -322,9 +340,36 @@ class DesktopRealtime implements RealtimeClient {
       }
     }
     if (notification.hasRelayedRequest() &&
+        notification.relayedRequest.hasUpdateMessageRequest()) {
+      _deliverUpdate(notification);
+      return;
+    }
+    if (notification.hasRelayedRequest() &&
         notification.relayedRequest.hasCreateMessageRequest()) {
       _deliver(notification);
     }
+  }
+
+  void _deliverUpdate(TurmsNotification notification) {
+    final UpdateMessageRequest request =
+        notification.relayedRequest.updateMessageRequest;
+    if (!request.hasMessageId()) {
+      return;
+    }
+    _onMessageUpdated?.call(
+      MessageUpdate(
+        id: request.messageId.toString(),
+        senderId:
+            notification.hasRequesterId() ? notification.requesterId.toInt() : 0,
+        text: request.hasText() ? request.text : null,
+        recallAt: request.hasRecallDate()
+            ? DateTime.fromMillisecondsSinceEpoch(
+                request.recallDate.toInt(),
+                isUtc: true,
+              )
+            : null,
+      ),
+    );
   }
 
   void _deliver(TurmsNotification notification) {
@@ -427,6 +472,7 @@ class DesktopRealtime implements RealtimeClient {
           credential: args.credential,
           myAccountId: args.myAccountId,
           onMessage: args.onMessage,
+          onMessageUpdated: args.onMessageUpdated,
           onConnected: args.onConnected,
           onError: args.onError,
         ),
@@ -476,6 +522,7 @@ class _ReconnectArgs {
     required this.credential,
     required this.myAccountId,
     required this.onMessage,
+    required this.onMessageUpdated,
     required this.onConnected,
     required this.onError,
   });
@@ -483,6 +530,7 @@ class _ReconnectArgs {
   final TurmsCredential credential;
   final int myAccountId;
   final void Function(IncomingMessage message) onMessage;
+  final void Function(MessageUpdate update)? onMessageUpdated;
   final void Function(bool connected)? onConnected;
   final void Function(Object error)? onError;
 }

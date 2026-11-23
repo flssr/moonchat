@@ -9,6 +9,7 @@ class UnsupportedRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -30,6 +31,10 @@ class UnsupportedRealtime implements RealtimeClient {
     required String targetId,
     required String text,
   }) async =>
+      throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
+
+  @override
+  Future<void> recall({required String messageId}) async =>
       throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
 
   @override

@@ -48,10 +48,35 @@ class TurmsException extends ApiException {
         return '不能给自己发消息';
       case 5010:
         return '消息内容不合规，请修改后再发';
+      case 5200:
+        return '这条消息已经不存在了';
+      case 5201:
+        return '撤回功能当前已关闭';
+      case 5202:
+        return '只能撤回自己发的消息';
+      case 5204:
+        return '超过撤回时限，不能撤回了';
       default:
         return '操作失败，请重试';
     }
   }
+}
+
+/// 一条消息的更新通知：撤回带 `recallAt`，编辑带新 `text`，两者不会同时来。
+class MessageUpdate {
+  const MessageUpdate({
+    required this.id,
+    required this.senderId,
+    this.text,
+    this.recallAt,
+  });
+
+  final String id;
+  final int senderId;
+  final String? text;
+  final DateTime? recallAt;
+
+  bool get isRecall => recallAt != null;
 }
 
 /// 一条从 Turms 收到的消息。字段与 `ParsedModel.Message` 对齐，转换只在这一层做。
@@ -100,6 +125,7 @@ abstract class RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   });
@@ -118,6 +144,9 @@ abstract class RealtimeClient {
     required String targetId,
     required String text,
   });
+
+  /// 撤回自己发的消息；服务端按「本人 + 5 分钟内」判定。
+  Future<void> recall({required String messageId});
 
   /// 私聊读时间基线。只取自己的那条，返回值里没有的会话视为从未上报。
   Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds);

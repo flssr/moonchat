@@ -236,6 +236,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '你当前不能在这个群里发言': "You can't speak in this group right now.",
     '不能给自己发消息': "You can't message yourself.",
     '消息内容不合规，请修改后再发': 'This message was rejected; edit it and try again.',
+    '这条消息已经不存在了': 'This message no longer exists.',
+    '撤回功能当前已关闭': 'Recall is currently disabled.',
+    '只能撤回自己发的消息': 'You can only recall your own messages.',
+    '超过撤回时限，不能撤回了': 'The recall window has passed.',
+    '撤回': 'Recall',
+    '已撤回': 'Recalled',
     '黑名单最多 100 人': 'The blocklist is limited to 100 people.',
     '状态已经变了，刷新后再试': 'State changed; refresh and retry.',
     // 星座
@@ -493,6 +499,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '你当前不能在这个群里发言': '現在このグループでは発言できません',
     '不能给自己发消息': '自分自身にメッセージは送れません',
     '消息内容不合规，请修改后再发': 'メッセージ内容が不適切です。修正して再送信してください。',
+    '这条消息已经不存在了': 'このメッセージはすでに存在しません',
+    '撤回功能当前已关闭': '撤回機能は現在無効です',
+    '只能撤回自己发的消息': '自分が送信したメッセージのみ撤回できます',
+    '超过撤回时限，不能撤回了': '撤回できる時間を過ぎました',
+    '撤回': '撤回',
+    '已撤回': '撤回済み',
     '黑名单最多 100 人': 'ブロックリストは最大100人です',
     '状态已经变了，刷新后再试': '状態が変わりました。更新して再試行。',
     // 星座
@@ -752,6 +764,12 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '不能给自己发消息': 'Du kannst dir nicht selbst schreiben.',
     '消息内容不合规，请修改后再发':
         'Der Nachrichteninhalt ist unzulässig; bitte ändern und erneut senden.',
+    '这条消息已经不存在了': 'Diese Nachricht existiert nicht mehr.',
+    '撤回功能当前已关闭': 'Das Zurückziehen ist derzeit deaktiviert.',
+    '只能撤回自己发的消息': 'Du kannst nur eigene Nachrichten zurückziehen.',
+    '超过撤回时限，不能撤回了': 'Die Frist zum Zurückziehen ist abgelaufen.',
+    '撤回': 'Zurückziehen',
+    '已撤回': 'Zurückgezogen',
     '黑名单最多 100 人': 'Die Sperrliste ist auf 100 Personen begrenzt.',
     '状态已经变了，刷新后再试': 'Status geändert; aktualisieren und erneut versuchen.',
     // Sternzeichen

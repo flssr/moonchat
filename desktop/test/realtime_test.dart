@@ -24,6 +24,8 @@ void main() {
     final Completer<QueryMessagesRequest> queryRequest =
         Completer<QueryMessagesRequest>();
     final List<CreateMessageRequest> createRequests = <CreateMessageRequest>[];
+    final Completer<UpdateMessageRequest> recallRequest =
+        Completer<UpdateMessageRequest>();
     final Completer<UpdateConversationRequest> dmReadRequest =
         Completer<UpdateConversationRequest>();
     final Completer<UpdateConversationRequest> groupReadRequest =
@@ -34,6 +36,7 @@ void main() {
         Completer<QueryConversationsRequest>();
     final Completer<void> ready = Completer<void>();
     final Completer<IncomingMessage> pushed = Completer<IncomingMessage>();
+    final Completer<MessageUpdate> updated = Completer<MessageUpdate>();
     WebSocket? gateway;
 
     server.listen((HttpRequest request) async {
@@ -80,6 +83,16 @@ void main() {
             ..code = 1000;
           response.ensureData().long = Int64(99);
           socket.add(response.writeToBuffer());
+          return;
+        }
+        if (frame.hasUpdateMessageRequest()) {
+          recallRequest.complete(frame.updateMessageRequest);
+          socket.add(
+            (TurmsNotification.create()
+                  ..requestId = frame.requestId
+                  ..code = 1000)
+                .writeToBuffer(),
+          );
           return;
         }
         if (frame.hasUpdateConversationRequest()) {
@@ -150,6 +163,7 @@ void main() {
       ),
       myAccountId: 7,
       onMessage: pushed.complete,
+      onMessageUpdated: updated.complete,
     );
     await ready.future;
 
@@ -222,6 +236,20 @@ void main() {
     expect(groupRead.groupId.toInt(), 456);
     expect(groupRead.hasReadDate(), isFalse);
 
+    final DateTime beforeRecall = DateTime.now().toUtc();
+    await client.recall(messageId: '42');
+    final UpdateMessageRequest recall = await recallRequest.future;
+    expect(recall.messageId.toInt(), 42);
+    expect(recall.hasRecallDate(), isTrue, reason: '服务端要求带 recallDate');
+    expect(
+      DateTime.fromMillisecondsSinceEpoch(
+        recall.recallDate.toInt(),
+        isUtc: true,
+      ).isBefore(beforeRecall.subtract(const Duration(seconds: 1))),
+      isFalse,
+    );
+    expect(recall.hasText(), isFalse, reason: '撤回不改正文');
+
     final TurmsNotification push = TurmsNotification.create()
       ..requesterId = Int64(9)
       ..relayedRequest = (TurmsRequest.create()
@@ -241,5 +269,24 @@ void main() {
     expect(message.text, '新消息');
     expect(message.senderId, 9);
     expect(message.conversationKeyFor(7), 'dm:9');
+
+    final TurmsNotification updatePush = TurmsNotification.create()
+      ..requesterId = Int64(9)
+      ..relayedRequest = (TurmsRequest.create()
+        ..updateMessageRequest = UpdateMessageRequest(
+          messageId: Int64(43),
+          recallDate: Int64(
+            DateTime.utc(2026, 11, 16, 10, 1).millisecondsSinceEpoch,
+          ),
+        ));
+    gateway!.add(updatePush.writeToBuffer());
+
+    final MessageUpdate update = await updated.future.timeout(
+      const Duration(seconds: 5),
+    );
+    expect(update.id, '43');
+    expect(update.senderId, 9);
+    expect(update.isRecall, isTrue);
+    expect(update.recallAt, DateTime.utc(2026, 11, 16, 10, 1));
   });
 }

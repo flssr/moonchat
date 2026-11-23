@@ -507,6 +507,13 @@ class _MessagesViewState extends State<MessagesView> {
                               }
                             });
                           },
+                          onRecall: (ChatMessage m) {
+                            widget.state.recallMessage(m).catchError((Object e) {
+                              if (mounted) {
+                                setState(() => _sendErrors[active.key] = e is ApiException ? e.displayText : '操作失败，请重试');
+                              }
+                            });
+                          },
                         ),
                       ),
                     ),
@@ -604,11 +611,13 @@ class _MessageList extends StatefulWidget {
     required this.state,
     required this.conversation,
     required this.onRetry,
+    required this.onRecall,
   });
 
   final AppState state;
   final Conversation conversation;
   final ValueChanged<ChatMessage> onRetry;
+  final ValueChanged<ChatMessage> onRecall;
 
   @override
   State<_MessageList> createState() => _MessageListState();
@@ -679,6 +688,7 @@ class _MessageListState extends State<_MessageList> {
           conversation: widget.conversation,
           members: members,
           onRetry: widget.onRetry,
+          onRecall: widget.onRecall,
         );
       },
     );
@@ -753,6 +763,7 @@ class _MessageGroup extends StatelessWidget {
     required this.conversation,
     required this.members,
     required this.onRetry,
+    required this.onRecall,
   });
 
   final List<ChatMessage> group;
@@ -760,6 +771,15 @@ class _MessageGroup extends StatelessWidget {
   final Conversation conversation;
   final Map<int, RoomMember> members;
   final ValueChanged<ChatMessage> onRetry;
+  final ValueChanged<ChatMessage> onRecall;
+
+  /// 只给本人、已落定、未撤回且仍在 5 分钟窗口内的消息入口；服务端还会再判一次。
+  bool _canRecall(ChatMessage m) =>
+      m.mine &&
+      m.state == MessageState.sent &&
+      !m.recalled &&
+      m.serverIdText != null &&
+      DateTime.now().toUtc().difference(m.sentAt) < const Duration(minutes: 5);
 
   String _name() {
     final ChatMessage first = group.first;
@@ -834,7 +854,7 @@ class _MessageGroup extends StatelessWidget {
   Widget _bubble(BuildContext context, ChatMessage m, bool isLast) {
     final MoonPalette p = context.moon;
     final bool failed = m.state == MessageState.failed;
-    return Container(
+    final Widget bubble = Container(
       constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.66),
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
       decoration: BoxDecoration(
@@ -847,7 +867,26 @@ class _MessageGroup extends StatelessWidget {
         ),
         border: Border.all(color: failed ? p.accent : p.line),
       ),
-      child: Text(m.text, style: TextStyle(fontSize: 13.5, height: 1.6, color: p.ink)),
+      child: m.recalled
+          ? Text(
+              context.tr('已撤回'),
+              style: TextStyle(
+                fontSize: 13.5,
+                height: 1.6,
+                color: p.ink3,
+                fontStyle: FontStyle.italic,
+              ),
+            )
+          : Text(m.text, style: TextStyle(fontSize: 13.5, height: 1.6, color: p.ink)),
+    );
+    if (!_canRecall(m)) {
+      return bubble;
+    }
+    // 右键或长按自己刚发的气泡也能撤回；组尾的「撤回」是更明显的入口。
+    return GestureDetector(
+      onSecondaryTap: () => onRecall(m),
+      onLongPress: () => onRecall(m),
+      child: bubble,
     );
   }
 
@@ -867,6 +906,13 @@ class _MessageGroup extends StatelessWidget {
           GestureDetector(
             onTap: () => onRetry(last),
             child: Text(context.tr('重试'), style: TextStyle(fontSize: 10.5, color: p.accent)),
+          ),
+        ],
+        if (_canRecall(last)) ...<Widget>[
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => onRecall(last),
+            child: Text(context.tr('撤回'), style: TextStyle(fontSize: 10.5, color: p.ink3)),
           ),
         ],
       ],

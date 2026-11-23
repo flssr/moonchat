@@ -53,6 +53,10 @@ void main() {
       5008,
       5009,
       5010,
+      5200,
+      5201,
+      5202,
+      5204,
     ];
     for (final int code in codes) {
       final TurmsException error = TurmsException(turmsCode: code);

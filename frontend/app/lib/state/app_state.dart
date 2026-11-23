@@ -53,6 +53,7 @@ class ChatMessage {
     this.serverId,
     this.serverIdText,
     this.senderName,
+    this.recalled = false,
   });
 
   final String localId;
@@ -66,6 +67,9 @@ class ChatMessage {
   int? serverId;
   String? serverIdText;
   String? senderName;
+
+  /// 服务端撤回通知到了就把正文藏掉；历史重拉后该条可能直接消失。
+  bool recalled;
 
   /// 群聊里用来取发送者的名字与头像；私聊对端就是会话的目标账号。
   int senderAccountId;
@@ -564,6 +568,7 @@ class AppState extends ChangeNotifier {
             serverId: (item['server_id'] as num?)?.toInt(),
             serverIdText: item['server_id_text'] as String?,
             senderName: item['sender_name'] as String?,
+            recalled: item['recalled'] == true,
           ));
         }
         if (parsed.isNotEmpty) {
@@ -688,6 +693,7 @@ class AppState extends ChangeNotifier {
             'server_id': m.serverId,
             'server_id_text': m.serverIdText,
             'sender_name': m.senderName,
+            'recalled': m.recalled,
           },
       ];
     });
@@ -806,6 +812,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
       onMessage: _ingest,
+      onMessageUpdated: _ingestUpdate,
       onError: (Object error) {
         realtimeUp = false;
         notifyListeners();
@@ -923,6 +930,47 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _scheduleCacheSave();
+  }
+
+  /// 服务端发来的消息更新：撤回把正文藏掉，编辑替换正文。找不到就丢弃。
+  void _ingestUpdate(MessageUpdate update) {
+    bool changed = false;
+    for (final List<ChatMessage> list in _messages.values) {
+      for (final ChatMessage m in list) {
+        if (m.serverIdText != update.id) {
+          continue;
+        }
+        if (update.isRecall) {
+          m.recalled = true;
+          changed = true;
+        } else if (update.text != null) {
+          m.text = update.text!;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    notifyListeners();
+    _scheduleCacheSave();
+  }
+
+  /// 撤回自己发的消息。成功后先改本地，失败由调用方提示；服务端仍按 5 分钟时限判定。
+  Future<void> recallMessage(ChatMessage message) async {
+    final String? id = message.serverIdText;
+    if (id == null || id.isEmpty) {
+      throw TurmsException(turmsCode: 5200, message: '消息还没有服务端 id');
+    }
+    try {
+      await realtime.recall(messageId: id);
+      message.recalled = true;
+      notifyListeners();
+      _scheduleCacheSave();
+    } on TurmsException catch (e) {
+      _recoverRealtime(e);
+      rethrow;
+    }
   }
 
   /// 已读上报按会话合并：打开会话或正看着它时，1 秒内的多次触发只写一次。

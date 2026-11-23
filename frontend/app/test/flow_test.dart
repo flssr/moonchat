@@ -23,6 +23,7 @@ class _FakeRealtime implements RealtimeClient {
   bool connected = false;
   int? connectedAccountId;
   void Function(IncomingMessage message)? _onMessage;
+  void Function(MessageUpdate update)? _onMessageUpdated;
   void Function(Object error)? _onError;
 
   /// 每次 `history()` 收到的游标与目标 id，以及要返回的页（按调用顺序消费）。
@@ -35,6 +36,7 @@ class _FakeRealtime implements RealtimeClient {
       <({String type, String targetId, String text})>[];
   final List<({String type, String targetId})> readMarks =
       <({String type, String targetId})>[];
+  final List<String> recalled = <String>[];
   TurmsException? sendError;
   int sendSequence = 9001;
 
@@ -49,6 +51,7 @@ class _FakeRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -59,12 +62,16 @@ class _FakeRealtime implements RealtimeClient {
     connected = true;
     connectedAccountId = myAccountId;
     _onMessage = onMessage;
+    _onMessageUpdated = onMessageUpdated;
     _onError = onError;
     onConnected?.call(true);
   }
 
   /// 模拟服务端推来一条消息。
   void emit(IncomingMessage message) => _onMessage?.call(message);
+
+  /// 模拟服务端推来撤回/编辑通知。
+  void emitUpdate(MessageUpdate update) => _onMessageUpdated?.call(update);
 
   /// 模拟读通道报错（断线/凭据失效）。
   void fail(Object error) => _onError?.call(error);
@@ -99,6 +106,14 @@ class _FakeRealtime implements RealtimeClient {
       throw sendError!;
     }
     return '${sendSequence++}';
+  }
+
+  @override
+  Future<void> recall({required String messageId}) async {
+    if (sendError != null) {
+      throw sendError!;
+    }
+    recalled.add(messageId);
   }
 
   @override
@@ -860,6 +875,43 @@ void main() {
     );
     // 我那条仍是自己的 id，不能安上对端的 id。
     expect(list.firstWhere((ChatMessage m) => m.mine).serverIdText, '9001');
+  });
+
+  test('撤回自己的消息：调 Turms 撤回并隐藏正文', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    await state.sendMessage(dm, '说错了');
+    await state.recallMessage(state.messagesOf(dm.key).single);
+
+    expect(rt.recalled, <String>['9001']);
+    expect(state.messagesOf(dm.key).single.recalled, isTrue);
+  });
+
+  test('收到撤回通知：对应消息标为已撤回，正文不再展示', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '501',
+      text: '撤回我',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    rt.emitUpdate(MessageUpdate(
+      id: '501',
+      senderId: 2,
+      recallAt: DateTime.now().toUtc(),
+    ));
+
+    expect(state.messagesOf(dm.key).single.recalled, isTrue);
   });
 
   test('切进 agent 后还能切回真人：账号列表用归属者 token 查', () async {

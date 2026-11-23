@@ -14,6 +14,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
   external _UserService get userService;
   external _MessageService get messageService;
   external _ConversationService get conversationService;
+  external _NotificationService get notificationService;
   external _Driver get driver;
   external JSPromise<JSAny?> close();
 }
@@ -33,6 +34,12 @@ extension type _MessageService._(JSObject _) implements JSObject {
   external void addMessageListener(JSFunction listener);
   external JSPromise<JSObject> queryMessages(JSObject options);
   external JSPromise<JSObject> sendMessage(JSObject options);
+  external JSPromise<JSObject> recallMessage(JSObject options);
+}
+
+@JS()
+extension type _NotificationService._(JSObject _) implements JSObject {
+  external void addNotificationListener(JSFunction listener);
 }
 
 @JS()
@@ -163,6 +170,30 @@ IncomingMessage _toMessage(JSObject raw) {
   );
 }
 
+/// 业务通知里只有 `updateMessageRequest` 需要处理：撤回带 `recallDate`，编辑带 `text`。
+MessageUpdate? _toMessageUpdate(JSObject notification) {
+  final JSAny? rawRequest = notification.getProperty<JSAny?>('relayedRequest'.toJS);
+  if (rawRequest == null || rawRequest.isUndefinedOrNull) {
+    return null;
+  }
+  final JSAny? rawUpdate =
+      (rawRequest as JSObject).getProperty<JSAny?>('updateMessageRequest'.toJS);
+  if (rawUpdate == null || rawUpdate.isUndefinedOrNull) {
+    return null;
+  }
+  final JSObject update = rawUpdate as JSObject;
+  final String? id = _readString(update, 'messageId');
+  if (id == null || id.isEmpty) {
+    return null;
+  }
+  return MessageUpdate(
+    id: id,
+    senderId: _readInt(notification, 'requesterId') ?? 0,
+    text: _readString(update, 'text'),
+    recallAt: _readDate(update, 'recallDate'),
+  );
+}
+
 /// 把 Turms 网关地址规整成 WebSocket 形式。
 String _wsUrl(String gatewayUrl) {
   if (gatewayUrl.startsWith('ws://') || gatewayUrl.startsWith('wss://')) {
@@ -197,6 +228,7 @@ class WebRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -223,6 +255,19 @@ class WebRealtime implements RealtimeClient {
       }
 
       client.messageService.addMessageListener(handler.toJS);
+      if (onMessageUpdated != null) {
+        // `notificationService` 只回调非创建类业务通知，正好是撤回/编辑。
+        client.notificationService.addNotificationListener(((JSObject notification) {
+          try {
+            final MessageUpdate? update = _toMessageUpdate(notification);
+            if (update != null) {
+              onMessageUpdated(update);
+            }
+          } catch (e) {
+            debugPrint('解析 Turms 消息更新失败：$e');
+          }
+        }).toJS);
+      }
       // 连接断了要让状态层知道：否则 UI 一直显示「实时」，推送静悄悄停掉。
       // 旧连接（切号/重连）的断开回调不能把新连接一起拆掉。
       client.driver.addOnDisconnectedListener(((JSObject info) {
@@ -316,6 +361,19 @@ class WebRealtime implements RealtimeClient {
           }))
           .toDart;
       return _readString(response, 'data') ?? '';
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> recall({required String messageId}) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      // 不传 recallDate：`turms-client-js` 会补当前时间；服务端要求 pastOrPresent。
+      await client.messageService
+          .recallMessage(_object(<String, JSAny?>{'messageId': messageId.toJS}))
+          .toDart;
     } catch (e) {
       throw _turmsError(e);
     }
