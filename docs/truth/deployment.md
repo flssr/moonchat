@@ -137,7 +137,7 @@ server {
 | `MONDCHAT_PROJECTION_ENABLED` | 服务器 `.env` | 默认 `true`（compose 写 `${MONDCHAT_PROJECTION_ENABLED:-true}`）；设 `false` 只停派发与对账，事件照常累积 |
 | `MONDCHAT_PROJECTION_RECONCILE_CRON` | 服务器 `.env` | 默认 `0 0 3 * * *`（每天 03:00）；首次回填可临时调成分钟级 |
 | `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 服务器 `.env` | 默认 `false`；打开才有两套 statements 与冻结踢会话 |
-| `allow-send-messages-to-stranger` | 仓库 compose 写死 `false` | 对仍走 Biz 代发的客户端无影响（Admin 进 `saveMessage`，不跑好友校验） |
+| `allow-send-messages-to-stranger` | 仓库 compose 写死 `false`（仅首次启动种子值，见[改 Turms 全局属性](#改-turms-全局属性)） | 对仍走 Biz 代发的客户端无影响（Admin 进 `saveMessage`，不跑好友校验） |
 | `SSH_HOST`、`SSH_USER`、`SSH_PRIVATE_KEY`、`SSH_KNOWN_HOSTS`、`GHCR_PAT` | GitHub Secrets | 只给 CD 与官网流水线用 |
 
 `compose.yaml` 每次部署都被 CD 覆盖，**所以任何故障时要快速关掉的开关都必须走 `.env`**，不能写死在 compose 里。
@@ -228,10 +228,29 @@ echo "clean: ${val: -120}"
 - Turms 身份模式是 `jwt`，验签密钥与 Biz 使用同一份文件：`TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_TYPE=jwt`，密钥文件挂到 gateway 的 `/opt/turms/secrets/jwt-hmac256.key` 与 Biz 的 `MONDCHAT_JWT_SECRET_FILE`。
 - 建 Turms 用户时使用平台生成、不保存也不分发的随机密码。
 - 客户端只能从 `POST /api/sessions` 获得 Turms 凭据。
-- **当前** `allowSendMessagesToStranger = true`，因为写路径仍由 Biz 网关代发、且关系投影尚未派发；编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=true`，不吃上游默认值。**切换后**必须翻成 `false`，让 Turms 用投影后的好友与拉黑关系判定；前提是先完成投影回填并让对账三类差异为 0，否则全员私聊立刻回 `5001`。
-- 已读只改写调用者自己的读游标，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`，同样不吃上游默认值。**当前**读游标由 Biz 代写（`POST /api/conversations/{type}/{id}/read`），**切换后**由客户端直写 `CONVERSATION.UPDATE`，这条配置的口径不变。
+- `allowSendMessagesToStranger`：仓库 compose 里写死 `-Dturms.service.message.allow-send-messages-to-stranger=false`，**但这只是首次启动的种子值**。Turms 的全局可变属性由 `turms-service` 持久化在 Mongo 的 shared config 里，之后每次启动都读库里的那份，`-D` 不再覆盖。翻开关要走 admin API（[改 Turms 全局属性](#改-turms-全局属性)）；2026-11-24 的 P3 验收实测线上仍是 `true`（陌生人能私聊、拉黑拦不住）。切换前提是投影回填并让对账三类差异为 0，否则全员私聊立刻回 `5001`。
+- 已读只改写调用者自己的读游标，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`（同样只是种子值，见上）。**当前**读游标由客户端直写 `CONVERSATION.UPDATE`。
 
 任一前提被改都会破坏「客户端直写 + Turms 侧判定」这条链（未切换时则破坏写入网关的唯一入口）。
+
+## 改 Turms 全局属性
+
+`turms-service` 首次启动会把全局可变属性写进 MongoDB 的 shared config（compose 里 `-Dturms.cluster.shared-config.mongo.uri` 指向的库），以后启动都以库里那份为准；`TURMS_SERVICE_JVM_OPTS` 里的 `-D` 只在库为空时作为种子。改属性走 admin API，立即广播到所有节点、不用重启：
+
+```bash
+cd /opt/mondchat
+PW=$(sed -n 's/^MONDCHAT_TURMS_ADMIN_PASSWORD=//p' .env)
+# 先看当前层级与值（返回的 data 就是要提交的树）
+docker compose exec -T turms-service curl -fsS -u "turms:$PW" \
+  'http://127.0.0.1:8510/cluster/settings?onlyMutable=true'
+# 按 GET 返回的层级提交要改的项；示例：关陌生人私聊
+docker compose exec -T turms-service curl -fsS -u "turms:$PW" -X PUT \
+  -H 'Content-Type: application/json' \
+  -d '{"service":{"message":{"allowSendMessagesToStranger":false}}}' \
+  http://127.0.0.1:8510/cluster/settings
+```
+
+返回 200 即生效；之后重启用库里的值，不会退回 `-D`。改 `-D` 而不走这条接口，重启后会被库里的旧值覆盖。
 
 Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**当前未挂载、未启用**，限流仍在 Biz。启用方式是把插件打进自建镜像（`infra/turms/Dockerfile`，基础层仍是上游 pinned digest，只往插件目录多拷一个 jar），由服务器 `.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向它——投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
 
