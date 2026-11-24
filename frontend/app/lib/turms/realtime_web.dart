@@ -50,6 +50,7 @@ extension type _ConversationService._(JSObject _) implements JSObject {
   external JSPromise<JSObject> updateGroupConversationReadDate(JSObject options);
 }
 
+/// `turms-client-js` 的会话查询：私聊与群分开两个方法（issue #37 读已读时间）。
 @JS('Date')
 extension type _JSDate._(JSObject _) implements JSObject {
   external factory _JSDate(num milliseconds);

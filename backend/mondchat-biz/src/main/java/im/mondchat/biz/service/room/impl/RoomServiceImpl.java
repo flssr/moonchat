@@ -62,6 +62,7 @@ public class RoomServiceImpl implements RoomService {
         OffsetDateTime now = OffsetDateTime.now();
         RoomInfo room = RoomInfo.builder()
                 .name(request.name())
+                .description(request.description())
                 .ownerAccountId(me.accountId())
                 .turmsSyncState(TurmsSyncState.PENDING)
                 .createdAt(now)
@@ -73,7 +74,8 @@ public class RoomServiceImpl implements RoomService {
         projectionEvents.roomMemberChanged(room.getId(), me.accountId(), null, true);
         projectAfterCommit(room.getId());
 
-        return new RoomResponses.CreateResponse(room.getId(), room.getName(), me.accountId(), now.toInstant());
+        return new RoomResponses.CreateResponse(room.getId(), room.getName(), room.getDescription(),
+                me.accountId(), now.toInstant());
     }
 
     /** 不读 Turms 的群列表：它的群列表不等于业务列表（Turms 里可能有残留的游离群）。 */
@@ -108,8 +110,8 @@ public class RoomServiceImpl implements RoomService {
     public RoomResponses.InfoResponse info(CurrentAccount me, long roomId) {
         RoomInfo room = requireRoom(roomId);
         requireMember(roomId, me.accountId());
-        return new RoomResponses.InfoResponse(room.getId(), room.getName(), room.getOwnerAccountId(),
-                memberCount(roomId), room.getCreatedAt().toInstant());
+        return new RoomResponses.InfoResponse(room.getId(), room.getName(), room.getDescription(),
+                room.getOwnerAccountId(), memberCount(roomId), room.getCreatedAt().toInstant());
     }
 
     @Override

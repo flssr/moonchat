@@ -71,7 +71,7 @@ class ApiException implements Exception {
   String toString() => 'ApiException($code/$statusCode): $message';
 }
 
-/// 24 条 `/api/*` 路由的唯一调用点，前端目前用到 20 条（消息发送改走 Turms，黑名单三条未接）。
+/// `/api/*` 路由的唯一调用点；消息发送与已读改走 Turms，其余 REST 动作都经这里。
 /// 路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
@@ -299,9 +299,18 @@ class ApiClient {
 
   // —— 群与成员 ——
 
-  /// #12 建群。
-  Future<Room> createRoom({required String token, required String name}) async {
-    final json = await _send('POST', '/api/rooms', token: token, body: {'name': name});
+  /// #12 建群。简介可选，空白就不传（issue #38）。
+  Future<Room> createRoom({
+    required String token,
+    required String name,
+    String? description,
+  }) async {
+    final String? intro =
+        description == null || description.trim().isEmpty ? null : description.trim();
+    final json = await _send('POST', '/api/rooms', token: token, body: <String, Object?>{
+      'name': name,
+      'description': ?intro,
+    });
     return Room.fromJson(json);
   }
 

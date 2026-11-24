@@ -2,6 +2,7 @@ package im.mondchat.biz;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -62,6 +63,68 @@ class RoomApiTest extends ApiTestSupport {
                 .andExpect(jsonPath("$.member_count").value(1))
                 .andExpect(jsonPath("$.turms_group_id").doesNotExist())
                 .andExpect(jsonPath("$.turms_sync_state").doesNotExist());
+    }
+
+    @Test
+    void 建群可以带简介且详情原样返回() throws Exception {
+        Caller owner = newCaller();
+
+        String body = mockMvc.perform(post("/api/rooms")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"读书会","description":"  每周三晚上，聊一本读过的书。  "}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.name").value("读书会"))
+                // 首尾空白被 trim，简介只存在 PG
+                .andExpect(jsonPath("$.description").value("每周三晚上，聊一本读过的书。"))
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        long roomId = ((Number) JsonPath.read(body, "$.room_id")).longValue();
+
+        mockMvc.perform(get("/api/rooms/" + roomId)
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.description").value("每周三晚上，聊一本读过的书。"));
+        assertThat(jdbc.queryForObject("select description from room_info where id = ?", String.class, roomId))
+                .isEqualTo("每周三晚上，聊一本读过的书。");
+    }
+
+    @Test
+    void 不写简介或只写空白时是null() throws Exception {
+        Caller owner = newCaller();
+
+        mockMvc.perform(post("/api/rooms")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"没简介"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.description").value(nullValue()));
+        mockMvc.perform(post("/api/rooms")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"空白简介","description":"   "}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.description").value(nullValue()));
+    }
+
+    @Test
+    void 群简介超过两百字是校验失败() throws Exception {
+        Caller owner = newCaller();
+
+        mockMvc.perform(post("/api/rooms")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"超长简介","description":"%s"}
+                                """.formatted("简介".repeat(101))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("validation_failed"))
+                .andExpect(jsonPath("$.field").value("description"));
     }
 
     @Test

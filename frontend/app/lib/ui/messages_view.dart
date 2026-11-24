@@ -1024,6 +1024,21 @@ class _RoomInfoState extends State<_RoomInfo> {
           'id': '${widget.roomId}',
           'm': '${detail?.memberCount ?? 0}',
         })),
+        if (detail?.description != null && detail!.description!.trim().isNotEmpty) ...<Widget>[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: p.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: p.line),
+            ),
+            child: Text(
+              detail.description!,
+              style: TextStyle(fontSize: 12.5, height: 1.6, color: p.ink2),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         Text(context.tr('成员'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
         const SizedBox(height: 6),

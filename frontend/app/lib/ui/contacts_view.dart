@@ -88,6 +88,7 @@ class _ContactsViewState extends State<ContactsView> {
 
   Future<void> _openCreateRoom() async {
     final TextEditingController name = TextEditingController();
+    final TextEditingController description = TextEditingController();
     final Set<int> selected = <int>{};
     await showDialog<void>(
       context: context,
@@ -98,8 +99,13 @@ class _ContactsViewState extends State<ContactsView> {
           builder: (BuildContext context, StateSetter setDialogState) {
             Future<void> create() async {
               final String value = name.text.trim();
+              final String intro = description.text.trim();
               if (value.isEmpty || value.length > 20) {
                 setDialogState(() => error = '群名 1–20 字');
+                return;
+              }
+              if (intro.length > 200) {
+                setDialogState(() => error = '群简介最多 200 字');
                 return;
               }
               setDialogState(() {
@@ -107,7 +113,8 @@ class _ContactsViewState extends State<ContactsView> {
                 error = null;
               });
               try {
-                final Room room = await widget.state.createRoom(value);
+                final Room room =
+                    await widget.state.createRoom(value, description: intro);
                 for (final int id in selected) {
                   try {
                     await widget.state.addMember(room.roomId, id);
@@ -146,6 +153,16 @@ class _ContactsViewState extends State<ContactsView> {
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: context.tr('群名 1–20 字'),
+                      ),
+                    ),
+                    TextField(
+                      controller: description,
+                      maxLength: 200,
+                      maxLines: 2,
+                      style: TextStyle(fontSize: 13, color: context.moon.ink),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: context.tr('群简介 0–200 字（可选）'),
                       ),
                     ),
                     const SizedBox(height: 4),

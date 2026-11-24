@@ -38,6 +38,7 @@ class _FakeRealtime implements RealtimeClient {
       <({String type, String targetId})>[];
   final List<String> recalled = <String>[];
   TurmsException? sendError;
+  TurmsException? markReadError;
   int sendSequence = 9001;
 
   /// 设置后 `send()` 会等它完成，用来验证「推送回声先到、直写响应后到」。
@@ -134,6 +135,9 @@ class _FakeRealtime implements RealtimeClient {
     required String conversationType,
     required String targetId,
   }) async {
+    if (markReadError != null) {
+      throw markReadError!;
+    }
     readMarks.add((type: conversationType, targetId: targetId));
   }
 
@@ -837,12 +841,60 @@ void main() {
     expect(state.lastMessage(dm.key)?.text, '在吗');
 
     state.selectConversation(dm.key);
-    expect(state.unreadFor(dm.key), 0);
+    expect(state.unreadFor(dm.key), 1, reason: '等 Turms 确认后再清');
     expect(rt.readMarks, isEmpty, reason: '1 秒 debounce 前不写');
 
-    await Future<void>.delayed(const Duration(milliseconds: 1100));
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(state.unreadFor(dm.key), 0);
     expect(rt.readMarks.single.type, 'dm');
     expect(rt.readMarks.single.targetId, '2');
+  });
+
+  test('登录未读以服务端 readDate 为准，没有本机缓存也算出来', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
+    rt.pages.add(<IncomingMessage>[
+      IncomingMessage(
+        id: '901',
+        text: '离线来的',
+        senderId: 2,
+        recipientId: 1,
+        sentAt: DateTime.parse('2026-11-10T09:01:00Z'),
+      ),
+    ]);
+    final AppState state = _newState(realtime: rt, primeOnLogin: true);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    for (int i = 0; i < 100 && state.lastMessage(dm.key) == null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(state.lastMessage(dm.key)?.text, '离线来的');
+    expect(state.unreadFor(dm.key), 1, reason: 'readDate 之前的对端消息都算未读');
+  });
+
+  test('已读上报失败时角标保留，不假装读过', () async {
+    final _FakeRealtime rt = _FakeRealtime()
+      ..markReadError = TurmsException(turmsCode: 1105);
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '1881590000000000999',
+      text: '在吗',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    expect(state.unreadFor(dm.key), 1);
+
+    state.selectConversation(dm.key);
+    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    expect(state.unreadFor(dm.key), 1, reason: 'Turms 没确认，角标不能清');
+    expect(rt.readMarks, isEmpty);
   });
 
   test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {

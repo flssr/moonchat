@@ -205,7 +205,7 @@ class AppState extends ChangeNotifier {
     if (key != null) {
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
-      if ((_unread.remove(key) ?? 0) > 0) {
+      if ((_unread[key] ?? 0) > 0) {
         _scheduleReadReport(key);
       }
     }
@@ -232,7 +232,7 @@ class AppState extends ChangeNotifier {
     }
     windowFocused = value;
     final String? key = activeConversationKey;
-    if (value && key != null && (_unread.remove(key) ?? 0) > 0) {
+    if (value && key != null && (_unread[key] ?? 0) > 0) {
       _scheduleReadReport(key);
     }
     notifyListeners();
@@ -256,7 +256,34 @@ class AppState extends ChangeNotifier {
     } else {
       await api.blockAccount(token: loginToken!, accountId: accountId);
       _blocked.add(accountId);
+      _hideBlockedConversation(accountId);
     }
+    notifyListeners();
+  }
+
+  /// 拉黑之后聊天界面不再出现这个人：会话列表里过滤掉（`conversations` getter），
+  /// 正开着的那条也要退出，否则会停在一条已经不该出现的会话上。
+  void _hideBlockedConversation(int accountId) {
+    final String key = 'dm:$accountId';
+    _unread.remove(key);
+    if (activeConversationKey == key) {
+      activeConversationKey = null;
+    }
+  }
+
+  /// 黑名单管理弹窗的列表：一次取到上限（100 人），顺带让本地集合与服务端对齐。
+  Future<List<BlocklistItem>> loadBlocklist() async {
+    final BlocklistPage page = await api.blocklist(token: loginToken!, size: 100);
+    _blocked
+      ..clear()
+      ..addAll(page.items.map((BlocklistItem item) => item.accountId));
+    notifyListeners();
+    return page.items;
+  }
+
+  Future<void> unblockAccount(int accountId) async {
+    await api.unblockAccount(token: loginToken!, accountId: accountId);
+    _blocked.remove(accountId);
     notifyListeners();
   }
 
@@ -350,10 +377,12 @@ class AppState extends ChangeNotifier {
   List<ChatMessage> messagesOf(String key) => _messages[key] ?? const <ChatMessage>[];
 
   /// 会话列表：好友 → 私聊，我加入的群 → 群聊。顺序稳定，不按活跃度排。
+  /// 我拉黑的人不出现在聊天界面（解黑后自动回来）；拉黑不删好友，联系人页仍然看得见。
   List<Conversation> get conversations {
     final List<Conversation> out = <Conversation>[
       for (final Friendship f in friends)
-        Conversation(type: 'dm', targetId: f.peerAccountId, title: f.displayName),
+        if (!_blocked.contains(f.peerAccountId))
+          Conversation(type: 'dm', targetId: f.peerAccountId, title: f.displayName),
       for (final Room r in rooms)
         Conversation(
           type: 'room',
@@ -372,7 +401,7 @@ class AppState extends ChangeNotifier {
         continue;
       }
       final int? id = int.tryParse(key.substring(3));
-      if (id == null) {
+      if (id == null || _blocked.contains(id)) {
         continue;
       }
       out.add(Conversation(
@@ -927,6 +956,9 @@ class AppState extends ChangeNotifier {
           }
         }
       }
+    } else if (live && incoming.senderId != me && reading) {
+      // 正看着这条会话：把服务端已读也推到这条消息上，下次登录才不会又算成未读。
+      _scheduleReadReport(key);
     }
     notifyListeners();
     _scheduleCacheSave();
@@ -1003,6 +1035,10 @@ class AppState extends ChangeNotifier {
     try {
       await realtime.markRead(conversationType: conv.type, targetId: targetId);
       _readDates[key] = DateTime.now().toUtc();
+      if (_unread.remove(key) != null) {
+        notifyListeners();
+        _scheduleCacheSave();
+      }
       return true;
     } on TurmsException catch (e) {
       _recoverRealtime(e);
@@ -1473,8 +1509,9 @@ class AppState extends ChangeNotifier {
 
   // —— 群 ——
 
-  Future<Room> createRoom(String name) async {
-    final Room room = await api.createRoom(token: loginToken!, name: name);
+  Future<Room> createRoom(String name, {String? description}) async {
+    final Room room =
+        await api.createRoom(token: loginToken!, name: name, description: description);
     await refreshAll();
     return room;
   }
