@@ -91,8 +91,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final String email = _email.text.trim();
     final String password = _password.text;
     final String name = _name.text.trim();
+    // 与后端 `^[^@]+@.+$` 对齐：@ 前有内容，@ 后也要有内容。
+    final int at = email.indexOf('@');
     setState(() {
-      _emailError = (email.isEmpty || !email.contains('@') || email.indexOf('@') == 0)
+      _emailError = (email.isEmpty || at <= 0 || at == email.length - 1)
           ? '需要一个带 @ 的邮箱'
           : null;
       _passwordError = (password.length < 8 || password.length > 72)

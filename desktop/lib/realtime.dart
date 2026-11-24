@@ -21,6 +21,10 @@ class DesktopRealtime implements RealtimeClient {
   static const Duration _reconnectBase = Duration(seconds: 2);
   static const int _reconnectMaxSeconds = 30;
 
+  /// 桌面壳自己按指数退避重连，状态层不要再排队一份。
+  @override
+  bool get reconnectsByItself => true;
+
   WebSocket? _socket;
   Timer? _heartbeat;
   Timer? _reconnectTimer;

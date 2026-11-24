@@ -5,6 +5,9 @@ import 'realtime.dart';
 /// （官方 Dart 客户端是 TCP 传输，见 `turms-client-dart/lib/src/transport/tcp_client.dart`）。
 class UnsupportedRealtime implements RealtimeClient {
   @override
+  bool get reconnectsByItself => false;
+
+  @override
   Future<void> connect({
     required TurmsCredential credential,
     required int myAccountId,

@@ -30,6 +30,9 @@ class _ContactsViewState extends State<ContactsView> {
   String? _lookupError;
   bool _busy = false;
 
+  /// 每次「查找」都换一个 key：同一账号再查一次也要把「已申请」之类的本地状态复位。
+  int _lookupAttempt = 0;
+
   /// 页签与选中项都在状态层（`docs/truth/frontend/README.md` 的 `friendsTab` / `selectedContact`）。
   String get _tab => widget.state.contactsTab;
   int? get _selectedId => widget.state.selectedContactId;
@@ -55,6 +58,7 @@ class _ContactsViewState extends State<ContactsView> {
     });
     try {
       await widget.state.loadProfile(id);
+      setState(() => _lookupAttempt++);
       widget.state.setSelectedContact(id);
     } on ApiException catch (e) {
       if (mounted) {
@@ -467,6 +471,7 @@ class _ContactsViewState extends State<ContactsView> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 420),
                   child: ProfilePanel(
+                    key: ValueKey<String>('${_selectedId!}-$_lookupAttempt'),
                     state: widget.state,
                     accountId: _selectedId!,
                     onMessage: () => widget.state.selectConversation('dm:$_selectedId'),

@@ -22,6 +22,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
 @JS()
 extension type _Driver._(JSObject _) implements JSObject {
   external void addOnDisconnectedListener(JSFunction listener);
+  external JSPromise<JSObject> send(JSObject request);
 }
 
 @JS()
@@ -211,6 +212,10 @@ String _wsUrl(String gatewayUrl) {
 
 class WebRealtime implements RealtimeClient {
   _TurmsClient? _client;
+
+  /// Web 端没有内置重连：状态层在断开事件后按退避换凭据重连。
+  @override
+  bool get reconnectsByItself => false;
 
   /// 连接代次：disconnect 或新 connect 会自增；旧连接晚到的回调按代次丢弃。
   int _generation = 0;
@@ -420,13 +425,19 @@ class WebRealtime implements RealtimeClient {
   }) async {
     try {
       final _TurmsClient client = _requireClient();
-      final JSObject params = _object(<String, JSAny?>{
-        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      // `turms-client-js` 的生成模型把 UpdateConversationRequest 私聊字段叫 `targetId`
+      // （proto 的 target_id），而会话服务的封装还在写 `userId`——那个字段名会被编码器
+      // 忽略，服务端只会回 `1102 userId/groupId both null`。所以这里直接按模型字段发，
+      // 群聊一并走 driver，避免两个封装层再分叉。
+      final JSObject update = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'targetId'): targetId.toJS,
+        'readDate': '${DateTime.now().millisecondsSinceEpoch}'.toJS,
       });
-      final JSPromise<JSObject> call = conversationType == 'room'
-          ? client.conversationService.updateGroupConversationReadDate(params)
-          : client.conversationService.updatePrivateConversationReadDate(params);
-      await call.toDart;
+      final JSObject request = _object(<String, JSAny?>{
+        'updateConversationRequest': update,
+        'customAttributes': (<JSAny?>[]).toJS,
+      });
+      await client.driver.send(request).toDart;
     } catch (e) {
       throw _turmsError(e);
     }

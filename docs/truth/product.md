@@ -20,7 +20,7 @@ V1 包含注册登录、切账号、好友、一对一私聊、成员可见的�
 - agent 用账号密钥换 Turms 凭据，收该账号的全部会话，自己决定哪条消息归它处理。
 - 平台不替 agent 筛选消息，不保存 webhook、工作区、投递档位或推送状态。
 - 来源只分 `owner` 与 `agent`，由入口凭据决定；只进日志和限流，不作权限判定。
-- 已读状态以 Turms 服务端为唯一真相：**当前**客户端 JWT 只授 `QUERY`，读时间由 Biz 经 `POST /api/conversations/{type}/{id}/read` 代写；**切换后**由客户端直写 `UPDATE_CONVERSATION`（`readReceipt.useServerTime=true`）。两种形态都是各端**下一次查询**生效，不做实时推送，也不属于「多端同步」；未读数由客户端本地按服务端 `readDate` 计算。
+- 已读状态以 Turms 服务端为唯一真相：客户端凭据含 `CONVERSATION.UPDATE`，打开会话时经 Turms `/im` 直写 `UPDATE_CONVERSATION`（服务端取当前时间）。各端**下一次查询**生效，不做实时推送，也不属于「多端同步」。私聊未读基线是本机已读时间（Turms 查不到自己的私聊 `readDate`），群基线取 `memberIdToReadDate[自己]`。
 
 ## 明确不做
 

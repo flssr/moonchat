@@ -71,6 +71,8 @@ void main() {
           onToggleTheme: (_) {},
           brightness: Brightness.light,
           textScale: 1.0,
+          themeMode: ThemeMode.system,
+          onThemeModeChanged: (_) {},
           onTextScaleChanged: (_) {},
           onLanguageChanged: (_) {},
         ),
