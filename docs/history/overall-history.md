@@ -20,6 +20,7 @@
 
 ## 目录
 
+- [生产打开 Turms 写凭据](#生产打开-turms-写凭据)
 - [Turms Admin 调用加超时](#turms-admin-调用加超时)
 - [写路径回归 Turms](#写路径回归-turms)
 - [自研插件与消息引擎发布耦合](#自研插件与消息引擎发布耦合)
@@ -57,6 +58,14 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### 生产打开 Turms 写凭据
+
+2026-11-25 00:52 CST   [2026-11-24 16:52 UTC]
+
+决策：生产 `/opt/mondchat/.env` 增加 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true` 并 `docker compose up -d --wait`，`POST /api/sessions` 签出的 Turms 凭据从只有 `QUERY` 变为含 `MESSAGE.CREATE`、`MESSAGE.UPDATE`、`CONVERSATION.UPDATE` 三项；探针账号 `100000008` 实测就是这个 statement 集合。
+
+原因：客户端直写（PR #74）已合入并上线，但凭据不带写权限时发消息与已读会被 gateway 回 `1106`，P3 灰度验收无法开始。打开前的前置已核过：关系投影三类差异为 0（好友 8 对双向共 16 行齐、黑名单 0、两群成员与角色一致），且 `allow-send-messages-to-stranger=false` 已在同一份 `compose.yaml` 里生效，两者不再分开切换。开关放在 `.env` 而不是 `compose.yaml`，是为了回滚不重走 CD；CD 只 `scp compose.yaml`，不碰 `.env`，这一行不会被部署覆盖。
 
 ### Turms Admin 调用加超时
 

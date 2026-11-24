@@ -84,6 +84,7 @@ server {
 - `/api/` 必须保留前缀：控制器都挂在 `/api/**`，所以 `proxy_pass` 不带 URI 部分。
 - 部署前提里 Biz 侧回给客户端的 WS 地址由 `.env` 的 `MONDCHAT_TURMS_GATEWAY_URL` 决定，形如 `wss://api.mondchat.com/im`。
 - **生产不开 CORS**：`DevCorsConfig` 只在 `dev` profile 生效。放在别处的前端必须由那一侧把 `/api`、`/im` 反代到 `api.mondchat.com`（浏览器视角同源），直接从别的 origin 调本机入口会被浏览器拦掉。
+- **命令行判活要带 `--http1.1`**：站点开了 `http2 on`，而 `Connection: Upgrade` 是 HTTP/1.1 的语义，HTTP/2 下 nginx 在 h2 层直接回 `400`，请求到不了 `/im`。用 `curl -s -o /dev/null -w '%{http_code}' --http1.1 -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' https://api.mondchat.com/im`，回 `101` 才算通；不带 `--http1.1` 的 `400` 是探测方式造出来的假警报，真实浏览器的 WS 握手固定走 HTTP/1.1，不受影响。
 
 ## 服务器预置
 
@@ -101,11 +102,11 @@ server {
    | `MONDCHAT_BIZ_TAG` | 镜像 tag，默认 `latest`；回滚时填提交 sha（不带冒号） |
    | `MONDCHAT_TURMS_GATEWAY_URL` | 客户端连的 WS 地址，如 `wss://api.mondchat.com/im` |
    | `MONDCHAT_JWT_SECRET_FILE` | 可选，默认 `/opt/mondchat/secrets/jwt-hmac256.key` |
-   | `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 可选，默认 `false`。`true` = 签出带写权限的 Turms statements；必须与 `allowSendMessagesToStranger=false` 同一次开，单独提前开等于让持凭据客户端绕过好友与拉黑 |
+   | `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 可选，默认 `false`。`true` = 签出带写权限的 Turms statements；必须与 `allowSendMessagesToStranger=false` 同一次开，单独提前开等于让持凭据客户端绕过好友与拉黑。**当前线上为 `true`**（2026-11-25 打开，前置是关系投影三类差异为 0） |
    | `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` | 可选，默认 `2s`。Admin HTTP 连接超时 |
    | `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` | 可选，默认 `5s`。Admin HTTP 读取超时；Turms 卡死时按既有 catch 回 `503 upstream_unavailable` |
 
-2. `/opt/mondchat/secrets/jwt-hmac256.key`（`chmod 600`）：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。
+2. `/opt/mondchat/secrets/jwt-hmac256.key`：用 `sudo sh -c 'umask 077; openssl rand -hex 32 > /opt/mondchat/secrets/jwt-hmac256.key; chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key'` 一次生成到位；`mondchat-biz` 与 `turms-gateway` 挂同一份。**属主必须是容器内的 uid `10001`，只 `chmod 600` 不够**：bind mount 保留宿主属主与权限，Biz 以 uid 10001 运行，读 `root:600` 的文件会 `AccessDeniedException` 后启动失败。已有文件只修属主用 `sudo chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key`；轮换密钥用上面同一条命令，别用 `sudo tee`（生成出来又是 `root:600`）。Turms 两个容器以 root 读同一份文件，改属主不影响 gateway 验签。
 3. `docker login ghcr.io`，用带 `read:packages` 的 PAT，否则 `docker compose pull` 拿不到私有镜像。
 4. 2G swap：`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`，并写进 `/etc/fstab`；`vm.swappiness=10`。
 5. 宿主要有 `curl`（CD 的健康检查用它打本机 `8080/actuator/health`），以及 Compose 2.17+（用到 `up -d --wait`）。
@@ -136,7 +137,7 @@ server {
 | `MONDCHAT_TURMS_SERVICE_IMAGE` | 服务器 `.env` | **默认空 = 上游 pinned digest（无插件）**；设成 `ghcr.io/<owner>/mondchat-turms-service:latest` 才加载限流插件 |
 | `MONDCHAT_PROJECTION_ENABLED` | 服务器 `.env` | 默认 `true`（compose 写 `${MONDCHAT_PROJECTION_ENABLED:-true}`）；设 `false` 只停派发与对账，事件照常累积 |
 | `MONDCHAT_PROJECTION_RECONCILE_CRON` | 服务器 `.env` | 默认 `0 0 3 * * *`（每天 03:00）；首次回填可临时调成分钟级 |
-| `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 服务器 `.env` | 默认 `false`；打开才有两套 statements 与冻结踢会话 |
+| `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 服务器 `.env` | 默认 `false`；打开才有两套 statements 与冻结踢会话。**当前线上为 `true`**（2026-11-25 打开） |
 | `allow-send-messages-to-stranger` | 仓库 compose 写死 `false` | 对仍走 Biz 代发的客户端无影响（Admin 进 `saveMessage`，不跑好友校验） |
 | `SSH_HOST`、`SSH_USER`、`SSH_PRIVATE_KEY`、`SSH_KNOWN_HOSTS`、`GHCR_PAT` | GitHub Secrets | 只给 CD 与官网流水线用 |
 
@@ -163,7 +164,7 @@ server {
 4. **回填存量关系**：建号、好友、黑名单、群成员的存量没有事件（投影从 P1 之后才开始记事件），回填靠对账。默认每天 03:00（`0 0 3 * * *`，六段、秒在最前），要快就临时设 `MONDCHAT_PROJECTION_RECONCILE_CRON='0 */2 * * * *'` 跑一两轮再改回默认。对账只修 Turms、不反写 PG。
    派发器 2 秒一轮（`dispatch-interval-ms: 2000`）、一批 100 条，所以 `pending` 从 0 跳到几百属正常波动；判「卡住」要连续三次采样都只增不减，不能看单次快照。
 5. **上线即变的一项**：`stranger=false` 在每次部署里都生效，对仍走 Biz 代发的客户端应当零影响；但这是唯一可能被误伤的地方——部署后用真实账号发一条私聊确认成功，一条就够。
-6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。
+6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。**当前已在生产打开。** 打开后的验收口径：用真实账号登录再 `POST /api/sessions`，解出的 Turms 凭据 statements 必须含 `MESSAGE.CREATE`、`MESSAGE.UPDATE`、`CONVERSATION.UPDATE` 三项；只有 `QUERY` 说明开关没进容器（`.env` 改了但没 `up -d`，或键名写错）。
 7. **插件最后才上**：限流对所有来源生效，但它与消息引擎同进程，按「插件镜像投放」单独一步做，出问题单独回滚。
 
 ## 生产回滚
@@ -228,12 +229,12 @@ echo "clean: ${val: -120}"
 - Turms 身份模式是 `jwt`，验签密钥与 Biz 使用同一份文件：`TURMS_GATEWAY_SESSION_IDENTITYACCESSMANAGEMENT_TYPE=jwt`，密钥文件挂到 gateway 的 `/opt/turms/secrets/jwt-hmac256.key` 与 Biz 的 `MONDCHAT_JWT_SECRET_FILE`。
 - 建 Turms 用户时使用平台生成、不保存也不分发的随机密码。
 - 客户端只能从 `POST /api/sessions` 获得 Turms 凭据。
-- **当前** `allowSendMessagesToStranger = true`，因为写路径仍由 Biz 网关代发、且关系投影尚未派发；编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=true`，不吃上游默认值。**切换后**必须翻成 `false`，让 Turms 用投影后的好友与拉黑关系判定；前提是先完成投影回填并让对账三类差异为 0，否则全员私聊立刻回 `5001`。
+- `allowSendMessagesToStranger = false`（**当前生效**）：好友与拉黑由 Turms 用投影后的关系判定，编排里显式传了 `-Dturms.service.message.allow-send-messages-to-stranger=false`，不吃上游默认值。它与 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true` 是同一次切换、不分开，因为持写凭据的客户端会直接进 Turms；翻回 `true` 等于让它们绕过好友与拉黑。前提仍是投影回填与对账三类差异为 0，否则私聊回 `5001`。
 - 已读只改写调用者自己的读游标，查询历史消息不得顺带把读时间推到最新（否则一登录就把角标清空）；编排里显式传了 `-Dturms.service.conversation.read-receipt.update-read-date-when-user-querying-message=false`，同样不吃上游默认值。**当前**读游标由 Biz 代写（`POST /api/conversations/{type}/{id}/read`），**切换后**由客户端直写 `CONVERSATION.UPDATE`，这条配置的口径不变。
 
 任一前提被改都会破坏「客户端直写 + Turms 侧判定」这条链（未切换时则破坏写入网关的唯一入口）。
 
-Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**当前未挂载、未启用**，限流仍在 Biz。启用方式是把插件打进自建镜像（`infra/turms/Dockerfile`，基础层仍是上游 pinned digest，只往插件目录多拷一个 jar），由服务器 `.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向它——投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
+Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。**当前生产已挂载插件并在运行**：服务器 `.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向 `ghcr.io/<owner>/mondchat-turms-service:latest`（由 `infra/turms/Dockerfile` 把 `mondchat-turms-plugin.jar` 拷进插件目录），限流已从 Biz 迁到插件。验证要读**容器内文件日志** `/opt/turms/turms-service/log/`——Turms 的 Spring 与插件日志不进 stdout，`docker compose logs` 里只有 JVM 参数，看到「没有插件日志」是正常的——grep `registered` 与 `RateLimitExtension ... has been started`。投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
 
 插件的故障半径是**整个 turms-service**：`plugin.yaml` 里的 `class` 不存在或加载失败会让 Spring 上下文 refresh 中止、容器以退出码 1 起不来，不是「插件不生效」。因此：
 
