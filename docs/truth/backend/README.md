@@ -9,10 +9,10 @@
 | 身份 | 注册登录、agent 建号、资料、切账号、凭据续期 | `controller/account`、`service/account`、`service/auth` |
 | 关系 | 好友申请与好友关系、单向黑名单 | `controller/friendship`、`controller/blocklist` |
 | 群 | 群与成员 CRUD、PG → Turms 投影 | `controller/room`、`service/room`、`service/turms` |
-| 消息 | 当前代发消息与已读（切换后退场）、限流（当前在 Biz） | `controller/message`、`service/message`、`service/limiter` |
+| 消息 | 直写已交 Turms；Biz 只保留旧客户端 REST 写路径（P4 删除）与 Redis 限流 | `controller/message`、`service/message`、`service/limiter` |
 | 持久层 | MyBatis-Plus、迁移与事务 | `entity`、`mapper`、`db/migration` |
 | 投影 | outbox 派发、关系/群成员/账号投影与对账 | `service/projection`、`mapper/projection`、`entity/DomainEvent` |
-| 限流插件 | 客户端直写后由 Turms 进程内执行两级令牌桶；已验证编译与加载，未启用；命中限流 `1101` 未验证（待 P2） | `mondchat-turms-plugin` |
+| 限流插件 | 客户端直写由 Turms 进程内执行两级令牌桶；生产已挂载，命中回 `1101` 已实测（实际阈值见 #79） | `mondchat-turms-plugin` |
 | Turms 客户端 | Admin API 与凭据签发 | `client/turms`、`service/turms` |
 
 ## 接口面
