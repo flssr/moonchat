@@ -20,6 +20,8 @@
 
 ## 目录
 
+- [发布 MondChat v0.0.2 安装包](#发布-mondchat-v002-安装包)
+- [2026-11-24 生产服务器变更汇总](#2026-11-24-生产服务器变更汇总)
 - [生产切客户端直写授权](#生产切客户端直写授权)
 - [私聊未读基线回到本机](#私聊未读基线回到本机)
 - [Turms 全局属性不再由 compose 决定](#turms-全局属性不再由-compose-决定)
@@ -60,6 +62,28 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### 发布 MondChat v0.0.2 安装包
+
+2026-11-25 00:28 CET   [2026-11-24 23:28 UTC]
+
+决策：用 main `ab4666f` 的 Windows CI 产物，按既有 Inno Setup 规格打 `MondChat-Setup-0.0.2.exe`（x64、当前用户安装、中文向导、内置 VC++ 运行库、桌面与开始菜单快捷方式、自定义卸载），把 `preview` release 更新为「Mondchat V0.0.2 preview」，资产为安装包与 `Readme.md`，删除旧的 `MondChat-Setup-1.0.0.exe`；`site/app.js` 与 `site/index.html` 的下载链接同步指向 0.0.2，由 Site 流水线随 `site/**` 部署。安装包 12,028,922 字节，SHA256 `7A1BB7A373415623AD44AAACC0EAD1A4C99EB0616D4784A27204CD76D88CF7D9`。
+
+原因：把「测试改进3」的交互带给测试用户，沿用之前的安装包要求；`preview` 是固定标签、预览包始终挂最新资产，所以原地替换而不是新开标签。打包时发现启动过的 app 会把 `MondChat\session.json`、`cache.json` 等本机私有数据写进载荷目录，已移出载荷并在本地打包脚本里加了「载荷出现 `MondChat\` 就拒绝打包」的防呆。
+
+### 2026-11-24 生产服务器变更汇总
+
+2026-11-25 00:30 CET   [2026-11-24 23:30 UTC]
+
+决策：今天生产环境的实际改动如下（UTC），供汇报：
+
+- 20:20–21:20 切客户端直写（P3）：`/opt/mondchat/.env` 置 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`（正常账号签 `QUERY *` + `MESSAGE.CREATE/UPDATE` + `CONVERSATION.UPDATE`，冻结账号只读 + 清角标）；Turms 全局属性 `allowSendMessagesToStranger=false` 走 Admin API `PUT /cluster/settings` 写 shared config；客户端与 agent 改各自的 Turms `/im` 直写，Biz REST 写路径保留给旧客户端。
+- 20:20–21:20 限流插件上线：`.env` 设 `MONDCHAT_TURMS_SERVICE_IMAGE=ghcr.io/flssr/mondchat-turms-service:latest`（镜像 2026-11-23 16:23 UTC 构建成功），`docker compose pull/up turms-service` 后日志有 `registered` / `extension ... has been started`，`127.0.0.1:8510/health` 200。Turms 自带防刷在约 8 请求/秒先于插件触发（`701` 关会话、IP 封 10 分钟）。
+- Biz 部署（CD，健康检查均通过）：13:39 UTC `e7ceace`、21:16 UTC `7cd3dbf`、22:17 UTC `8a2cf89`、22:46 UTC `ab4666f`。今天没改后端代码、没有新 Flyway 迁移（仍 V7），这几次部署不改接口与数据，只是容器随镜像更新重启；`ab4666f` 是业务代码的最新镜像，本次发布只改站点与文档，push 后 CD 仍会按惯例重建一次、无后端变化。
+- 验收：好友私聊/群聊正常；非好友 `5001`；被拉黑 `5001` 且未送达；解除拉黑恢复；连发触发 `1101`。
+- 安装包与官网：见上一条。
+
+原因：P3 把好友/拉黑的执行点从 Biz 交回 Turms；写权限必须和 `stranger=false` 同一次开，单独开等于让持凭据客户端绕过好友与拉黑。开关与回滚路径见 [部署与运行](../truth/deployment.md)。
 
 ### 生产切客户端直写授权
 
