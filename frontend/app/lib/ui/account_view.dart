@@ -293,13 +293,6 @@ class _AccountViewState extends State<AccountView> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 28),
-                    Text(context.tr('凭据'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.tr('登录 JWT 7 天，滑动续期；Turms 凭据 12 小时，到期前重调 /api/sessions 换新的。两者都由客户端自己续，不靠碰运气刚好没过期。'),
-                      style: TextStyle(fontSize: 12, height: 1.7, color: p.ink2),
-                    ),
                   ],
                 ),
                 ),
