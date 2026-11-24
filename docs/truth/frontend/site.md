@@ -22,7 +22,7 @@
 
 ## 下载入口
 
-- 导航右侧「现在体验 MondChat」本身是一个指向安装包的链接：`https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe`（`preview` 标签下的产物，版本号随产物走，换包要同步改这一处）。
+- 导航右侧「现在体验 MondChat」本身是一个指向安装包的链接：`https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-0.0.2.exe`（`preview` 标签下的产物，版本号随产物走，换包要同步改这一处）。
 - 有 JS 时点它先弹原生 `<dialog>`，提示「只支持 x64 平台的 Windows 10 及以上」；「确认」关掉弹窗并跳下载，「取消」、`Esc`、点遮罩都只关弹窗。
 - 没有 JS 或浏览器不支持 `dialog.showModal` 时不拦链接，直接下载；提醒只是告知，不是门禁。
 
