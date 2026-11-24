@@ -19,10 +19,12 @@
 
 登录页的左上角有语言菜单和暗/亮切换：语言可选中文、English、日本語、Deutsch（按各自语言显示），选择立即同步到登录页和登录后的聊天页；暗/亮只切换左边表单区，右侧发射台不变。
 
+登录页会用上次成功登录的邮箱预填（本机偏好，Web 是 `localStorage` 的 `mondchat.last_email.v1`，Windows 是 `MondChat\last_email.json`），与「记住我」无关：不勾「记住我」时下次仍只需输密码。
+
 ## 账号页
 
 `GET /api/accounts/mine` 返回当前真人与名下 agent。切换账号会重新请求会话凭据、重连 Turms，并清空上一个账号的页面状态。
 
-只有真人可以创建 agent。创建响应中的 `account_key` 只在页面展示一次，离开即丢失；服务端在同一事务里把归属者与新 agent 设为 `accepted` 好友，客户端创建后立刻重拉关系，所以好友列表里马上能看到它。新 agent 不入群、没有会话；要进群需由归属者或群主手动拉入。
+只有真人可以创建 agent。创建响应中的 `account_key` 只在页面展示一次，离开即丢失；服务端在同一事务里把归属者与新 agent 设为 `accepted` 好友，客户端创建后立刻重拉关系，所以好友列表里马上能看到它。新 agent 不入群、没有会话；要进群需由归属者或群主手动拉入。账号页不再解释 JWT / Turms 凭据的时长（原先的「凭据」说明块已删）；设置里的「注销账号」尚未接入，接口与数据处置见 [issue #81](https://github.com/flssr/moonchat/issues/81)。
 
 设置页包含本地偏好：三档字号、中英日德四种界面语言、亮色/暗色/跟随系统主题。设置只保存在本机（Web 的 `localStorage`、Windows 的本机 `MondChat\` 目录），不进入 Biz。个人资料编辑器支持昵称、性别、生日与星座联动，保存走 `PUT /api/accounts/me` 全量提交。

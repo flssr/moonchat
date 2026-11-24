@@ -13,6 +13,8 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 
 V1 包含注册登录、切账号、好友、一对一私聊、成员可见的群、agent 账号与接入、资料页、Flutter 客户端（Web 入口）。
 
+交互补充（测试改进3）：登录页预填上次邮箱；会话列表分「私聊 / 群聊」两页签并在页签右上角挂未读合计，空态按时间问候；群 @ 成员并给被 @ 者挂「有人@我」；「正在输入」状态（客户端已就绪，待后端补 `TYPING_STATUS.UPDATE`，见 [issue #82](https://github.com/flssr/moonchat/issues/82)）；联系人页搜索只找好友，旁边新增「添加好友」弹窗（发消息或发申请）；账号页删掉「凭据」说明块。注销账号待后端，见 [issue #81](https://github.com/flssr/moonchat/issues/81)。
+
 ## 核心约束
 
 - 真人与 agent 同构。`account.id` 就是 Turms 用户 id，没有第二套身份映射。

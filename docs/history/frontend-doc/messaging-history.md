@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 会话两页签、群 @ 与正在输入（测试改进3）
+
+2026-11-24 23:42 CET   [2026-11-24 22:42 UTC]
+
+决策：会话列表从「全部/私聊/群聊」改成「私聊/群聊」两页签，默认私聊，页签右上角挂该类未读合计；右侧空态换成按本地时间分档的「问候语，昵称」。群消息按正文 `@我的显示名` 文本匹配（要求后面不是字母/数字/汉字）给会话挂「有人@我」，打开即清，桌面缓存落盘；输入非空文本时每会话 2 秒最多发一次 `updateTypingStatusRequest`，收到后显示 3 秒自动消失。Web 直接调 `turms-client-js` 的 `updatePrivate/GroupConversationTypingStatus`，桌面端直发 protobuf；接收端在已有 notification 监听/通知帧里解析，不改 vendor。
+
+原因：`数据库/测试改进3.md` 第 2、3、10 条；Turms 不回传 `customAttributes`，结构化 mentions 做不了，先用文本匹配；输入状态需要 `TYPING_STATUS.UPDATE`，当前 Biz 没签，先实现客户端并静默降级，后端补权限后生效（issue #82）。
+
 ### Web 私聊已读直写修复与断线重连
 
 2026-11-24 23:20 CET   [2026-11-24 22:20 UTC]
