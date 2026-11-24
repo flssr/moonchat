@@ -76,6 +76,16 @@ void main() {
         }
         if (frame.hasCreateMessageRequest()) {
           createRequests.add(frame.createMessageRequest);
+          if (frame.createMessageRequest.text == '限流') {
+            socket.add(
+              (TurmsNotification.create()
+                    ..requestId = frame.requestId
+                    ..code = 1101
+                    ..reason = 'too frequent')
+                  .writeToBuffer(),
+            );
+            return;
+          }
           final TurmsNotification response = TurmsNotification.create()
             ..requestId = frame.requestId
             ..code = 1000;
@@ -188,6 +198,16 @@ void main() {
     final CreateMessageRequest group = createRequests.last;
     expect(group.groupId.toInt(), 456);
     expect(group.hasRecipientId(), isFalse);
+
+    final Object? limited = await client
+        .send(conversationType: 'dm', targetId: '9', text: '限流')
+        .then<Object?>((String id) => id, onError: (Object e) => e);
+    expect(limited, isA<TurmsException>());
+    expect(
+      (limited! as TurmsException).turmsCode,
+      1101,
+      reason: '1101 在 1xxx 里但是错误码，不能被当成发送成功',
+    );
 
     final Map<String, DateTime?> groupDates = await client.groupReadDates(
       turmsGroupIds: <String>['456'],
