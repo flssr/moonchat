@@ -30,11 +30,14 @@ void main() {
         Completer<UpdateConversationRequest>();
     final Completer<UpdateConversationRequest> groupReadRequest =
         Completer<UpdateConversationRequest>();
+    final List<UpdateTypingStatusRequest> typingRequests =
+        <UpdateTypingStatusRequest>[];
     final Completer<QueryConversationsRequest> groupConversationsRequest =
         Completer<QueryConversationsRequest>();
     final Completer<void> ready = Completer<void>();
     final Completer<IncomingMessage> pushed = Completer<IncomingMessage>();
     final Completer<MessageUpdate> updated = Completer<MessageUpdate>();
+    final Completer<IncomingTyping> typing = Completer<IncomingTyping>();
     WebSocket? gateway;
 
     server.listen((HttpRequest request) async {
@@ -119,6 +122,16 @@ void main() {
           );
           return;
         }
+        if (frame.hasUpdateTypingStatusRequest()) {
+          typingRequests.add(frame.updateTypingStatusRequest);
+          socket.add(
+            (TurmsNotification.create()
+                  ..requestId = frame.requestId
+                  ..code = 1000)
+                .writeToBuffer(),
+          );
+          return;
+        }
         if (frame.hasQueryConversationsRequest()) {
           final QueryConversationsRequest query =
               frame.queryConversationsRequest;
@@ -160,6 +173,7 @@ void main() {
       myAccountId: 7,
       onMessage: pushed.complete,
       onMessageUpdated: updated.complete,
+      onTyping: typing.complete,
     );
     await ready.future;
 
@@ -246,6 +260,31 @@ void main() {
       isFalse,
     );
     expect(recall.hasText(), isFalse, reason: '撤回不改正文');
+
+    // 输入状态：私聊写 userId 对应的 toId，群聊写 groupId 并带 isGroupMessage。
+    await client.sendTyping(conversationType: 'dm', targetId: '9');
+    expect(typingRequests.last.toId.toInt(), 9);
+    expect(typingRequests.last.isGroupMessage, isFalse);
+
+    await client.sendTyping(conversationType: 'room', targetId: '456');
+    expect(typingRequests.last.toId.toInt(), 456);
+    expect(typingRequests.last.isGroupMessage, isTrue);
+
+    final TurmsNotification typingPush = TurmsNotification.create()
+      ..requesterId = Int64(9)
+      ..relayedRequest = (TurmsRequest.create()
+        ..updateTypingStatusRequest = UpdateTypingStatusRequest(
+          toId: Int64(7),
+          isGroupMessage: false,
+        ));
+    gateway!.add(typingPush.writeToBuffer());
+
+    final IncomingTyping incomingTyping = await typing.future.timeout(
+      const Duration(seconds: 5),
+    );
+    expect(incomingTyping.senderId, 9);
+    expect(incomingTyping.toId, '7');
+    expect(incomingTyping.isGroup, isFalse);
 
     final TurmsNotification push = TurmsNotification.create()
       ..requesterId = Int64(9)
