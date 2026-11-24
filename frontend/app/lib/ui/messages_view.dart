@@ -274,6 +274,10 @@ class _MessagesViewState extends State<MessagesView> {
                             ),
                             child: Text(
                               context.tr(label),
+                              // 大字号 + 英文时页签会放不下：单行省略，别换行压到会话行上。
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11.5,
                                 color: widget.state.filter == key ? p.ink : p.ink3,
@@ -358,15 +362,18 @@ class _MessagesViewState extends State<MessagesView> {
                                                 overflow: TextOverflow.ellipsis,
                                               );
                                             }
+                                            final ChatMessage? last = widget.state.lastMessage(c.key);
                                             return Text(
-                                              widget.state.lastMessage(c.key)?.text ??
-                                                  (c.isRoom
-                                                      ? (c.memberCount == null
-                                                          ? context.tr('群聊')
-                                                          : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                                              'm': '${c.memberCount}',
-                                                            }))
-                                                      : context.tr('私聊')),
+                                              (last?.recalled ?? false)
+                                                  ? context.tr('已撤回')
+                                                  : (last?.text ??
+                                                      (c.isRoom
+                                                          ? (c.memberCount == null
+                                                              ? context.tr('群聊')
+                                                              : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                                  'm': '${c.memberCount}',
+                                                                }))
+                                                          : context.tr('私聊'))),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(fontSize: 11.5, color: p.ink3),
@@ -500,6 +507,8 @@ class _MessagesViewState extends State<MessagesView> {
                           state: widget.state,
                           conversation: active,
                           onRetry: (ChatMessage m) {
+                            // 重试成功要收掉旧的横幅：否则「连接已断开」会一直挂着。
+                            setState(() => _sendErrors.remove(active.key));
                             // retry 失败会 rethrow：这里自己接住，别让它变成无人接的异步错误。
                             widget.state.retryMessage(active, m).catchError((Object e) {
                               if (mounted) {
@@ -709,7 +718,9 @@ class _MessageListState extends State<_MessageList> {
     }
 
     for (final ChatMessage m in messages) {
-      final DateTime d = DateTime(m.sentAt.year, m.sentAt.month, m.sentAt.day);
+      // 日期线按本地日历日切：气泡时钟用的是本地时间，按 UTC 切会在午夜前后错一天。
+      final DateTime local = m.sentAt.toLocal();
+      final DateTime d = DateTime(local.year, local.month, local.day);
       if (day != d) {
         flush();
         rows.add(d);
@@ -1022,7 +1033,8 @@ class _RoomInfoState extends State<_RoomInfo> {
         const SizedBox(height: 4),
         MonoText(trArgs(context, '群 {id} · {m} 人', <String, String>{
           'id': '${widget.roomId}',
-          'm': '${detail?.memberCount ?? 0}',
+          // 邀请/移除后 `loadMembers` 已刷新总数，群详情里的旧值会滞后。
+          'm': '${members?.total ?? detail?.memberCount ?? 0}',
         })),
         if (detail?.description != null && detail!.description!.trim().isNotEmpty) ...<Widget>[
           const SizedBox(height: 10),

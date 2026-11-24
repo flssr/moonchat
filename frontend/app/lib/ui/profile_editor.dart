@@ -162,7 +162,7 @@ class _ProfileEditorState extends State<_ProfileEditor> {
       return;
     }
     final String name = _name.text.trim();
-    if (name.isEmpty || name.characters.length > 20) {
+    if (name.isEmpty || name.length > 20) {
       setState(() => _nameError = '昵称 1–20 字');
       return;
     }

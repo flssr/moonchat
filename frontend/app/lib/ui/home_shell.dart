@@ -22,6 +22,8 @@ class HomeShell extends StatefulWidget {
     required this.onToggleTheme,
     required this.brightness,
     required this.textScale,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     required this.onLanguageChanged,
     required this.onTextScaleChanged,
     this.notifyOnMessage = true,
@@ -32,6 +34,8 @@ class HomeShell extends StatefulWidget {
   final ValueChanged<Brightness> onToggleTheme;
   final Brightness brightness;
   final double textScale;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<String> onLanguageChanged;
   final ValueChanged<double> onTextScaleChanged;
   final bool notifyOnMessage;
@@ -78,9 +82,19 @@ class _HomeShellState extends State<HomeShell> {
                 (_listOpen ?? false);
 
             final Widget body = switch (state.view) {
-              'contacts' => ContactsView(state: state, narrow: narrow),
-              'account' => AccountView(state: state, narrow: narrow),
+              'contacts' => ContactsView(
+                  key: ValueKey<String>('contacts-${state.account?.accountId}'),
+                  state: state,
+                  narrow: narrow,
+                ),
+              'account' => AccountView(
+                  key: ValueKey<String>('account-${state.account?.accountId}'),
+                  state: state,
+                  narrow: narrow,
+                ),
               _ => MessagesView(
+                  // 切号要重建输入框与草稿控制器，不能把上一个账号的草稿带过来。
+                  key: ValueKey<String>('messages-${state.account?.accountId}'),
                   state: state,
                   showInfo: showInfo,
                   showList: listVisible,
@@ -102,6 +116,8 @@ class _HomeShellState extends State<HomeShell> {
                       onOpenSettings: () => showSettingsDialog(
                         context,
                         textScale: widget.textScale,
+                        themeMode: widget.themeMode,
+                        onThemeModeChanged: widget.onThemeModeChanged,
                         onTextScaleChanged: widget.onTextScaleChanged,
                         onLanguageChanged: widget.onLanguageChanged,
                         notifyOnMessage: widget.notifyOnMessage,

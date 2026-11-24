@@ -20,6 +20,10 @@ import 'package:mondchat/ui/profile_panel.dart';
 
 /// 读写通道在测试里不连 Turms：只验证直写调用与状态机。
 class _FakeRealtime implements RealtimeClient {
+  /// 测试里自己就是唯一的“通道”，不排队状态层的重连定时器。
+  @override
+  bool get reconnectsByItself => true;
+
   bool connected = false;
   int? connectedAccountId;
   void Function(IncomingMessage message)? _onMessage;
@@ -426,6 +430,28 @@ void main() {
     final ChatMessage message =
         greeting.firstWhere((ChatMessage m) => m.text == '我们已经是好友啦，一起来聊天吧OWO');
     expect(message.mine, isTrue);
+  });
+
+  test('欢迎语撞新好友投影延迟：2 秒后自动补发一次', () async {
+    final _FakeBiz biz = _FakeBiz();
+    biz.pending.add(<String, Object?>{
+      'peer_account_id': 4,
+      'display_name': '阿星',
+      'status': 'pending',
+      'incoming': true,
+      'requested_at': '2026-11-10T09:00:00Z',
+    });
+    final _FakeRealtime rt = _FakeRealtime()..sendError = TurmsException(turmsCode: 5001);
+    final AppState state = _stateOn(biz, realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    await state.respondFriend(4, 'accept');
+    expect(state.lastMessage('dm:4')?.state, MessageState.failed, reason: '第一次发送被投影延迟拒绝');
+
+    rt.sendError = null;
+    await Future<void>.delayed(const Duration(milliseconds: 2300));
+    expect(state.lastMessage('dm:4')?.state, MessageState.sent, reason: '2 秒后补发成功');
   });
 
   test('删好友：写 tombstone 后从列表消失', () async {
@@ -1031,6 +1057,42 @@ void main() {
     expect(restored.account?.accountId, 1);
   });
 
+  test('取消记住我后，切号不会把本机会话写回', () async {
+    final _MemorySessionStore session = _MemorySessionStore();
+    final AppState state = _stateOn(_FakeBiz(), session: session);
+    addTearDown(state.dispose);
+
+    await state.login(email: 'a@b.c', password: 'password1', remember: false);
+    expect(session.session, isNull, reason: '取消勾选后登录要清掉本机副本');
+
+    await state.switchAccount(2);
+    expect(session.session, isNull, reason: '切号要沿用登录时的“不记住”选择');
+  });
+
+  test('切号清掉上一个账号的草稿', () async {
+    final AppState state = _stateOn(_FakeBiz());
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    state.setDraft('dm:2', '别带过去');
+    expect(state.draftFor('dm:2'), '别带过去');
+
+    await state.switchAccount(2);
+    expect(state.draftFor('dm:2'), isEmpty, reason: '草稿不能跟着账号切过去');
+  });
+
+  test('群被移除后轮询清掉选中项，窄屏不会停在空会话上', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    state.selectConversation('room:7');
+    expect(state.activeConversationKey, 'room:7');
+
+    biz.rooms.removeWhere((Map<String, Object?> r) => r['room_id'] == 7);
+    await state.refreshRelations();
+    expect(state.activeConversationKey, isNull);
+  });
+
   testWidgets('刷新后登录页显示记住的账号，点登录恢复会话', (WidgetTester tester) async {
     final _MemorySessionStore session = _MemorySessionStore()
       ..session = const StoredSession(token: 'login-jwt', accountId: 1, displayName: '阿星');
@@ -1144,6 +1206,8 @@ Widget _shell(AppState state) => MaterialApp(
         onToggleTheme: (Brightness _) {},
         brightness: Brightness.light,
         textScale: 1.0,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: (ThemeMode _) {},
         onLanguageChanged: (String _) {},
         onTextScaleChanged: (double _) {},
       ),

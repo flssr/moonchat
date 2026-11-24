@@ -120,6 +120,9 @@ class IncomingMessage {
 ///
 /// `targetId` 是 Turms 认的 id：私聊是对端账号 id，群是 `turms_group_id`，不是业务 `room_id`。
 abstract class RealtimeClient {
+  /// 自己的通道是否自带断线重连：桌面壳有退避重连，Web 由 `AppState` 兜底。
+  bool get reconnectsByItself => false;
+
   /// 用 `POST /api/sessions` 拿到的凭据登录 `/im`。
   Future<void> connect({
     required TurmsCredential credential,
