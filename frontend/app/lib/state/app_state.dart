@@ -566,6 +566,15 @@ class AppState extends ChangeNotifier {
         }
       });
     }
+    final Object? rawReadDates = data['read_dates'];
+    if (rawReadDates is Map<String, dynamic>) {
+      rawReadDates.forEach((String key, Object? value) {
+        final DateTime? parsed = value is String ? DateTime.tryParse(value) : null;
+        if (parsed != null) {
+          _readDates[key] = parsed.toUtc();
+        }
+      });
+    }
     final Object? rawMessages = data['messages'];
     if (rawMessages is Map<String, dynamic>) {
       _messages.clear();
@@ -617,8 +626,10 @@ class AppState extends ChangeNotifier {
 
   /// 登录后把每个会话的最新一页拉回来：会话列表的预览、离线期间的消息和未读都靠这一步。
   ///
-  /// 未读基线取服务端读时间（私聊 `readDate`、群 `memberIdToReadDate[自己]`）；
-  /// 服务端还没有这个会话的读时间，说明从未上报过：静默上报一次，别把历史全算成未读。
+  /// 未读基线：私聊用本机已读时间（`read_dates` 随缓存落盘）；Turms 的会话查询只能查到
+  /// 「对方对我的会话」，拿不到自己的读时间（#37），所以不拿它当私聊基线。
+  /// 群取 Turms `memberIdToReadDate[自己]`。没有任何基线说明本机第一次读这个会话：
+  /// 静默上报一次，别把历史全算成未读。
   Future<void> _primeConversations() async {
     if (!realtimeUp || _disposed) {
       return;
@@ -628,26 +639,21 @@ class AppState extends ChangeNotifier {
       return;
     }
     final List<Conversation> convs = conversations;
-    final List<int> peers = <int>[
-      for (final Conversation c in convs)
-        if (!c.isRoom) c.targetId,
-    ];
     final List<String> groups = <String>[
       for (final Conversation c in convs)
         if (c.isRoom && (c.turmsGroupId?.isNotEmpty ?? false)) c.turmsGroupId!,
     ];
     bool baselineLoaded = true;
     try {
-      final List<Object> results = await Future.wait(<Future<Object>>[
-        realtime.privateReadDates(peers),
-        realtime.groupReadDates(turmsGroupIds: groups, selfAccountId: me),
-      ]);
-      final Map<int, DateTime?> privateDates = results[0] as Map<int, DateTime?>;
-      final Map<String, DateTime?> groupDates = results[1] as Map<String, DateTime?>;
+      final Map<String, DateTime?> groupDates = await realtime.groupReadDates(
+        turmsGroupIds: groups,
+        selfAccountId: me,
+      );
       for (final Conversation c in convs) {
-        final DateTime? date = c.isRoom
-            ? (c.turmsGroupId == null ? null : groupDates[c.turmsGroupId])
-            : privateDates[c.targetId];
+        if (!c.isRoom || c.turmsGroupId == null) {
+          continue;
+        }
+        final DateTime? date = groupDates[c.turmsGroupId];
         if (date != null) {
           _readDates[c.key] = date;
         }
@@ -687,7 +693,7 @@ class AppState extends ChangeNotifier {
         }
       }
       if (missed == 0 || latest == null) {
-        // 服务端读时间是权威：旧缓存里的未读不能留下来。
+        // 读时间之后没有对端消息：旧缓存里的未读不能留下来。
         _unread.remove(c.key);
         continue;
       }
@@ -731,6 +737,10 @@ class AppState extends ChangeNotifier {
       'unread': _unread,
       'drafts': _drafts,
       'dm_titles': _dmTitles,
+      'read_dates': <String, String>{
+        for (final MapEntry<String, DateTime> entry in _readDates.entries)
+          entry.key: entry.value.toUtc().toIso8601String(),
+      },
       'messages': messages,
     };
   }
@@ -1037,8 +1047,9 @@ class AppState extends ChangeNotifier {
       _readDates[key] = DateTime.now().toUtc();
       if (_unread.remove(key) != null) {
         notifyListeners();
-        _scheduleCacheSave();
       }
+      // 私聊基线只在本机：读时间要跟着缓存落盘，重启后未读才不会算错。
+      _scheduleCacheSave();
       return true;
     } on TurmsException catch (e) {
       _recoverRealtime(e);

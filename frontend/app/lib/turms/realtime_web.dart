@@ -381,31 +381,6 @@ class WebRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
-    if (peerAccountIds.isEmpty) {
-      return const <int, DateTime?>{};
-    }
-    try {
-      final _TurmsClient client = _requireClient();
-      final JSObject response = await client.conversationService
-          .queryPrivateConversations(_object(<String, JSAny?>{
-            'userIds': peerAccountIds.map((int id) => '$id'.toJS).toList().toJS,
-          }))
-          .toDart;
-      final Map<int, DateTime?> out = <int, DateTime?>{};
-      for (final JSObject raw in _dataItems(response)) {
-        final int? peer = _readInt(raw, 'targetId');
-        if (peer != null) {
-          out[peer] = _readDate(raw, 'readDate');
-        }
-      }
-      return out;
-    } catch (e) {
-      throw _turmsError(e);
-    }
-  }
-
-  @override
   Future<Map<String, DateTime?>> groupReadDates({
     required List<String> turmsGroupIds,
     required int selfAccountId,

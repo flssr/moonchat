@@ -20,6 +20,9 @@
 
 ## 目录
 
+- [生产切客户端直写授权](#生产切客户端直写授权)
+- [私聊未读基线回到本机](#私聊未读基线回到本机)
+- [Turms 全局属性不再由 compose 决定](#turms-全局属性不再由-compose-决定)
 - [Turms Admin 调用加超时](#turms-admin-调用加超时)
 - [写路径回归 Turms](#写路径回归-turms)
 - [自研插件与消息引擎发布耦合](#自研插件与消息引擎发布耦合)
@@ -57,6 +60,30 @@
 - [项目改名](#项目改名)
 
 ## 议题
+
+### 生产切客户端直写授权
+
+2026-11-25 05:20 CST   [2026-11-24 21:20 UTC]
+
+决策：生产把 Turms 的 `allowSendMessagesToStranger` 从 `true` 翻成 `false`（走 admin API `PUT /cluster/settings`，`compose` 的 `-D` 只是种子），客户端与 agent 从 Biz 代发改成各自的 Turms `/im` 直写；限流插件镜像已挂载（`MONDCHAT_TURMS_SERVICE_IMAGE`）。Biz 的 REST 写路径只留给未升级的旧客户端，P4 删除。
+
+原因：P3 的验收前提是好友与拉黑由 Turms 按投影判定。投影已回填、好友关系行已在 Turms，翻开关前实测好友发送不受影响。翻后验收：好友私聊/群聊正常，非好友 `5001`，被拉黑 `5001` 且未送达（`stranger=false` 压码）、解除拉黑恢复，连发触发 `1101`。验收同时发现桌面端把 `1101`（1xxx 里的错误码）当成功，已改成 `1000..1099` 判成功。Turms 自带防刷在约 8 请求/秒时先于插件触发（会话以 `701` 关闭、IP 封 10 分钟），验收限流不要用密集压测。
+
+### 私聊未读基线回到本机
+
+2026-11-25 04:20 CST   [2026-11-24 20:20 UTC]
+
+决策：私聊未读基线改回本机已读时间，随 `cache.json` 的 `read_dates` 落盘（键是会话 key）；群聊仍取 Turms `memberIdToReadDate[自己]`。删除 `RealtimeClient.privateReadDates`。没有任何本机基线的会话（首登/重装）补报一次已读，不把历史算成未读。
+
+原因：P3 生产验收（#73）实测 `QUERY_CONVERSATIONS_REQUEST` 的 `userIds` 在服务端是 owner、target 固定为请求者，返回的是「对方对我的会话」，`readDate` 是对方的读时间。原实现把它按对端 id 当自己的基线，永远取不到，导致每次登录都把私聊会话当成「从未上报」→ 上报后清角标，私聊未读数实际不出现（复现已记到 #37）。跨设备的服务端基线需要 Turms 侧补查询或换未读计数，仍由 #37 跟踪；本机重登先保证准确。
+
+### Turms 全局属性不再由 compose 决定
+
+2026-11-25 04:20 CST   [2026-11-24 20:20 UTC]
+
+决策：`allowSendMessagesToStranger` 这类 Turms 全局可变属性以 Mongo shared config 为准，改动走 admin API `PUT /cluster/settings`；`compose.yaml` 里的 `-D` 只是首次启动的种子值，不再当作生效开关。
+
+原因：`SharedPropertyService.initializeSharedProperties()` 在 shared config 里已有记录时直接用库里的 `TurmsProperties`，`-D` 只在库为空时写入；重启会被旧值覆盖。2026-11-24 P3 验收实测：compose 已写 `false`，线上仍允许陌生人私聊、拉黑后消息照常送达，限流插件也没装（`.env` 未设 `MONDCHAT_TURMS_SERVICE_IMAGE`）。改属性与限流的操作步骤写进 `docs/truth/deployment.md`。
 
 ### Turms Admin 调用加超时
 

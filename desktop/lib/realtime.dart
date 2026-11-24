@@ -173,32 +173,6 @@ class DesktopRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
-    if (peerAccountIds.isEmpty) {
-      return const <int, DateTime?>{};
-    }
-    final TurmsNotification response = await _request(
-      TurmsRequest.create()
-        ..queryConversationsRequest = QueryConversationsRequest(
-          userIds: peerAccountIds.map((int id) => Int64(id)),
-        ),
-    );
-    _ensureSuccess(response, '查私聊读时间');
-    final Map<int, DateTime?> out = <int, DateTime?>{};
-    if (!response.hasData() || !response.data.hasConversations()) {
-      return out;
-    }
-    for (final PrivateConversation conversation
-        in response.data.conversations.privateConversations) {
-      final int epoch = conversation.hasReadDate() ? conversation.readDate.toInt() : 0;
-      out[conversation.targetId.toInt()] = epoch <= 0
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
-    }
-    return out;
-  }
-
-  @override
   Future<Map<String, DateTime?>> groupReadDates({
     required List<String> turmsGroupIds,
     required int selfAccountId,
@@ -413,9 +387,11 @@ class DesktopRealtime implements RealtimeClient {
             message.hasRecipientId() ? message.recipientId.toInt() : null,
       );
 
+  /// Turms 的成功码只有 `1000..1099`（`ResponseStatusCode.isSuccessCode`）；
+  /// `1101`（限流）这类错误码也落在 1xxx，不能按「1 开头就是成功」放行。
   void _ensureSuccess(TurmsNotification notification, String what) {
     final int code = notification.hasCode() ? notification.code : 0;
-    if (code >= 1000 && code < 2000) {
+    if (code >= 1000 && code < 1100) {
       return;
     }
     throw TurmsException(
