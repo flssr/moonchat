@@ -38,11 +38,6 @@ class UnsupportedRealtime implements RealtimeClient {
       throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
 
   @override
-  Future<Map<int, DateTime?>> privateReadDates(
-    List<int> peerAccountIds,
-  ) async => const <int, DateTime?>{};
-
-  @override
   Future<Map<String, DateTime?>> groupReadDates({
     required List<String> turmsGroupIds,
     required int selfAccountId,

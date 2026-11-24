@@ -30,8 +30,6 @@ void main() {
         Completer<UpdateConversationRequest>();
     final Completer<UpdateConversationRequest> groupReadRequest =
         Completer<UpdateConversationRequest>();
-    final Completer<QueryConversationsRequest> privateConversationsRequest =
-        Completer<QueryConversationsRequest>();
     final Completer<QueryConversationsRequest> groupConversationsRequest =
         Completer<QueryConversationsRequest>();
     final Completer<void> ready = Completer<void>();
@@ -115,18 +113,6 @@ void main() {
           final QueryConversationsRequest query =
               frame.queryConversationsRequest;
           final Conversations conversations = Conversations();
-          if (query.userIds.isNotEmpty) {
-            privateConversationsRequest.complete(query);
-            conversations.privateConversations.add(
-              PrivateConversation(
-                ownerId: Int64(7),
-                targetId: query.userIds.first,
-                readDate: Int64(
-                  DateTime.utc(2026, 11, 16, 8).millisecondsSinceEpoch,
-                ),
-              ),
-            );
-          }
           if (query.groupIds.isNotEmpty) {
             groupConversationsRequest.complete(query);
             conversations.groupConversations.add(
@@ -202,15 +188,6 @@ void main() {
     final CreateMessageRequest group = createRequests.last;
     expect(group.groupId.toInt(), 456);
     expect(group.hasRecipientId(), isFalse);
-
-    final Map<int, DateTime?> privateDates = await client.privateReadDates(
-      <int>[9],
-    );
-    expect(privateDates[9], DateTime.utc(2026, 11, 16, 8));
-    final QueryConversationsRequest privateQuery =
-        await privateConversationsRequest.future;
-    expect(privateQuery.userIds.single.toInt(), 9);
-    expect(privateQuery.groupIds, isEmpty);
 
     final Map<String, DateTime?> groupDates = await client.groupReadDates(
       turmsGroupIds: <String>['456'],

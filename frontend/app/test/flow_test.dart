@@ -44,7 +44,6 @@ class _FakeRealtime implements RealtimeClient {
   /// 设置后 `send()` 会等它完成，用来验证「推送回声先到、直写响应后到」。
   Completer<String>? sendGate;
 
-  final Map<int, DateTime?> privateDates = <int, DateTime?>{};
   final Map<String, DateTime?> groupDates = <String, DateTime?>{};
 
   @override
@@ -116,10 +115,6 @@ class _FakeRealtime implements RealtimeClient {
     }
     recalled.add(messageId);
   }
-
-  @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async =>
-      <int, DateTime?>{for (final int id in peerAccountIds) id: privateDates[id]};
 
   @override
   Future<Map<String, DateTime?>> groupReadDates({
@@ -757,13 +752,13 @@ void main() {
     expect(second.lastMessage(dm.key)?.text, '缓存这条');
   });
 
-  test('登录补拉每个会话最新一页：预览和离线未读按服务端 readDate 算', () async {
+  test('登录补拉每个会话最新一页：预览和离线未读按本机已读时间算', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final _FakeCache cache = _FakeCache();
     cache.saved[1] = <String, dynamic>{
       'messages': <String, dynamic>{},
+      'read_dates': <String, String>{'dm:2': '2026-11-10T09:00:00.000Z'},
     };
-    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -850,9 +845,8 @@ void main() {
     expect(rt.readMarks.single.targetId, '2');
   });
 
-  test('登录未读以服务端 readDate 为准，没有本机缓存也算出来', () async {
+  test('没有本机已读基线时首登静默上报，历史不算未读', () async {
     final _FakeRealtime rt = _FakeRealtime();
-    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -871,7 +865,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(state.lastMessage(dm.key)?.text, '离线来的');
-    expect(state.unreadFor(dm.key), 1, reason: 'readDate 之前的对端消息都算未读');
+    expect(state.unreadFor(dm.key), 0, reason: '本机没有基线：补报一次已读，不把历史全算成未读');
+    expect(
+      rt.readMarks.any((({String type, String targetId}) m) =>
+          m.type == 'dm' && m.targetId == '2'),
+      isTrue,
+    );
   });
 
   test('已读上报失败时角标保留，不假装读过', () async {

@@ -148,9 +148,6 @@ abstract class RealtimeClient {
   /// 撤回自己发的消息；服务端按「本人 + 5 分钟内」判定。
   Future<void> recall({required String messageId});
 
-  /// 私聊读时间基线。只取自己的那条，返回值里没有的会话视为从未上报。
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds);
-
   /// 群聊读时间基线。`memberIdToReadDate` 里可能有全群成员，这里只取 [selfAccountId]。
   Future<Map<String, DateTime?>> groupReadDates({
     required List<String> turmsGroupIds,

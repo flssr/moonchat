@@ -173,32 +173,6 @@ class DesktopRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
-    if (peerAccountIds.isEmpty) {
-      return const <int, DateTime?>{};
-    }
-    final TurmsNotification response = await _request(
-      TurmsRequest.create()
-        ..queryConversationsRequest = QueryConversationsRequest(
-          userIds: peerAccountIds.map((int id) => Int64(id)),
-        ),
-    );
-    _ensureSuccess(response, '查私聊读时间');
-    final Map<int, DateTime?> out = <int, DateTime?>{};
-    if (!response.hasData() || !response.data.hasConversations()) {
-      return out;
-    }
-    for (final PrivateConversation conversation
-        in response.data.conversations.privateConversations) {
-      final int epoch = conversation.hasReadDate() ? conversation.readDate.toInt() : 0;
-      out[conversation.targetId.toInt()] = epoch <= 0
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
-    }
-    return out;
-  }
-
-  @override
   Future<Map<String, DateTime?>> groupReadDates({
     required List<String> turmsGroupIds,
     required int selfAccountId,
