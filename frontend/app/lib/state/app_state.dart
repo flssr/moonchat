@@ -117,6 +117,16 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _drafts = <String, String>{};
   final Map<String, String> _dmTitles = <String, String>{};
 
+  /// 群聊里被 @ 的会话（“有人@我”），打开会话或切号时清掉。
+  final Set<String> _mentioned = <String>{};
+
+  /// 正在输入的会话 → 过期定时器；对端每发一次输入状态就顺延 3 秒。
+  final Map<String, Timer> _typingTimers = <String, Timer>{};
+  final Set<String> _typing = <String>{};
+
+  /// 每个会话上一次发出“正在输入”的时间：别让每个按键都打一次 Turms。
+  final Map<String, DateTime> _typingSentAt = <String, DateTime>{};
+
   /// 服务端读时间基线（只取自己的那条），本地只用于算未读。
   final Map<String, DateTime> _readDates = <String, DateTime>{};
   final Set<String> _pendingReadReports = <String>{};
@@ -151,6 +161,11 @@ class AppState extends ChangeNotifier {
 
   /// 本机记住的登录态：刷新页面后用它恢复会话（issue #24）。
   final SessionStore _session;
+
+  /// 上次登录用的邮箱（本机偏好）：登录页预填，不跟“记住我”绑定。
+  String? get lastEmail => _store.loadLastEmail();
+
+  void rememberEmail(String email) => _store.saveLastEmail(email);
 
   /// 关系列表的轮询间隔：好友与群没有推送通道，只能定时重拉。
   static const Duration _pollInterval = Duration(seconds: 15);
@@ -198,7 +213,7 @@ class AppState extends ChangeNotifier {
   /// 当前视图：`messages` / `contacts` / `account`（`docs/truth/frontend/README.md`）。
   String view = 'messages';
   String? activeConversationKey;
-  String filter = 'all'; // all | dm | room
+  String filter = 'dm'; // dm | room
   String contactsTab = 'friends'; // friends | pending
   int? selectedContactId;
 
@@ -217,6 +232,8 @@ class AppState extends ChangeNotifier {
     view = 'messages';
     activeConversationKey = key;
     if (key != null) {
+      // 打开会话就把“有人@我”的提醒消费掉。
+      _mentioned.remove(key);
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
       if ((_unread[key] ?? 0) > 0) {
@@ -228,6 +245,15 @@ class AppState extends ChangeNotifier {
   }
 
   int unreadFor(String key) => _unread[key] ?? 0;
+
+  bool isMentioned(String key) => _mentioned.contains(key);
+
+  bool isTyping(String key) => _typing.contains(key);
+
+  /// 会话分类的未读合计：私聊/群聊页签右上角用它。
+  int unreadForType(String type) => conversations
+      .where((Conversation c) => type == 'dm' ? c.type == 'dm' : c.isRoom)
+      .fold<int>(0, (int sum, Conversation c) => sum + unreadFor(c.key));
 
   int get totalUnread => _unread.values.fold<int>(0, (int sum, int n) => sum + n);
 
@@ -332,7 +358,7 @@ class AppState extends ChangeNotifier {
   void _resetNavigation() {
     view = 'messages';
     activeConversationKey = null;
-    filter = 'all';
+    filter = 'dm';
     contactsTab = 'friends';
     selectedContactId = null;
     profileAccountId = null;
@@ -542,6 +568,13 @@ class AppState extends ChangeNotifier {
     _drafts.clear();
     _dmTitles.clear();
     _blocked.clear();
+    _mentioned.clear();
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
+    _typing.clear();
+    _typingSentAt.clear();
     _recoveringRealtime = false;
     // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
     final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);
@@ -602,6 +635,12 @@ class AppState extends ChangeNotifier {
           _readDates[key] = parsed.toUtc();
         }
       });
+    }
+    final Object? rawMentioned = data['mentioned'];
+    if (rawMentioned is List<dynamic>) {
+      _mentioned
+        ..clear()
+        ..addAll(rawMentioned.whereType<String>());
     }
     final Object? rawMessages = data['messages'];
     if (rawMessages is Map<String, dynamic>) {
@@ -781,6 +820,7 @@ class AppState extends ChangeNotifier {
         for (final MapEntry<String, DateTime> entry in _readDates.entries)
           entry.key: entry.value.toUtc().toIso8601String(),
       },
+      'mentioned': _mentioned.toList(growable: false),
       'messages': messages,
     };
   }
@@ -898,6 +938,7 @@ class AppState extends ChangeNotifier {
       },
       onMessage: _ingest,
       onMessageUpdated: _ingestUpdate,
+      onTyping: _onTyping,
       onError: (Object error) {
         realtimeUp = false;
         if (!realtime.reconnectsByItself) {
@@ -1043,8 +1084,76 @@ class AppState extends ChangeNotifier {
       // 正看着这条会话：把服务端已读也推到这条消息上，下次登录才不会又算成未读。
       _scheduleReadReport(key);
     }
+    if (live && incoming.senderId != me && incoming.groupId != null && !reading &&
+        _mentionsMe(incoming.text)) {
+      // 群聊里被点名：会话行显示“有人@我”，打开会话时清掉。
+      _mentioned.add(key);
+    }
     notifyListeners();
     _scheduleCacheSave();
+  }
+
+  /// 群消息是否 @ 了我：按自己的显示名做文本匹配（Turms 不提供结构化 mentions）。
+  bool _mentionsMe(String text) {
+    final String me = account?.displayName ?? '';
+    if (me.isEmpty) {
+      return false;
+    }
+    final String escaped = RegExp.escape(me);
+    // 显示名是另一个名字的前缀时（@张三 vs @张三丰）不算被 @。
+    return RegExp('@$escaped(?![A-Za-z0-9_\\u4e00-\\u9fff])').hasMatch(text);
+  }
+
+  /// 输入状态：同一会话 2 秒最多发一次；没权限或断线都静默跳过（只是锦上添花）。
+  Future<void> sendTyping(Conversation conv) async {
+    final DateTime now = DateTime.now();
+    final DateTime? last = _typingSentAt[conv.key];
+    if (last != null && now.difference(last).inMilliseconds < 2000) {
+      return;
+    }
+    final String? targetId = conv.isRoom ? conv.turmsGroupId : '${conv.targetId}';
+    if (targetId == null || targetId.isEmpty) {
+      return;
+    }
+    _typingSentAt[conv.key] = now;
+    try {
+      await realtime.sendTyping(conversationType: conv.type, targetId: targetId);
+    } catch (_) {
+      // 输入状态不挡聊天。
+    }
+  }
+
+  /// 对端正在输入：3 秒没有新的输入状态就自动消失。
+  void _onTyping(IncomingTyping typing) {
+    final int me = account?.accountId ?? 0;
+    if (me == 0 || typing.senderId == me) {
+      return;
+    }
+    String? key;
+    if (typing.isGroup) {
+      final int? roomId = _roomIdByTurmsGroupId[typing.toId];
+      if (roomId == null) {
+        return;
+      }
+      key = 'room:$roomId';
+    } else {
+      key = 'dm:${typing.senderId}';
+    }
+    if (!conversations.any((Conversation c) => c.key == key)) {
+      return;
+    }
+    _typing.add(key);
+    _typingTimers.remove(key)?.cancel();
+    _typingTimers[key] = Timer(const Duration(seconds: 3), () {
+      if (_disposed) {
+        return;
+      }
+      _typingTimers.remove(key);
+      if (_typing.remove(key)) {
+        notifyListeners();
+      }
+    });
+    notifyListeners();
   }
 
   /// 服务端发来的消息更新：撤回把正文藏掉，编辑替换正文。找不到就丢弃。
@@ -1206,6 +1315,13 @@ class AppState extends ChangeNotifier {
     _reconnectAttempt = 0;
     _welcomeRetryTimer?.cancel();
     _welcomeRetryTimer = null;
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
+    _typing.clear();
+    _typingSentAt.clear();
+    _mentioned.clear();
     _pendingReadReports.clear();
     _readDates.clear();
     _recoveringRealtime = false;
@@ -1748,6 +1864,10 @@ class AppState extends ChangeNotifier {
     _readTimer?.cancel();
     _reconnectTimer?.cancel();
     _welcomeRetryTimer?.cancel();
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
     _stopPolling();
     flushCache();
     // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。

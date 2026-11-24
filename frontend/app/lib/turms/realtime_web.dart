@@ -47,8 +47,9 @@ extension type _NotificationService._(JSObject _) implements JSObject {
 extension type _ConversationService._(JSObject _) implements JSObject {
   external JSPromise<JSObject> queryPrivateConversations(JSObject options);
   external JSPromise<JSObject> queryGroupConversations(JSObject options);
-  external JSPromise<JSObject> updatePrivateConversationReadDate(JSObject options);
-  external JSPromise<JSObject> updateGroupConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updateConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updatePrivateConversationTypingStatus(JSObject options);
+  external JSPromise<JSObject> updateGroupConversationTypingStatus(JSObject options);
 }
 
 /// `turms-client-js` 的会话查询：私聊与群分开两个方法（issue #37 读已读时间）。
@@ -196,6 +197,30 @@ MessageUpdate? _toMessageUpdate(JSObject notification) {
   );
 }
 
+/// 业务通知里的输入状态：`updateTypingStatusRequest` 带 `toId` 与 `isGroupMessage`。
+IncomingTyping? _toTyping(JSObject notification) {
+  final JSAny? rawRequest = notification.getProperty<JSAny?>('relayedRequest'.toJS);
+  if (rawRequest == null || rawRequest.isUndefinedOrNull) {
+    return null;
+  }
+  final JSAny? rawTyping =
+      (rawRequest as JSObject).getProperty<JSAny?>('updateTypingStatusRequest'.toJS);
+  if (rawTyping == null || rawTyping.isUndefinedOrNull) {
+    return null;
+  }
+  final JSObject typing = rawTyping as JSObject;
+  final int senderId = _readInt(notification, 'requesterId') ?? 0;
+  final String? toId = _readString(typing, 'toId');
+  if (senderId == 0 || toId == null || toId.isEmpty) {
+    return null;
+  }
+  return IncomingTyping(
+    senderId: senderId,
+    toId: toId,
+    isGroup: _read(typing, 'isGroupMessage') == true,
+  );
+}
+
 /// 把 Turms 网关地址规整成 WebSocket 形式。
 String _wsUrl(String gatewayUrl) {
   if (gatewayUrl.startsWith('ws://') || gatewayUrl.startsWith('wss://')) {
@@ -235,6 +260,7 @@ class WebRealtime implements RealtimeClient {
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -261,16 +287,24 @@ class WebRealtime implements RealtimeClient {
       }
 
       client.messageService.addMessageListener(handler.toJS);
-      if (onMessageUpdated != null) {
-        // `notificationService` 只回调非创建类业务通知，正好是撤回/编辑。
+      if (onMessageUpdated != null || onTyping != null) {
+        // `notificationService` 只回调非创建类业务通知：撤回/编辑与输入状态都在这里。
         client.notificationService.addNotificationListener(((JSObject notification) {
           try {
             final MessageUpdate? update = _toMessageUpdate(notification);
             if (update != null) {
-              onMessageUpdated(update);
+              onMessageUpdated?.call(update);
             }
           } catch (e) {
             debugPrint('解析 Turms 消息更新失败：$e');
+          }
+          try {
+            final IncomingTyping? typing = _toTyping(notification);
+            if (typing != null) {
+              onTyping?.call(typing);
+            }
+          } catch (e) {
+            debugPrint('解析 Turms 输入状态失败：$e');
           }
         }).toJS);
       }
@@ -380,6 +414,25 @@ class WebRealtime implements RealtimeClient {
       await client.messageService
           .recallMessage(_object(<String, JSAny?>{'messageId': messageId.toJS}))
           .toDart;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject params = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      });
+      final JSPromise<JSObject> call = conversationType == 'room'
+          ? client.conversationService.updateGroupConversationTypingStatus(params)
+          : client.conversationService.updatePrivateConversationTypingStatus(params);
+      await call.toDart;
     } catch (e) {
       throw _turmsError(e);
     }

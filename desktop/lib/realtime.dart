@@ -46,6 +46,7 @@ class DesktopRealtime implements RealtimeClient {
 
   void Function(IncomingMessage)? _onMessage;
   void Function(MessageUpdate)? _onMessageUpdated;
+  void Function(IncomingTyping)? _onTyping;
   void Function(bool)? _onConnected;
   void Function(Object)? _onError;
 
@@ -55,6 +56,7 @@ class DesktopRealtime implements RealtimeClient {
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -67,6 +69,7 @@ class DesktopRealtime implements RealtimeClient {
       myAccountId: myAccountId,
       onMessage: onMessage,
       onMessageUpdated: onMessageUpdated,
+      onTyping: onTyping,
       onConnected: onConnected,
       onError: onError,
     );
@@ -74,6 +77,7 @@ class DesktopRealtime implements RealtimeClient {
     final int generation = ++_generation;
     _onMessage = onMessage;
     _onMessageUpdated = onMessageUpdated;
+    _onTyping = onTyping;
     _onConnected = onConnected;
     _onError = onError;
     try {
@@ -174,6 +178,22 @@ class DesktopRealtime implements RealtimeClient {
         ),
     );
     _ensureSuccess(response, '撤回消息');
+  }
+
+  @override
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    final bool isGroup = conversationType == 'room';
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..updateTypingStatusRequest = UpdateTypingStatusRequest(
+          toId: Int64.parseInt(targetId),
+          isGroupMessage: isGroup,
+        ),
+    );
+    _ensureSuccess(response, '发送输入状态');
   }
 
   @override
@@ -323,6 +343,11 @@ class DesktopRealtime implements RealtimeClient {
       return;
     }
     if (notification.hasRelayedRequest() &&
+        notification.relayedRequest.hasUpdateTypingStatusRequest()) {
+      _deliverTyping(notification);
+      return;
+    }
+    if (notification.hasRelayedRequest() &&
         notification.relayedRequest.hasCreateMessageRequest()) {
       _deliver(notification);
     }
@@ -346,6 +371,26 @@ class DesktopRealtime implements RealtimeClient {
                 isUtc: true,
               )
             : null,
+      ),
+    );
+  }
+
+  void _deliverTyping(TurmsNotification notification) {
+    final UpdateTypingStatusRequest request =
+        notification.relayedRequest.updateTypingStatusRequest;
+    if (!request.hasToId()) {
+      return;
+    }
+    final int senderId =
+        notification.hasRequesterId() ? notification.requesterId.toInt() : 0;
+    if (senderId == 0) {
+      return;
+    }
+    _onTyping?.call(
+      IncomingTyping(
+        senderId: senderId,
+        toId: request.toId.toString(),
+        isGroup: request.isGroupMessage,
       ),
     );
   }
@@ -453,6 +498,7 @@ class DesktopRealtime implements RealtimeClient {
           myAccountId: args.myAccountId,
           onMessage: args.onMessage,
           onMessageUpdated: args.onMessageUpdated,
+          onTyping: args.onTyping,
           onConnected: args.onConnected,
           onError: args.onError,
         ),
@@ -503,6 +549,7 @@ class _ReconnectArgs {
     required this.myAccountId,
     required this.onMessage,
     required this.onMessageUpdated,
+    required this.onTyping,
     required this.onConnected,
     required this.onError,
   });
@@ -511,6 +558,7 @@ class _ReconnectArgs {
   final int myAccountId;
   final void Function(IncomingMessage message) onMessage;
   final void Function(MessageUpdate update)? onMessageUpdated;
+  final void Function(IncomingTyping typing)? onTyping;
   final void Function(bool connected)? onConnected;
   final void Function(Object error)? onError;
 }

@@ -16,6 +16,7 @@ import 'package:mondchat/ui/home_shell.dart';
 class _MemoryStore implements SettingsStore {
   MoonSettings settings = MoonSettings.defaults;
   Map<int, String> avatars = <int, String>{};
+  String? lastEmail;
 
   @override
   MoonSettings load() => settings;
@@ -28,6 +29,12 @@ class _MemoryStore implements SettingsStore {
 
   @override
   void saveAvatars(Map<int, String> next) => avatars = next;
+
+  @override
+  String? loadLastEmail() => lastEmail;
+
+  @override
+  void saveLastEmail(String email) => lastEmail = email;
 }
 
 http.Response _ok(String body) => http.Response(

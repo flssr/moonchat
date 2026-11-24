@@ -79,6 +79,19 @@ class MessageUpdate {
   bool get isRecall => recallAt != null;
 }
 
+/// 一条从 Turms 收到的“正在输入”状态：`isGroup` 为 true 时 `toId` 是 Turms 群 id。
+class IncomingTyping {
+  const IncomingTyping({
+    required this.senderId,
+    required this.toId,
+    required this.isGroup,
+  });
+
+  final int senderId;
+  final String toId;
+  final bool isGroup;
+}
+
 /// 一条从 Turms 收到的消息。字段与 `ParsedModel.Message` 对齐，转换只在这一层做。
 class IncomingMessage {
   const IncomingMessage({
@@ -129,6 +142,7 @@ abstract class RealtimeClient {
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   });
@@ -150,6 +164,13 @@ abstract class RealtimeClient {
 
   /// 撤回自己发的消息；服务端按「本人 + 5 分钟内」判定。
   Future<void> recall({required String messageId});
+
+  /// 发一次“正在输入”：服务端要求凭据带 `TYPING_STATUS` 的 UPDATE 权限，
+  /// 没权限时直接抛，调用方静默忽略（见 issue #83）。
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  });
 
   /// 群聊读时间基线。`memberIdToReadDate` 里可能有全群成员，这里只取 [selfAccountId]。
   Future<Map<String, DateTime?>> groupReadDates({

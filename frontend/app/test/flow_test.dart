@@ -16,6 +16,7 @@ import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
 import 'package:mondchat/turms/realtime.dart';
 import 'package:mondchat/ui/home_shell.dart';
+import 'package:mondchat/ui/messages_view.dart';
 import 'package:mondchat/ui/profile_panel.dart';
 
 /// 读写通道在测试里不连 Turms：只验证直写调用与状态机。
@@ -50,12 +51,19 @@ class _FakeRealtime implements RealtimeClient {
 
   final Map<String, DateTime?> groupDates = <String, DateTime?>{};
 
+  /// 收到的输入状态与发出的输入状态都记下来，测试里一条断言就够。
+  final List<IncomingTyping> typingReceived = <IncomingTyping>[];
+  final List<(String, String)> typingSent = <(String, String)>[];
+
+  void Function(IncomingTyping typing)? _onTyping;
+
   @override
   Future<void> connect({
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -67,6 +75,7 @@ class _FakeRealtime implements RealtimeClient {
     connectedAccountId = myAccountId;
     _onMessage = onMessage;
     _onMessageUpdated = onMessageUpdated;
+    _onTyping = onTyping;
     _onError = onError;
     onConnected?.call(true);
   }
@@ -76,6 +85,20 @@ class _FakeRealtime implements RealtimeClient {
 
   /// 模拟服务端推来撤回/编辑通知。
   void emitUpdate(MessageUpdate update) => _onMessageUpdated?.call(update);
+
+  /// 模拟对端输入状态。
+  void emitTyping(IncomingTyping typing) {
+    typingReceived.add(typing);
+    _onTyping?.call(typing);
+  }
+
+  @override
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    typingSent.add((conversationType, targetId));
+  }
 
   /// 模拟读通道报错（断线/凭据失效）。
   void fail(Object error) => _onError?.call(error);
@@ -635,6 +658,9 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '给甲的草稿');
     await tester.pump();
 
+    // 会话列表现在分「私聊 / 群聊」两个页签，群会话要先切到群聊页。
+    state.setFilter('room');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('月球基地'));
     await tester.pumpAndSettle();
 
@@ -1160,6 +1186,72 @@ void main() {
     expect(notified, 1);
     expect(state.pending.single.peerAccountId, 3);
     expect(state.conversations.map((Conversation c) => c.key), contains('room:9'));
+  });
+
+  test('问候语按时间分五档', () {
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 5)), '晚上好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 7)), '早上好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 10)), '上午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 13)), '中午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 17)), '下午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 20)), '晚上好');
+  });
+
+  test('群消息 @ 我：会话标「有人@我」，打开后清掉', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _stateOn(_FakeBiz(), realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emit(IncomingMessage(
+      id: '900',
+      text: '@阿月 早',
+      senderId: 2,
+      sentAt: DateTime.now().toUtc(),
+      groupId: '7000000000000000007',
+    ));
+    expect(state.isMentioned('room:7'), isTrue);
+
+    state.selectConversation('room:7');
+    expect(state.isMentioned('room:7'), isFalse, reason: '打开会话就把提醒消费掉');
+  });
+
+  test('对端正在输入：显示并 3 秒后自动消失', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _stateOn(_FakeBiz(), realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emitTyping(const IncomingTyping(senderId: 2, toId: '1', isGroup: false));
+    expect(state.isTyping('dm:2'), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 3100));
+    expect(state.isTyping('dm:2'), isFalse);
+  });
+
+  testWidgets('消息页只有私聊/群聊两个页签', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部'), findsNothing);
+    expect(find.text('私聊'), findsWidgets);
+    expect(find.text('群聊'), findsWidgets);
+    state.dispose();
+  });
+
+  testWidgets('联系人查找只找好友：非好友显示未搜索到此好友', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+    state.showView('contacts');
+    await tester.pumpAndSettle();
+
+    expect(find.text('添加好友'), findsWidgets);
+    await tester.enterText(find.byType(TextField).first, '3');
+    await tester.tap(find.text('查找'));
+    await tester.pumpAndSettle();
+    expect(find.text('未搜索到此好友'), findsOneWidget);
+    state.dispose();
   });
 
   testWidgets('Enter 发送，Shift+Enter 只换行', (WidgetTester tester) async {
