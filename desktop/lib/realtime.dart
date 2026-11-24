@@ -10,7 +10,8 @@ import 'package:turms_client_dart/turms_client.dart';
 /// Turms 只提供 TCP 的 Dart 客户端（11510），部署出来的只有 `/im` WebSocket（10510）。
 /// 这里按 `turms-client-js` 的线上格式走 WebSocket：一帧一个 `TurmsRequest` /
 /// `TurmsNotification`，用仓库固定版本的 Dart proto 类编解码，请求与响应按 `requestId` 配对。
-/// 只覆盖客户端要的两件事：登录会话、查历史；发消息仍然只走 Biz。
+/// 覆盖客户端要的四件事：登录会话、查历史、直写消息与已读
+/// （`docs/truth/backend/messaging.md`）。
 class DesktopRealtime implements RealtimeClient {
   static const Duration _connectTimeout = Duration(seconds: 15);
   static const Duration _requestTimeout = Duration(seconds: 20);
@@ -40,6 +41,7 @@ class DesktopRealtime implements RealtimeClient {
       <int, Completer<TurmsNotification>>{};
 
   void Function(IncomingMessage)? _onMessage;
+  void Function(MessageUpdate)? _onMessageUpdated;
   void Function(bool)? _onConnected;
   void Function(Object)? _onError;
 
@@ -48,6 +50,7 @@ class DesktopRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -59,12 +62,14 @@ class DesktopRealtime implements RealtimeClient {
       credential: credential,
       myAccountId: myAccountId,
       onMessage: onMessage,
+      onMessageUpdated: onMessageUpdated,
       onConnected: onConnected,
       onError: onError,
     );
     _lastFrameAt = DateTime.now().millisecondsSinceEpoch;
     final int generation = ++_generation;
     _onMessage = onMessage;
+    _onMessageUpdated = onMessageUpdated;
     _onConnected = onConnected;
     _onError = onError;
     try {
@@ -132,41 +137,112 @@ class DesktopRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<String, DateTime?>> readDates({
-    required int myAccountId,
-    required List<int> peerAccountIds,
-    required List<String> turmsGroupIds,
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
   }) async {
-    if (!_up) {
-      throw StateError('Turms 会话尚未连接');
-    }
-    final TurmsNotification response = await _conversationsRequest(
-      QueryConversationsRequest(
-        userIds: <Int64>[for (final int id in peerAccountIds) Int64(id)],
-        groupIds: <Int64>[
-          for (final String id in turmsGroupIds) Int64.parseInt(id),
-        ],
-      ),
+    final bool isGroup = conversationType == 'room';
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..createMessageRequest = CreateMessageRequest(
+          groupId: isGroup ? Int64.parseInt(targetId) : null,
+          recipientId: isGroup ? null : Int64.parseInt(targetId),
+          text: text,
+        ),
     );
-    _ensureSuccess(response, '查会话已读');
+    _ensureSuccess(response, '发送消息');
+    if (!response.hasData() || !response.data.hasLong()) {
+      throw TurmsException(turmsCode: 0, message: '发送响应没有消息 id');
+    }
+    return response.data.long.toString();
+  }
+
+  @override
+  Future<void> recall({required String messageId}) async {
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..updateMessageRequest = UpdateMessageRequest(
+          messageId: Int64.parseInt(messageId),
+          // 服务端校验 pastOrPresent 且 recallDate 不能早于 deliveryDate；
+          // 省略会被当成「没有更新」，所以用本地当前时间。
+          recallDate: Int64(DateTime.now().millisecondsSinceEpoch),
+        ),
+    );
+    _ensureSuccess(response, '撤回消息');
+  }
+
+  @override
+  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
+    if (peerAccountIds.isEmpty) {
+      return const <int, DateTime?>{};
+    }
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..queryConversationsRequest = QueryConversationsRequest(
+          userIds: peerAccountIds.map((int id) => Int64(id)),
+        ),
+    );
+    _ensureSuccess(response, '查私聊读时间');
+    final Map<int, DateTime?> out = <int, DateTime?>{};
+    if (!response.hasData() || !response.data.hasConversations()) {
+      return out;
+    }
+    for (final PrivateConversation conversation
+        in response.data.conversations.privateConversations) {
+      final int epoch = conversation.hasReadDate() ? conversation.readDate.toInt() : 0;
+      out[conversation.targetId.toInt()] = epoch <= 0
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
+    }
+    return out;
+  }
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async {
+    if (turmsGroupIds.isEmpty) {
+      return const <String, DateTime?>{};
+    }
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..queryConversationsRequest = QueryConversationsRequest(
+          groupIds: turmsGroupIds.map(Int64.parseInt),
+        ),
+    );
+    _ensureSuccess(response, '查群读时间');
     final Map<String, DateTime?> out = <String, DateTime?>{};
     if (!response.hasData() || !response.data.hasConversations()) {
       return out;
     }
-    for (final PrivateConversation c
-        in response.data.conversations.privateConversations) {
-      out['dm:${c.targetId}'] = c.hasReadDate()
-          ? DateTime.fromMillisecondsSinceEpoch(c.readDate.toInt(), isUtc: true)
-          : null;
-    }
-    for (final GroupConversation g
+    for (final GroupConversation conversation
         in response.data.conversations.groupConversations) {
-      final Int64? mine = g.memberIdToReadDate[Int64(myAccountId)];
-      out['room:${g.groupId}'] = mine == null
-          ? null
-          : DateTime.fromMillisecondsSinceEpoch(mine.toInt(), isUtc: true);
+      final int? epoch =
+          conversation.memberIdToReadDate[Int64(selfAccountId)]?.toInt();
+      out[conversation.groupId.toString()] =
+          epoch == null || epoch <= 0
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
     }
     return out;
+  }
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    final bool isGroup = conversationType == 'room';
+    final TurmsNotification response = await _request(
+      TurmsRequest.create()
+        ..updateConversationRequest = UpdateConversationRequest(
+          userId: isGroup ? null : Int64.parseInt(targetId),
+          groupId: isGroup ? Int64.parseInt(targetId) : null,
+        ),
+    );
+    _ensureSuccess(response, '更新已读');
   }
 
   @override
@@ -198,27 +274,17 @@ class DesktopRealtime implements RealtimeClient {
 
   // 请求
 
-  Future<TurmsNotification> _sessionRequest(CreateSessionRequest request) {
+  Future<TurmsNotification> _request(TurmsRequest request) {
     final int id = _nextRequestIdToUse();
-    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
-    wrapped.createSessionRequest = request;
-    return _send(wrapped, id);
+    request.requestId = Int64(id);
+    return _send(request, id);
   }
 
-  Future<TurmsNotification> _queryRequest(QueryMessagesRequest request) {
-    final int id = _nextRequestIdToUse();
-    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
-    wrapped.queryMessagesRequest = request;
-    return _send(wrapped, id);
-  }
+  Future<TurmsNotification> _sessionRequest(CreateSessionRequest request) =>
+      _request(TurmsRequest.create()..createSessionRequest = request);
 
-  Future<TurmsNotification> _conversationsRequest(
-      QueryConversationsRequest request) {
-    final int id = _nextRequestIdToUse();
-    final TurmsRequest wrapped = TurmsRequest.create()..requestId = Int64(id);
-    wrapped.queryConversationsRequest = request;
-    return _send(wrapped, id);
-  }
+  Future<TurmsNotification> _queryRequest(QueryMessagesRequest request) =>
+      _request(TurmsRequest.create()..queryMessagesRequest = request);
 
   int _nextRequestIdToUse() {
     // 正数、单连接内不重复即可；与 JS 客户端一样按请求关联响应。
@@ -229,7 +295,7 @@ class DesktopRealtime implements RealtimeClient {
   Future<TurmsNotification> _send(TurmsRequest request, int id) async {
     final WebSocket? socket = _socket;
     if (socket == null) {
-      throw StateError('Turms 会话尚未连接');
+      throw TurmsException(turmsCode: 1105, message: 'Turms 会话尚未连接');
     }
     final Completer<TurmsNotification> completer = Completer<TurmsNotification>();
     _pending[id] = completer;
@@ -239,7 +305,7 @@ class DesktopRealtime implements RealtimeClient {
       return await completer.future.timeout(_requestTimeout);
     } on TimeoutException {
       _pending.remove(id);
-      throw StateError('Turms 请求超时');
+      throw TurmsException(turmsCode: 1105, message: 'Turms 请求超时');
     }
   }
 
@@ -274,9 +340,36 @@ class DesktopRealtime implements RealtimeClient {
       }
     }
     if (notification.hasRelayedRequest() &&
+        notification.relayedRequest.hasUpdateMessageRequest()) {
+      _deliverUpdate(notification);
+      return;
+    }
+    if (notification.hasRelayedRequest() &&
         notification.relayedRequest.hasCreateMessageRequest()) {
       _deliver(notification);
     }
+  }
+
+  void _deliverUpdate(TurmsNotification notification) {
+    final UpdateMessageRequest request =
+        notification.relayedRequest.updateMessageRequest;
+    if (!request.hasMessageId()) {
+      return;
+    }
+    _onMessageUpdated?.call(
+      MessageUpdate(
+        id: request.messageId.toString(),
+        senderId:
+            notification.hasRequesterId() ? notification.requesterId.toInt() : 0,
+        text: request.hasText() ? request.text : null,
+        recallAt: request.hasRecallDate()
+            ? DateTime.fromMillisecondsSinceEpoch(
+                request.recallDate.toInt(),
+                isUtc: true,
+              )
+            : null,
+      ),
+    );
   }
 
   void _deliver(TurmsNotification notification) {
@@ -325,9 +418,10 @@ class DesktopRealtime implements RealtimeClient {
     if (code >= 1000 && code < 2000) {
       return;
     }
-    final String reason =
-        notification.hasReason() ? notification.reason : 'code=$code';
-    throw StateError('$what失败：$reason');
+    throw TurmsException(
+      turmsCode: code,
+      message: notification.hasReason() ? notification.reason : what,
+    );
   }
 
   void _markDown(int generation, [Object? error]) {
@@ -378,6 +472,7 @@ class DesktopRealtime implements RealtimeClient {
           credential: args.credential,
           myAccountId: args.myAccountId,
           onMessage: args.onMessage,
+          onMessageUpdated: args.onMessageUpdated,
           onConnected: args.onConnected,
           onError: args.onError,
         ),
@@ -427,6 +522,7 @@ class _ReconnectArgs {
     required this.credential,
     required this.myAccountId,
     required this.onMessage,
+    required this.onMessageUpdated,
     required this.onConnected,
     required this.onError,
   });
@@ -434,6 +530,7 @@ class _ReconnectArgs {
   final TurmsCredential credential;
   final int myAccountId;
   final void Function(IncomingMessage message) onMessage;
+  final void Function(MessageUpdate update)? onMessageUpdated;
   final void Function(bool connected)? onConnected;
   final void Function(Object error)? onError;
 }

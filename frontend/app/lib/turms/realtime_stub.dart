@@ -9,6 +9,7 @@ class UnsupportedRealtime implements RealtimeClient {
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -22,16 +23,37 @@ class UnsupportedRealtime implements RealtimeClient {
     required String targetId,
     DateTime? before,
     int maxCount = 50,
-  }) async =>
-      throw StateError('这个平台没有 Turms Web 客户端');
+  }) async => throw StateError('这个平台没有 Turms Web 客户端');
 
   @override
-  Future<Map<String, DateTime?>> readDates({
-    required int myAccountId,
-    required List<int> peerAccountIds,
-    required List<String> turmsGroupIds,
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
   }) async =>
-      throw StateError('这个平台没有 Turms Web 客户端');
+      throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
+
+  @override
+  Future<void> recall({required String messageId}) async =>
+      throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
+
+  @override
+  Future<Map<int, DateTime?>> privateReadDates(
+    List<int> peerAccountIds,
+  ) async => const <int, DateTime?>{};
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async => const <String, DateTime?>{};
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async =>
+      throw TurmsException(turmsCode: 1105, message: '这个平台没有 Turms Web 客户端');
 
   @override
   Future<void> disconnect() async {}

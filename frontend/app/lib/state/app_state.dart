@@ -53,6 +53,7 @@ class ChatMessage {
     this.serverId,
     this.serverIdText,
     this.senderName,
+    this.recalled = false,
   });
 
   final String localId;
@@ -66,6 +67,9 @@ class ChatMessage {
   int? serverId;
   String? serverIdText;
   String? senderName;
+
+  /// 服务端撤回通知到了就把正文藏掉；历史重拉后该条可能直接消失。
+  bool recalled;
 
   /// 群聊里用来取发送者的名字与头像；私聊对端就是会话的目标账号。
   int senderAccountId;
@@ -100,8 +104,6 @@ class AppState extends ChangeNotifier {
   final MessageCacheStore _cache;
   final bool primeOnLogin;
   Timer? _cacheTimer;
-  DateTime? _cacheSavedAt;
-  bool _cacheRestored = false;
 
   /// 收到消息时的通知开关（设置页）；未读与列表预览不受它影响。
   bool notifyOnMessage = true;
@@ -110,12 +112,14 @@ class AppState extends ChangeNotifier {
   bool windowFocused = true;
 
   final Map<String, int> _unread = <String, int>{};
-
-  /// 已读上报的去抖计时器：同一会话 1 秒内只打一次接口（issue #37）。
-  final Map<String, Timer> _readReportTimers = <String, Timer>{};
   final Set<int> _blocked = <int>{};
   final Map<String, String> _drafts = <String, String>{};
   final Map<String, String> _dmTitles = <String, String>{};
+
+  /// 服务端读时间基线（只取自己的那条），本地只用于算未读。
+  final Map<String, DateTime> _readDates = <String, DateTime>{};
+  final Set<String> _pendingReadReports = <String>{};
+  Timer? _readTimer;
 
   String draftFor(String key) => _drafts[key] ?? '';
 
@@ -201,7 +205,6 @@ class AppState extends ChangeNotifier {
     if (key != null) {
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
-      // 角标等服务端确认（204）再清：上报失败时不能假装已经读过。
       if ((_unread[key] ?? 0) > 0) {
         _scheduleReadReport(key);
       }
@@ -326,6 +329,9 @@ class AppState extends ChangeNotifier {
 
   /// Turms 续期失败后的重试计数：连续失败 3 次才认为读通道不可用。
   int _turmsRenewFailures = 0;
+
+  /// 1105 / 1300 触发的换凭据只跑一份，避免每次发送失败都并发换。
+  bool _recoveringRealtime = false;
 
   bool _disposed = false;
 
@@ -504,6 +510,11 @@ class AppState extends ChangeNotifier {
 
   /// 登录后必须先换 Turms 凭据，再拉账号、好友、群（`docs/truth/frontend/README.md`）。
   Future<void> _openSession(int accountId) async {
+    _readTimer?.cancel();
+    _readTimer = null;
+    _pendingReadReports.clear();
+    _readDates.clear();
+    _recoveringRealtime = false;
     // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
     final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);
     account = session.account;
@@ -528,8 +539,6 @@ class AppState extends ChangeNotifier {
     if (data == null) {
       return;
     }
-    _cacheRestored = true;
-    _cacheSavedAt = DateTime.tryParse(data['saved_at'] as String? ?? '');
     final Object? rawTitles = data['dm_titles'];
     if (rawTitles is Map<String, dynamic>) {
       _dmTitles.clear();
@@ -588,6 +597,7 @@ class AppState extends ChangeNotifier {
             serverId: (item['server_id'] as num?)?.toInt(),
             serverIdText: item['server_id_text'] as String?,
             senderName: item['sender_name'] as String?,
+            recalled: item['recalled'] == true,
           ));
         }
         if (parsed.isNotEmpty) {
@@ -595,16 +605,6 @@ class AppState extends ChangeNotifier {
           _messages[key] = parsed;
         }
       });
-    }
-    // 旧版本缓存没有 saved_at：用缓存里最新一条消息的时间当“上次在线”的近似基线。
-    if (_cacheSavedAt == null) {
-      DateTime? newest;
-      for (final List<ChatMessage> list in _messages.values) {
-        if (list.isNotEmpty && (newest == null || list.last.sentAt.isAfter(newest))) {
-          newest = list.last.sentAt;
-        }
-      }
-      _cacheSavedAt = newest;
     }
     final Object? active = data['active'];
     if (active is String && conversations.any((Conversation c) => c.key == active)) {
@@ -615,79 +615,80 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 登录后把每个会话的最新一页拉回来：列表预览、离线未读与登录通知都靠这一步。
+  /// 登录后把每个会话的最新一页拉回来：会话列表的预览、离线期间的消息和未读都靠这一步。
   ///
-  /// 未读以服务端已读时间为准（issue #37）：私聊查会话 `readDate`，群查成员表里自己那条；
-  /// 查不到（读通道没连上/旧服务端）才退回本机基线。查到了但从未上报过的会话，
-  /// 第一次登录时补报一次已读，避免历史消息一登录全红。
+  /// 未读基线取服务端读时间（私聊 `readDate`、群 `memberIdToReadDate[自己]`）；
+  /// 服务端还没有这个会话的读时间，说明从未上报过：静默上报一次，别把历史全算成未读。
   Future<void> _primeConversations() async {
     if (!realtimeUp || _disposed) {
       return;
     }
+    final int me = account?.accountId ?? 0;
+    if (me == 0) {
+      return;
+    }
     final List<Conversation> convs = conversations;
-    Map<String, DateTime?> serverRead = <String, DateTime?>{};
+    final List<int> peers = <int>[
+      for (final Conversation c in convs)
+        if (!c.isRoom) c.targetId,
+    ];
+    final List<String> groups = <String>[
+      for (final Conversation c in convs)
+        if (c.isRoom && (c.turmsGroupId?.isNotEmpty ?? false)) c.turmsGroupId!,
+    ];
+    bool baselineLoaded = true;
     try {
-      serverRead = await realtime.readDates(
-        myAccountId: account?.accountId ?? 0,
-        peerAccountIds: <int>[
-          for (final Conversation c in convs)
-            if (c.type == 'dm') c.targetId,
-        ],
-        turmsGroupIds: <String>[
-          for (final Conversation c in convs)
-            if (c.type == 'room' && c.turmsGroupId != null) c.turmsGroupId!,
-        ],
-      );
-    } catch (_) {
-      // 查不到已读就按本机基线走，下一次登录还有机会。
-    }
-
-    final Map<String, DateTime?> baseline = <String, DateTime?>{};
-    final Set<String> seeded = <String>{};
-    for (final Conversation c in convs) {
-      // 群的会话 key 是 `room:<pg id>`，服务端结果按 Turms 群 id 存在。
-      final DateTime? read = serverRead[c.key] ??
-          (c.turmsGroupId == null ? null : serverRead['room:${c.turmsGroupId}']);
-      if (read != null) {
-        seeded.add(c.key);
+      final List<Object> results = await Future.wait(<Future<Object>>[
+        realtime.privateReadDates(peers),
+        realtime.groupReadDates(turmsGroupIds: groups, selfAccountId: me),
+      ]);
+      final Map<int, DateTime?> privateDates = results[0] as Map<int, DateTime?>;
+      final Map<String, DateTime?> groupDates = results[1] as Map<String, DateTime?>;
+      for (final Conversation c in convs) {
+        final DateTime? date = c.isRoom
+            ? (c.turmsGroupId == null ? null : groupDates[c.turmsGroupId])
+            : privateDates[c.targetId];
+        if (date != null) {
+          _readDates[c.key] = date;
+        }
       }
-      final List<ChatMessage>? list = _messages[c.key];
-      baseline[c.key] = read ??
-          (list != null && list.isNotEmpty
-              ? list.last.sentAt
-              : (_cacheRestored ? _cacheSavedAt : DateTime.now().toUtc()));
+    } catch (_) {
+      // 基线拿不到时宁可这轮不弹未读，也不要按「全都没读过」处理。
+      baselineLoaded = false;
     }
-
     for (final Conversation c in convs) {
       if (_disposed || !realtimeUp) {
         return;
       }
       await loadHistory(c);
     }
-
-    // 缓存里的未读只是估算，服务端已读才是真相：重算一遍，不叠加。
-    _unread.clear();
+    if (!baselineLoaded) {
+      notifyListeners();
+      _scheduleCacheSave();
+      return;
+    }
     for (final Conversation c in convs) {
       if (_disposed) {
         return;
       }
-      final DateTime? base = baseline[c.key];
-      if (base == null) {
+      final DateTime? readDate = _readDates[c.key];
+      if (readDate == null) {
+        // 从未上报过：上报一次并跳过未读，否则首登的历史会话会一次性全红。
+        _unread.remove(c.key);
+        await _reportRead(c.key);
         continue;
       }
       int missed = 0;
       ChatMessage? latest;
       for (final ChatMessage m in _messages[c.key] ?? const <ChatMessage>[]) {
-        if (!m.mine && m.sentAt.isAfter(base)) {
+        if (!m.mine && m.sentAt.isAfter(readDate)) {
           missed++;
           latest = m;
         }
       }
       if (missed == 0 || latest == null) {
-        // 从没有过已读游标的会话（首次登录）补一次，否则下次登录仍按“没读过”算。
-        if (!seeded.contains(c.key) && !_cacheRestored) {
-          _scheduleReadReport(c.key);
-        }
+        // 服务端读时间是权威：旧缓存里的未读不能留下来。
+        _unread.remove(c.key);
         continue;
       }
       // 登录补拉到的离线消息用户还没看过，即使恢复的当前会话就是它也要提示；
@@ -703,34 +704,6 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _scheduleCacheSave();
-  }
-
-  /// 同一会话 1 秒内只上报一次已读（issue #37 的口径），避免每条消息都打一次接口。
-  void _scheduleReadReport(String key) {
-    _readReportTimers[key]?.cancel();
-    _readReportTimers[key] = Timer(const Duration(seconds: 1), () {
-      _readReportTimers.remove(key);
-      unawaited(_reportRead(key));
-    });
-  }
-
-  /// `POST /api/conversations/{type}/{id}/read`：204 表示已读到服务端此刻，这时才清本地角标。
-  /// 失败（503 / 网络）保留角标，等下次打开会话或收到消息再试，不猜成功。
-  Future<void> _reportRead(String key) async {
-    final String? token = loginToken;
-    final Conversation? conv = conversationOf(key);
-    if (token == null || conv == null) {
-      return;
-    }
-    try {
-      await api.markRead(token: token, type: conv.type, id: conv.targetId);
-      if (_unread.remove(key) != null) {
-        notifyListeners();
-        _scheduleCacheSave();
-      }
-    } catch (_) {
-      // 留给下一次：角标还在，用户点开时会再报。
-    }
   }
 
   Map<String, dynamic> _exportCache() {
@@ -749,12 +722,12 @@ class AppState extends ChangeNotifier {
             'server_id': m.serverId,
             'server_id_text': m.serverIdText,
             'sender_name': m.senderName,
+            'recalled': m.recalled,
           },
       ];
     });
     return <String, dynamic>{
       'active': activeConversationKey,
-      'saved_at': DateTime.now().toUtc().toIso8601String(),
       'unread': _unread,
       'drafts': _drafts,
       'dm_titles': _dmTitles,
@@ -789,28 +762,63 @@ class AppState extends ChangeNotifier {
     final Duration lead = expires.difference(DateTime.now().toUtc()) - const Duration(minutes: 30);
     final Duration wait = lead.isNegative ? const Duration(minutes: 5) : lead;
     _turmsTimer = Timer(wait, () async {
-      try {
-        final AccountSession session =
-            await api.sessionForOwner(token: loginToken!, accountId: me.accountId);
-        turms = session.turms;
-        if (session.loginToken != null) {
-          loginToken = session.loginToken;
-          loginExpiresAt = session.loginExpiresAt;
-        }
-        _turmsRenewFailures = 0;
-        await _connectRealtime();
-        _scheduleTurmsRenewal();
-      } catch (_) {
-        // 单次续期失败不等于读通道死了：先按 1 分钟退避重试，连续 3 次才认输。
-        _turmsRenewFailures++;
-        if (_turmsRenewFailures >= 3) {
-          realtimeUp = false;
-          notifyListeners();
-          return;
-        }
-        _turmsTimer = Timer(const Duration(minutes: 1), _scheduleTurmsRenewal);
+      if (await _renewTurmsSession()) {
+        return;
       }
+      // 单次续期失败不等于读通道死了：先按 1 分钟退避重试，连续 3 次才认输。
+      _turmsRenewFailures++;
+      if (_turmsRenewFailures >= 3) {
+        realtimeUp = false;
+        notifyListeners();
+        return;
+      }
+      _turmsTimer = Timer(const Duration(minutes: 1), _scheduleTurmsRenewal);
     });
+  }
+
+  /// 换一份 Turms 凭据并重连；发送遇到 1105 / 1300 时也走这里。
+  Future<bool> _renewTurmsSession() async {
+    final Account? me = account;
+    final String? token = loginToken;
+    if (me == null || token == null) {
+      return false;
+    }
+    try {
+      final AccountSession session =
+          await api.sessionForOwner(token: token, accountId: me.accountId);
+      // 换凭据期间可能已经登出或切号：别把旧会话又接回去。
+      if (account?.accountId != me.accountId) {
+        return false;
+      }
+      turms = session.turms;
+      if (session.loginToken != null) {
+        loginToken = session.loginToken;
+        loginExpiresAt = session.loginExpiresAt;
+      }
+      _turmsRenewFailures = 0;
+      await _connectRealtime();
+      _scheduleTurmsRenewal();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Turms 报会话没建起来 / 凭据失效：换凭据重连一次，别只把错误甩给界面。
+  void _recoverRealtime(TurmsException error) {
+    if (!error.needsReconnect || _disposed || _recoveringRealtime) {
+      return;
+    }
+    _recoveringRealtime = true;
+    realtimeUp = false;
+    notifyListeners();
+    unawaited(() async {
+      try {
+        await _renewTurmsSession();
+      } finally {
+        _recoveringRealtime = false;
+      }
+    }());
   }
 
   /// 登录 / 切账号之后接上该账号的 Turms 会话：收全部会话的推送，历史由客户端自己查。
@@ -833,6 +841,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
       onMessage: _ingest,
+      onMessageUpdated: _ingestUpdate,
       onError: (Object error) {
         realtimeUp = false;
         notifyListeners();
@@ -894,7 +903,7 @@ class AppState extends ChangeNotifier {
         list.any((ChatMessage m) => m.serverIdText == incoming.id)) {
       return;
     }
-    // Turms 会把发送者自己的消息也推回来。若本地那条「发送中」还没拿到 REST 回执，
+    // Turms 会把发送者自己的消息也推回来。若本地那条「发送中」还没拿到直写响应，
     // 认领它而不是再插一条，否则同一个气泡会一真一假地留在列表里。
     //
     // 只能认领「自己发的」回声：双方同时发同一句话（比如都发 666）时，对端那条
@@ -928,18 +937,23 @@ class AppState extends ChangeNotifier {
     ));
     list.sort((ChatMessage a, ChatMessage b) => a.sentAt.compareTo(b.sentAt));
     final bool reading = key == activeConversationKey && windowFocused;
-    if (live && incoming.senderId != me && !reading) {
-      _unread[key] = (_unread[key] ?? 0) + 1;
-      if (notifyOnMessage) {
-        Conversation? conv;
-        for (final Conversation c in conversations) {
-          if (c.key == key) {
-            conv = c;
-            break;
+    if (live && incoming.senderId != me) {
+      if (reading) {
+        // 正在看这条就把读游标推上去，否则另一端点开时还会看到未读。
+        _scheduleReadReport(key);
+      } else {
+        _unread[key] = (_unread[key] ?? 0) + 1;
+        if (notifyOnMessage) {
+          Conversation? conv;
+          for (final Conversation c in conversations) {
+            if (c.key == key) {
+              conv = c;
+              break;
+            }
           }
-        }
-        if (conv != null) {
-          unawaited(_notifier.show(title: conv.title, body: incoming.text));
+          if (conv != null) {
+            unawaited(_notifier.show(title: conv.title, body: incoming.text));
+          }
         }
       }
     } else if (live && incoming.senderId != me && reading) {
@@ -948,6 +962,90 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _scheduleCacheSave();
+  }
+
+  /// 服务端发来的消息更新：撤回把正文藏掉，编辑替换正文。找不到就丢弃。
+  void _ingestUpdate(MessageUpdate update) {
+    bool changed = false;
+    for (final List<ChatMessage> list in _messages.values) {
+      for (final ChatMessage m in list) {
+        if (m.serverIdText != update.id) {
+          continue;
+        }
+        if (update.isRecall) {
+          m.recalled = true;
+          changed = true;
+        } else if (update.text != null) {
+          m.text = update.text!;
+          changed = true;
+        }
+      }
+    }
+    if (!changed) {
+      return;
+    }
+    notifyListeners();
+    _scheduleCacheSave();
+  }
+
+  /// 撤回自己发的消息。成功后先改本地，失败由调用方提示；服务端仍按 5 分钟时限判定。
+  Future<void> recallMessage(ChatMessage message) async {
+    final String? id = message.serverIdText;
+    if (id == null || id.isEmpty) {
+      throw TurmsException(turmsCode: 5200, message: '消息还没有服务端 id');
+    }
+    try {
+      await realtime.recall(messageId: id);
+      message.recalled = true;
+      notifyListeners();
+      _scheduleCacheSave();
+    } on TurmsException catch (e) {
+      _recoverRealtime(e);
+      rethrow;
+    }
+  }
+
+  /// 已读上报按会话合并：打开会话或正看着它时，1 秒内的多次触发只写一次。
+  void _scheduleReadReport(String key) {
+    final Conversation? conv = conversationOf(key);
+    if (conv == null || (conv.isRoom && (conv.turmsGroupId?.isEmpty ?? true))) {
+      return;
+    }
+    _pendingReadReports.add(key);
+    _readTimer?.cancel();
+    _readTimer = Timer(const Duration(seconds: 1), () {
+      final List<String> keys = _pendingReadReports.toList(growable: false);
+      _pendingReadReports.clear();
+      for (final String key in keys) {
+        unawaited(_reportRead(key));
+      }
+    });
+  }
+
+  /// 写自己的读游标。已读失败不影响聊天：群可能关闭已读、会话可能已被移除，都静默跳过。
+  Future<bool> _reportRead(String key) async {
+    final Conversation? conv = conversationOf(key);
+    if (conv == null) {
+      return false;
+    }
+    final String? targetId = conv.isRoom ? conv.turmsGroupId : '${conv.targetId}';
+    if (targetId == null || targetId.isEmpty) {
+      return false;
+    }
+    try {
+      await realtime.markRead(conversationType: conv.type, targetId: targetId);
+      _readDates[key] = DateTime.now().toUtc();
+      if (_unread.remove(key) != null) {
+        notifyListeners();
+        _scheduleCacheSave();
+      }
+      return true;
+    } on TurmsException catch (e) {
+      _recoverRealtime(e);
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// 打开会话时往回翻一页：游标是最早一条的 `deliveryDate`（Turms 没有消息 id 分页）。
@@ -1018,6 +1116,10 @@ class AppState extends ChangeNotifier {
     flushCache();
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
+    _readTimer?.cancel();
+    _pendingReadReports.clear();
+    _readDates.clear();
+    _recoveringRealtime = false;
     _stopPolling();
     _session.clear();
     realtime.disconnect();
@@ -1342,6 +1444,9 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       // 账号列表下次 refreshAll 会补回来；这里保住 created 才是第一优先级。
     }
+    // 后端在建 agent 的同一事务里把归属者与 agent 设成 accepted 好友：立刻重拉关系，
+    // 不等 15 秒轮询，创建完就能在好友列表里看到它。
+    await refreshRelations();
     notifyListeners();
     return created;
   }
@@ -1446,7 +1551,8 @@ class AppState extends ChangeNotifier {
 
   // —— 发言 ——
 
-  /// 本地先插「发送中」，成功后用服务端 `sent_at` 落定；失败保留正文可重试。
+  /// 本地先插「发送中」，Turms 用服务端 `messageId` 落定（时间等自己的推送回声）；
+  /// 失败保留正文可重试。
   Future<void> sendMessage(Conversation conv, String text) async {
     final String body = text.trim();
     if (body.isEmpty) {
@@ -1463,35 +1569,39 @@ class AppState extends ChangeNotifier {
       senderAccountId: account?.accountId ?? 0,
     );
     _append(local);
-    try {
-      final SentMessage sent =
-          await api.sendMessage(token: loginToken!, type: conv.type, id: conv.targetId, text: body);
-      // `message_id` 在 Web 上会丢精度，不能拿来当去重键：保留服务端 id 只作展示/内部用，
-      // 真正的精确 id 等 Turms 推送回来再认领（见 `_ingest`）。
-      local
-        ..state = MessageState.sent
-        ..serverId = sent.messageId
-        ..sentAt = sent.sentAt ?? local.sentAt;
-    } catch (e) {
-      local.state = MessageState.failed;
-      rethrow;
-    } finally {
-      notifyListeners();
-      _scheduleCacheSave();
-    }
+    await _writeMessage(conv, local);
   }
 
   Future<void> retryMessage(Conversation conv, ChatMessage message) async {
     message.state = MessageState.sending;
     notifyListeners();
+    await _writeMessage(conv, message);
+  }
+
+  /// Turms 直写：群用 `turms_group_id`，私聊用对端账号 id；没有 Biz 回执。
+  Future<void> _writeMessage(Conversation conv, ChatMessage message) async {
+    final String? targetId = conv.isRoom ? conv.turmsGroupId : '${conv.targetId}';
     try {
-      final SentMessage sent =
-          await api.sendMessage(token: loginToken!, type: conv.type, id: conv.targetId, text: message.text);
+      if (targetId == null || targetId.isEmpty) {
+        // 群句柄还没投影回来：这不是「发送失败」，但当前确实发不出去。
+        throw TurmsException(turmsCode: 5006, message: '群尚未完成投影');
+      }
+      final String messageId = await realtime.send(
+        conversationType: conv.type,
+        targetId: targetId,
+        text: message.text,
+      );
+      // 雪花 id 在 Web 上会丢精度：精确去重键只认字符串，`serverId` 只作内部用。
+      // 推送回声可能先到，已认领的就别覆盖。
       message
         ..state = MessageState.sent
-        ..serverId = sent.messageId
-        ..sentAt = sent.sentAt ?? message.sentAt;
-    } catch (e) {
+        ..serverIdText ??= messageId
+        ..serverId ??= int.tryParse(messageId);
+    } on TurmsException catch (e) {
+      message.state = MessageState.failed;
+      _recoverRealtime(e);
+      rethrow;
+    } catch (_) {
       message.state = MessageState.failed;
       rethrow;
     } finally {
@@ -1513,12 +1623,9 @@ class AppState extends ChangeNotifier {
       return;
     }
     _disposed = true;
-    for (final Timer timer in _readReportTimers.values) {
-      timer.cancel();
-    }
-    _readReportTimers.clear();
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
+    _readTimer?.cancel();
     _stopPolling();
     flushCache();
     // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。

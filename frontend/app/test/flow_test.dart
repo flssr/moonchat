@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -17,11 +18,12 @@ import 'package:mondchat/turms/realtime.dart';
 import 'package:mondchat/ui/home_shell.dart';
 import 'package:mondchat/ui/profile_panel.dart';
 
-/// 读取通道在测试里不连 Turms：只验证 REST 链路与状态机。
+/// 读写通道在测试里不连 Turms：只验证直写调用与状态机。
 class _FakeRealtime implements RealtimeClient {
   bool connected = false;
   int? connectedAccountId;
   void Function(IncomingMessage message)? _onMessage;
+  void Function(MessageUpdate update)? _onMessageUpdated;
   void Function(Object error)? _onError;
 
   /// 每次 `history()` 收到的游标与目标 id，以及要返回的页（按调用顺序消费）。
@@ -29,11 +31,28 @@ class _FakeRealtime implements RealtimeClient {
   final List<String> targetIds = <String>[];
   final List<List<IncomingMessage>> pages = <List<IncomingMessage>>[];
 
+  /// 直写与已读的调用记录；发送错误可注入，重试用例清掉即可。
+  final List<({String type, String targetId, String text})> sent =
+      <({String type, String targetId, String text})>[];
+  final List<({String type, String targetId})> readMarks =
+      <({String type, String targetId})>[];
+  final List<String> recalled = <String>[];
+  TurmsException? sendError;
+  TurmsException? markReadError;
+  int sendSequence = 9001;
+
+  /// 设置后 `send()` 会等它完成，用来验证「推送回声先到、直写响应后到」。
+  Completer<String>? sendGate;
+
+  final Map<int, DateTime?> privateDates = <int, DateTime?>{};
+  final Map<String, DateTime?> groupDates = <String, DateTime?>{};
+
   @override
   Future<void> connect({
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -44,12 +63,16 @@ class _FakeRealtime implements RealtimeClient {
     connected = true;
     connectedAccountId = myAccountId;
     _onMessage = onMessage;
+    _onMessageUpdated = onMessageUpdated;
     _onError = onError;
     onConnected?.call(true);
   }
 
   /// 模拟服务端推来一条消息。
   void emit(IncomingMessage message) => _onMessage?.call(message);
+
+  /// 模拟服务端推来撤回/编辑通知。
+  void emitUpdate(MessageUpdate update) => _onMessageUpdated?.call(update);
 
   /// 模拟读通道报错（断线/凭据失效）。
   void fail(Object error) => _onError?.call(error);
@@ -70,22 +93,53 @@ class _FakeRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<String, DateTime?>> readDates({
-    required int myAccountId,
-    required List<int> peerAccountIds,
-    required List<String> turmsGroupIds,
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
   }) async {
-    readDateQueries.add((
-      peers: List<int>.of(peerAccountIds),
-      groups: List<String>.of(turmsGroupIds),
-    ));
-    return readDatesResult;
+    sent.add((type: conversationType, targetId: targetId, text: text));
+    final Completer<String>? gate = sendGate;
+    if (gate != null) {
+      return gate.future;
+    }
+    if (sendError != null) {
+      throw sendError!;
+    }
+    return '${sendSequence++}';
   }
 
-  /// 服务端已读时间：测试里按需塞 `dm:<id>` / `room:<turms 群 id>`。
-  final Map<String, DateTime?> readDatesResult = <String, DateTime?>{};
-  final List<({List<int> peers, List<String> groups})> readDateQueries =
-      <({List<int> peers, List<String> groups})>[];
+  @override
+  Future<void> recall({required String messageId}) async {
+    if (sendError != null) {
+      throw sendError!;
+    }
+    recalled.add(messageId);
+  }
+
+  @override
+  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async =>
+      <int, DateTime?>{for (final int id in peerAccountIds) id: privateDates[id]};
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async =>
+      <String, DateTime?>{
+        for (final String id in turmsGroupIds) id: groupDates[id],
+      };
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    if (markReadError != null) {
+      throw markReadError!;
+    }
+    readMarks.add((type: conversationType, targetId: targetId));
+  }
 
   @override
   Future<void> disconnect() async {
@@ -103,32 +157,10 @@ http.Response _json(Object? body, int status) => http.Response(
     );
 
 /// 假 Biz：只实现客户端会打到的那几条，字段与 `docs/truth/backend/README.md` 一致。
-MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf, int readStatus = 204}) {
+MockClient _mockBiz() {
   return MockClient((http.Request req) async {
     final String path = req.url.path;
     final String method = req.method;
-
-    // 发送路径也要校验契约头：token 掉了、设备头写错，测试必须红（`X-Device-Type` 就是这么漏过去的）。
-    if (path.startsWith('/api/conversations/')) {
-      expect(req.headers['authorization'] ?? req.headers['Authorization'], startsWith('Bearer '));
-      // 已读上报不带设备头（后端也不要求），只有发言走写入网关。
-      if (path.endsWith('/messages')) {
-        expect(
-          const <String>['desktop', 'browser', 'ios', 'android', 'others']
-              .contains(req.headers['x-device-type'] ?? req.headers['X-Device-Type']),
-          isTrue,
-          reason: 'X-Device-Type 必须是写入网关认的枚举',
-        );
-      }
-    }
-
-    // issue #37：204 才表示「已读到服务端此刻」；503 留给客户端保留角标重试。
-    if (method == 'POST' && path.endsWith('/read')) {
-      if (readStatus != 204) {
-        return _json(<String, Object?>{'code': 'upstream_unavailable', 'message': 'no'}, readStatus);
-      }
-      return http.Response('', 204);
-    }
 
     if (method == 'POST' && path == '/api/auth/login') {
       return _json(<String, Object?>{
@@ -200,15 +232,7 @@ MockClient _mockBiz({int sendStatus = 201, int Function()? statusOf, int readSta
       }, 200);
     }
     if (method == 'POST' && path.startsWith('/api/conversations/')) {
-      final int status = statusOf?.call() ?? sendStatus;
-      if (status != 201) {
-        return _json(<String, Object?>{'code': 'rate_limited', 'message': 'too many'}, status);
-      }
-      return _json(<String, Object?>{
-        'message_id': 9001,
-        'conversation': <String, Object?>{'type': 'dm', 'id': 2},
-        'sent_at': '2026-11-10T12:00:00Z',
-      }, 201);
+      fail('消息发送已经改走 Turms，不该再打 Biz 的发送路由');
     }
     return _json(<String, Object?>{'code': 'not_found', 'message': 'no route'}, 404);
   });
@@ -225,17 +249,14 @@ class _FakeCache implements MessageCacheStore {
 }
 
 AppState _newState({
-  int sendStatus = 201,
-  int Function()? statusOf,
   _FakeRealtime? realtime,
   MessageCacheStore? cache,
   bool primeOnLogin = false,
-  int readStatus = 204,
 }) {
   return AppState(
     api: ApiClient(
       baseUrl: 'http://mock.local',
-      client: _mockBiz(sendStatus: sendStatus, statusOf: statusOf, readStatus: readStatus),
+      client: _mockBiz(),
     ),
     realtime: realtime ?? _FakeRealtime(),
     cache: cache,
@@ -272,8 +293,9 @@ void main() {
     expect(state.realtimeUp, isTrue);
   });
 
-  test('发言成功：本地先落「发送中」，确认后落定并带服务端 id', () async {
-    final AppState state = _newState();
+  test('发言成功：直写 Turms，本地先落「发送中」，响应 id 落定', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
 
@@ -283,19 +305,26 @@ void main() {
     final ChatMessage msg = state.messagesOf(dm.key).single;
     expect(msg.text, '你好');
     expect(msg.state, MessageState.sent);
+    expect(msg.serverIdText, '9001');
     expect(msg.serverId, 9001);
-    expect(msg.sentAt, DateTime.parse('2026-11-10T12:00:00Z'));
+    // 不再有 Biz 的 sent_at：时间先按本地，等 Turms 推送回声再校正。
+    expect(msg.sentAt.difference(DateTime.now().toUtc()).inSeconds.abs(), lessThan(5));
+    expect(rt.sent.single.type, 'dm');
+    expect(rt.sent.single.targetId, '2');
+    expect(rt.sent.single.text, '你好');
   });
 
-  test('发言被限流：消息标失败并保留正文，异常带 rate_limited', () async {
-    final AppState state = _newState(sendStatus: 429);
+  test('发言被限流：消息标失败并保留正文，异常带 Turms 1101', () async {
+    final _FakeRealtime rt = _FakeRealtime()
+      ..sendError = TurmsException(turmsCode: 1101, message: 'too many');
+    final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
 
     final Conversation dm = state.conversations.first;
     await expectLater(
       state.sendMessage(dm, '再说一句'),
-      throwsA(isA<ApiException>().having((ApiException e) => e.code, 'code', 'rate_limited')),
+      throwsA(isA<TurmsException>().having((TurmsException e) => e.turmsCode, 'turmsCode', 1101)),
     );
 
     final ChatMessage msg = state.messagesOf(dm.key).single;
@@ -663,33 +692,35 @@ void main() {
   });
 
   test('失败消息重试成功：同一个气泡变成已发送', () async {
-    int status = 429;
-    final AppState state = _newState(statusOf: () => status);
+    final _FakeRealtime rt = _FakeRealtime()
+      ..sendError = TurmsException(turmsCode: 1101, message: 'too many');
+    final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
     final Conversation dm = state.conversations.first;
 
-    await expectLater(state.sendMessage(dm, '重试我'), throwsA(isA<ApiException>()));
+    await expectLater(state.sendMessage(dm, '重试我'), throwsA(isA<TurmsException>()));
     final ChatMessage bubble = state.messagesOf(dm.key).single;
     expect(bubble.state, MessageState.failed);
 
-    status = 201;
+    rt.sendError = null;
     await state.retryMessage(dm, bubble);
     expect(state.messagesOf(dm.key).single.state, MessageState.sent);
-    expect(state.messagesOf(dm.key).single.serverId, 9001);
-    // message_id 在 Web 上会丢精度，精确去重键等 Turms 推送回来再填。
-    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+    expect(state.messagesOf(dm.key).single.serverIdText, isNotNull);
+    expect(rt.sent, hasLength(2), reason: '重试只补发同一句，不新建气泡');
   });
 
-  test('自己消息推送回来认领本地气泡，不插重复', () async {
+  test('直写响应回来前，自己的推送回声先认领本地气泡', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
     final Conversation dm = state.conversations.first;
 
-    await state.sendMessage(dm, '回声');
-    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+    final Completer<String> gate = Completer<String>();
+    rt.sendGate = gate;
+    final Future<void> sending = state.sendMessage(dm, '回声');
+    expect(state.messagesOf(dm.key).single.state, MessageState.sending);
 
     rt.emit(const IncomingMessage(
       id: '1881590000000000001',
@@ -700,6 +731,11 @@ void main() {
     ));
     expect(state.messagesOf(dm.key), hasLength(1), reason: '同一条消息不能一真一假两条');
     expect(state.messagesOf(dm.key).single.serverIdText, '1881590000000000001');
+
+    gate.complete('1881590000000000001');
+    await sending;
+    expect(state.messagesOf(dm.key), hasLength(1));
+    expect(state.messagesOf(dm.key).single.state, MessageState.sent);
   });
 
   test('重登先从本机缓存恢复上次会话与最后一条消息', () async {
@@ -721,13 +757,13 @@ void main() {
     expect(second.lastMessage(dm.key)?.text, '缓存这条');
   });
 
-  test('登录补拉每个会话最新一页：预览和离线未读', () async {
+  test('登录补拉每个会话最新一页：预览和离线未读按服务端 readDate 算', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final _FakeCache cache = _FakeCache();
     cache.saved[1] = <String, dynamic>{
-      'saved_at': '2026-11-10T09:00:00Z',
       'messages': <String, dynamic>{},
     };
+    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -747,6 +783,12 @@ void main() {
     }
     expect(state.lastMessage(dm.key)?.text, '离线来的');
     expect(state.unreadFor(dm.key), 1);
+    // 群会话没有服务端读时间：首登静默上报一次，不能被历史消息刷成未读。
+    expect(
+      rt.readMarks.any((({String type, String targetId}) m) =>
+          m.type == 'room' && m.targetId == '7000000000000000007'),
+      isTrue,
+    );
   });
 
   test('删好友后非好友的历史私聊仍保留在会话列表', () async {
@@ -781,7 +823,7 @@ void main() {
     expect(state.draftFor(dm.key), isEmpty);
   });
 
-  test('后台收到消息累计未读，打开会话清零', () async {
+  test('后台收到消息累计未读，打开会话清零并上报读游标', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
@@ -799,14 +841,18 @@ void main() {
     expect(state.lastMessage(dm.key)?.text, '在吗');
 
     state.selectConversation(dm.key);
-    // 角标等 204 回来才清：上报有 1 秒去抖（issue #37）。
+    expect(state.unreadFor(dm.key), 1, reason: '等 Turms 确认后再清');
+    expect(rt.readMarks, isEmpty, reason: '1 秒 debounce 前不写');
+
     await Future<void>.delayed(const Duration(milliseconds: 1200));
     expect(state.unreadFor(dm.key), 0);
+    expect(rt.readMarks.single.type, 'dm');
+    expect(rt.readMarks.single.targetId, '2');
   });
 
   test('登录未读以服务端 readDate 为准，没有本机缓存也算出来', () async {
     final _FakeRealtime rt = _FakeRealtime();
-    rt.readDatesResult['dm:2'] = DateTime.parse('2026-11-10T09:00:00Z');
+    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -826,13 +872,12 @@ void main() {
     }
     expect(state.lastMessage(dm.key)?.text, '离线来的');
     expect(state.unreadFor(dm.key), 1, reason: 'readDate 之前的对端消息都算未读');
-    // 私聊按对端账号查已读；没有群时群查询是空的。
-    expect(rt.readDateQueries.single.peers, contains(2));
   });
 
-  test('已读上报失败（503）时角标保留，不假装读过', () async {
-    final _FakeRealtime rt = _FakeRealtime();
-    final AppState state = _newState(realtime: rt, readStatus: 503);
+  test('已读上报失败时角标保留，不假装读过', () async {
+    final _FakeRealtime rt = _FakeRealtime()
+      ..markReadError = TurmsException(turmsCode: 1105);
+    final AppState state = _newState(realtime: rt);
     addTearDown(state.dispose);
     await state.login(email: 'a@b.c', password: 'password1');
     final Conversation dm = state.conversations.first;
@@ -848,7 +893,8 @@ void main() {
 
     state.selectConversation(dm.key);
     await Future<void>.delayed(const Duration(milliseconds: 1200));
-    expect(state.unreadFor(dm.key), 1, reason: '503 说明服务端没确认，角标不能清');
+    expect(state.unreadFor(dm.key), 1, reason: 'Turms 没确认，角标不能清');
+    expect(rt.readMarks, isEmpty);
   });
 
   test('双方同时发同一句话：对端消息不能被认领成本地待发气泡', () async {
@@ -858,11 +904,11 @@ void main() {
     await state.login(email: 'a@b.c', password: 'password1');
     final Conversation dm = state.conversations.first;
 
-    // 我已经发了一条 666（REST 回执有 id，但精确去重键要等 Turms 推送）。
+    // 我已经发了一条 666，直写响应给了服务端 id。
     await state.sendMessage(dm, '666');
-    expect(state.messagesOf(dm.key).single.serverIdText, isNull);
+    expect(state.messagesOf(dm.key).single.serverIdText, '9001');
 
-    // 对端也发了 666。它只能作为新消息插入，不能被认领成我那条待回声的消息。
+    // 对端也发了 666。它只能作为新消息插入，不能被认领成我那条。
     rt.emit(const IncomingMessage(
       id: '1881590000000000002',
       text: '666',
@@ -879,8 +925,45 @@ void main() {
       list.firstWhere((ChatMessage m) => !m.mine).serverIdText,
       '1881590000000000002',
     );
-    // 我那条仍在等自己的回声，不能安上对端的 id。
-    expect(list.firstWhere((ChatMessage m) => m.mine).serverIdText, isNull);
+    // 我那条仍是自己的 id，不能安上对端的 id。
+    expect(list.firstWhere((ChatMessage m) => m.mine).serverIdText, '9001');
+  });
+
+  test('撤回自己的消息：调 Turms 撤回并隐藏正文', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    await state.sendMessage(dm, '说错了');
+    await state.recallMessage(state.messagesOf(dm.key).single);
+
+    expect(rt.recalled, <String>['9001']);
+    expect(state.messagesOf(dm.key).single.recalled, isTrue);
+  });
+
+  test('收到撤回通知：对应消息标为已撤回，正文不再展示', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _newState(realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    final Conversation dm = state.conversations.first;
+
+    rt.emit(const IncomingMessage(
+      id: '501',
+      text: '撤回我',
+      senderId: 2,
+      recipientId: 1,
+      sentAt: null,
+    ));
+    rt.emitUpdate(MessageUpdate(
+      id: '501',
+      senderId: 2,
+      recallAt: DateTime.now().toUtc(),
+    ));
+
+    expect(state.messagesOf(dm.key).single.recalled, isTrue);
   });
 
   test('切进 agent 后还能切回真人：账号列表用归属者 token 查', () async {
@@ -1127,7 +1210,7 @@ class _FakeBiz {
         ? <String, dynamic>{}
         : jsonDecode(req.body) as Map<String, dynamic>;
 
-    // 替身也校验契约头：头写错、凭据丢失必须被测试挡下（X-Device-Type 就是这么漏过去的）。
+    // 替身只做认证检查；消息发送已经改走 Turms，不该再出现 Biz 发送路由。
     final bool needsAuth = path != '/api/auth/login' &&
         path != '/api/auth/register' &&
         !(path == '/api/sessions' && body.containsKey('account_key'));
@@ -1138,18 +1221,7 @@ class _FakeBiz {
       }
     }
     if (path.startsWith('/api/conversations/')) {
-      final String device = req.headers['x-device-type'] ?? req.headers['X-Device-Type'] ?? '';
-      if (!const <String>['desktop', 'browser', 'ios', 'android', 'others'].contains(device)) {
-        return _json(
-            <String, Object?>{'code': 'validation_failed', 'message': 'device', 'field': 'x-device-type'},
-            400);
-      }
-      final List<String> parts = path.split('/');
-      return _json(<String, Object?>{
-        'message_id': 9001,
-        'conversation': <String, Object?>{'type': parts[3], 'id': int.parse(parts[4])},
-        'sent_at': '2026-11-10T12:00:00Z',
-      }, 201);
+      fail('消息发送已经改走 Turms，不该再打 Biz 的发送路由');
     }
 
     if (method == 'POST' && path == '/api/auth/register') {

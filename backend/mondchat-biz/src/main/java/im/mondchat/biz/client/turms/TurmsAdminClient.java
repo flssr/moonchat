@@ -1,7 +1,9 @@
 package im.mondchat.biz.client.turms;
 
 import im.mondchat.biz.common.ApiException;
+import im.mondchat.biz.config.TurmsAdminHttpProperties;
 import im.mondchat.biz.config.TurmsProperties;
+import java.net.http.HttpClient;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
@@ -12,6 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -36,8 +39,15 @@ public class TurmsAdminClient {
     private final RestClient restClient;
 
     public TurmsAdminClient(TurmsProperties properties) {
+        TurmsAdminHttpProperties http = properties.http();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(http.connectTimeout())
+                .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(http.readTimeout());
         this.restClient = RestClient.builder()
                 .baseUrl(properties.adminUrl())
+                .requestFactory(requestFactory)
                 .defaultHeaders(headers -> headers.setBasicAuth(properties.adminUsername(), properties.adminPassword()))
                 .build();
     }

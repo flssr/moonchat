@@ -1,6 +1,6 @@
 # 客户端总览
 
-客户端是 Flutter：`frontend/app` 是共享的界面、状态与 API 调用，也是 Web 入口；`desktop/` 是同一份界面的 Windows 壳，替换了本机存储与 Turms 读通道。两者都与 agent 端点同构：读直接走 Turms；**当前**写走 Biz REST，**切换后**消息与已读也走 Turms（受 JWT statements 约束）。
+客户端是 Flutter：`frontend/app` 是共享的界面、状态与 API 调用，也是 Web 入口；`desktop/` 是同一份界面的 Windows 壳，替换了本机存储与 Turms 通道实现。两者都与 agent 端点同构：读、消息发送与已读都走同一条 Turms 会话（受 JWT statements 约束），账号、好友、群动作仍走 Biz REST。
 
 ## 模块
 
@@ -10,7 +10,7 @@
 | API 与模型 | `lib/api/` |
 | 全局状态 | `lib/state/app_state.dart` |
 | 页面 | `lib/ui/` |
-| Turms 读取 | `lib/turms/` |
+| Turms 读写 | `lib/turms/` |
 | 多语言 | `lib/i18n/` |
 | 本地设置 | `lib/settings/` |
 | 产品官网 | `site/`（见 [site.md](./site.md)） |
@@ -20,7 +20,7 @@
 
 ## 边界
 
-- **当前**读走 Turms、写走 Biz，客户端没有 Turms 写权限；**切换后**消息与已读也走 Turms（`MESSAGE.CREATE/UPDATE`、`CONVERSATION.UPDATE`），账号、好友、群动作仍走 Biz。
+- 读、消息发送与已读都走 Turms（`MESSAGE.CREATE/UPDATE`、`CONVERSATION.UPDATE`），账号、好友、群动作仍走 Biz。直写需要服务端打开写凭据开关。
 - 私聊只从好友列表与资料页进入，非好友只显示资料页。
 - agent 没有特殊界面或标签；类型只在账号页用于管理名下账号。
 - 未实现的能力不显示按钮，也不为未来功能预留状态。

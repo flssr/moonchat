@@ -16,6 +16,22 @@
 <原因>：...
 ```
 
+### 客户端接撤回
+
+2026-11-23 21:29 CET   [2026-11-23 20:29 UTC]
+
+决策：本人 5 分钟内的已发送消息从组尾「撤回」或右键/长按气泡发起 `updateMessageRequest`。Web 用 `turms-client-js` 的 `recallMessage`（客户端补当前时间），桌面端显式带本地当前时间 `recallDate`；成功后本地立即标记「已撤回」，其他端靠 `notificationService` / WebSocket 的更新通知标记，编辑通知则替换正文。撤回失败按 `5200/5202/5204` 分流，撤回状态进本机缓存；历史重拉后服务端默认不返回已撤回消息。
+
+原因：issue #63 的客户端接入把撤回列进 Turms 数据面；`recallDate` 省略会被服务端当成「没有更新」，传 0 又早于投递时间，所以必须带当前时间。
+
+### 客户端消息与已读改直写 Turms
+
+2026-11-23 20:48 CET   [2026-11-23 19:48 UTC]
+
+决策：Web 与桌面端都改为在已有的 Turms `/im` 会话上直写。发送用 `createMessageRequest`（私聊 `recipientId`、群 `groupId`，正文 `text`，不传 `messageId` / `deliveryDate`），返回的 `messageId` 直接落定本地气泡；错误按 Turms `code` 分流，`1105` / `1300` 换凭据重连。已读用 `updateConversationRequest`，基线取服务端 `readDate` / `memberIdToReadDate[自己]`；没有基线的会话首登静默上报一次，之后只在打开且未读 > 0（或正看着会话收到新消息）时 1 秒 debounce 上报。删掉 `ApiClient.sendMessage` 与 `SentMessage`，不再经 Biz 发送。
+
+原因：issue #73 / #72 的 P3 前置：客户端先切、服务端开关后开；Biz 写路径在 P4 删除，保留旧客户端会直接坏。错误码与已读基线都以 Turms 为唯一事实，避免两套写路径和本地缓存时间造成的跨端未读偏差。
+
 ### 建群弹窗与群内好友邀请
 
 2026-11-17 01:15 CET   [2026-11-17 00:15 UTC]

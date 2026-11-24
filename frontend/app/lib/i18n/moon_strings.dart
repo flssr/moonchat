@@ -169,8 +169,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': 'Credentials',
     '切进': 'Switch to',
     '我知道了': 'Got it',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        'A new agent is isolated: no groups or friends; establish relationships first.',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        'A new agent automatically becomes your friend; it joins no groups, so add it manually when needed.',
     '账号密钥（只显示一次）': 'Account key (shown once)',
     '真人': 'Human',
     // 资料卡 / 资料编辑
@@ -233,6 +233,21 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个动作当前账号没有权限': "This account can't do that.",
     '只有好友之间才能私聊': 'Only friends can DM.',
     '对方已拒收你的消息或申请': "They're not accepting your messages or requests.",
+    '连接已断开，正在重连，请稍后再试': 'Connection lost; reconnecting. Try again shortly.',
+    '当前账号没有发言权限': "This account can't send messages.",
+    '登录状态已过期，正在重新连接': 'Sign-in expired; reconnecting.',
+    '对方账号当前不可用': 'That account is currently unavailable.',
+    '你已被禁止在这个群里发言': "You're not allowed to speak in this group.",
+    '这个群当前不可用': 'This group is currently unavailable.',
+    '你当前不能在这个群里发言': "You can't speak in this group right now.",
+    '不能给自己发消息': "You can't message yourself.",
+    '消息内容不合规，请修改后再发': 'This message was rejected; edit it and try again.',
+    '这条消息已经不存在了': 'This message no longer exists.',
+    '撤回功能当前已关闭': 'Recall is currently disabled.',
+    '只能撤回自己发的消息': 'You can only recall your own messages.',
+    '超过撤回时限，不能撤回了': 'The recall window has passed.',
+    '撤回': 'Recall',
+    '已撤回': 'Recalled',
     '黑名单最多 100 人': 'The blocklist is limited to 100 people.',
     '状态已经变了，刷新后再试': 'State changed; refresh and retry.',
     // 星座
@@ -421,8 +436,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': '資格情報',
     '切进': '切り替え',
     '我知道了': '了解',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        '新しいエージェントは孤立しています。グループや友達はなく、まず関係を築きます。',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        '新しいエージェントは自動的にあなたの友人になります。グループには入っていないので、必要なら手動で追加してください。',
     '账号密钥（只显示一次）': 'アカウントキー（一度のみ表示）',
     '真人': '人間',
     // プロフィール
@@ -484,6 +499,21 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个动作当前账号没有权限': 'このアカウントには権限がありません',
     '只有好友之间才能私聊': '友達同士のみDM可能',
     '对方已拒收你的消息或申请': '相手はあなたのメッセージや申請を受け付けていません',
+    '连接已断开，正在重连，请稍后再试': '接続が切れました。再接続中です。しばらくしてから再試行してください。',
+    '当前账号没有发言权限': 'このアカウントには送信権限がありません',
+    '登录状态已过期，正在重新连接': 'ログインの有効期限が切れました。再接続中です。',
+    '对方账号当前不可用': '相手のアカウントは現在利用できません',
+    '你已被禁止在这个群里发言': 'このグループでは発言が禁止されています',
+    '这个群当前不可用': 'このグループは現在利用できません',
+    '你当前不能在这个群里发言': '現在このグループでは発言できません',
+    '不能给自己发消息': '自分自身にメッセージは送れません',
+    '消息内容不合规，请修改后再发': 'メッセージ内容が不適切です。修正して再送信してください。',
+    '这条消息已经不存在了': 'このメッセージはすでに存在しません',
+    '撤回功能当前已关闭': '撤回機能は現在無効です',
+    '只能撤回自己发的消息': '自分が送信したメッセージのみ撤回できます',
+    '超过撤回时限，不能撤回了': '撤回できる時間を過ぎました',
+    '撤回': '撤回',
+    '已撤回': '撤回済み',
     '黑名单最多 100 人': 'ブロックリストは最大100人です',
     '状态已经变了，刷新后再试': '状態が変わりました。更新して再試行。',
     // 星座
@@ -671,8 +701,8 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '凭据': 'Zugangsdaten',
     '切进': 'Wechseln',
     '我知道了': 'Verstanden',
-    '新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。':
-        'Ein neuer Agent ist isoliert: keine Gruppen oder Freunde; zuerst Beziehungen aufbauen.',
+    '新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。':
+        'Ein neuer Agent wird automatisch dein Freund; er ist in keiner Gruppe, füge ihn bei Bedarf manuell hinzu.',
     '账号密钥（只显示一次）': 'Konto-Schlüssel (einmalig)',
     '真人': 'Mensch',
     // Profil
@@ -736,6 +766,23 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
     '这个动作当前账号没有权限': 'Dieses Konto hat keine Berechtigung.',
     '只有好友之间才能私聊': 'Nur Freunde können DMs senden.',
     '对方已拒收你的消息或申请': 'Die Person nimmt deine Nachrichten oder Anfragen nicht an.',
+    '连接已断开，正在重连，请稍后再试':
+        'Verbindung getrennt; Neuverbindung läuft. Bitte später erneut versuchen.',
+    '当前账号没有发言权限': 'Dieses Konto darf keine Nachrichten senden.',
+    '登录状态已过期，正在重新连接': 'Anmeldung abgelaufen; Neuverbindung läuft.',
+    '对方账号当前不可用': 'Das Konto ist derzeit nicht verfügbar.',
+    '你已被禁止在这个群里发言': 'Du darfst in dieser Gruppe nicht schreiben.',
+    '这个群当前不可用': 'Diese Gruppe ist derzeit nicht verfügbar.',
+    '你当前不能在这个群里发言': 'Du kannst derzeit nicht in dieser Gruppe schreiben.',
+    '不能给自己发消息': 'Du kannst dir nicht selbst schreiben.',
+    '消息内容不合规，请修改后再发':
+        'Der Nachrichteninhalt ist unzulässig; bitte ändern und erneut senden.',
+    '这条消息已经不存在了': 'Diese Nachricht existiert nicht mehr.',
+    '撤回功能当前已关闭': 'Das Zurückziehen ist derzeit deaktiviert.',
+    '只能撤回自己发的消息': 'Du kannst nur eigene Nachrichten zurückziehen.',
+    '超过撤回时限，不能撤回了': 'Die Frist zum Zurückziehen ist abgelaufen.',
+    '撤回': 'Zurückziehen',
+    '已撤回': 'Zurückgezogen',
     '黑名单最多 100 人': 'Die Sperrliste ist auf 100 Personen begrenzt.',
     '状态已经变了，刷新后再试': 'Status geändert; aktualisieren und erneut versuchen.',
     // Sternzeichen

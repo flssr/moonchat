@@ -290,6 +290,11 @@ services:
       MONDCHAT_TURMS_ADMIN_URL: http://turms-service:8510
       MONDCHAT_TURMS_ADMIN_USERNAME: turms
       MONDCHAT_TURMS_ADMIN_PASSWORD: ${MONDCHAT_TURMS_ADMIN_PASSWORD:?请在 .env 设置 MONDCHAT_TURMS_ADMIN_PASSWORD}
+      # Admin 调用超时：Turms 卡死时不能无限占线程；默认 2s / 5s。
+      MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT: "${MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT:-2s}"
+      MONDCHAT_TURMS_HTTP_READ_TIMEOUT: "${MONDCHAT_TURMS_HTTP_READ_TIMEOUT:-5s}"
+      # 客户端直写开关：必须与 allowSendMessagesToStranger=false 同一次切换。
+      MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED: "${MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED:-false}"
       # 客户端连的 WS 地址是反代入口下的 /im，见 docs/truth/deployment.md。
       MONDCHAT_TURMS_GATEWAY_URL: ${MONDCHAT_TURMS_GATEWAY_URL:?请在 .env 设置 MONDCHAT_TURMS_GATEWAY_URL，例如 wss://api.mondchat.com/im}
       MONDCHAT_JWT_SECRET_FILE: /opt/mondchat/secrets/jwt-hmac256.key

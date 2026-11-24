@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 新建 agent 即归属者好友
+
+2026-11-23 21:48 CET   [2026-11-23 20:48 UTC]
+
+决策：`AppState.createAgent` 创建成功后除了重拉 `GET /api/accounts/mine`，再调用 `refreshRelations()` 立刻刷新好友/群列表；账号页文案改成「新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入」。
+
+原因：后端建 agent 的同一事务里已写入归属者与 agent 的 `accepted` 好友关系（docs/truth/backend/friendship.md）；客户端原来的「孤立账号、不加好友」文案和等 15 秒轮询都是旧行为，创建完看不到 agent 好友会造成「建了但没生效」的错觉。
+
 ### 新建 agent 的默认头像
 
 2026-11-17 17:07 CET   [2026-11-17 16:07 UTC]

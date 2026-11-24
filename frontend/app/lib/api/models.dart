@@ -357,27 +357,3 @@ class BlocklistPage {
   final List<BlocklistItem> items;
   final int total;
 }
-
-class SentMessage {
-  const SentMessage({
-    required this.messageId,
-    required this.conversationType,
-    required this.conversationId,
-    required this.sentAt,
-  });
-
-  factory SentMessage.fromJson(Map<String, dynamic> j) {
-    final Map<String, dynamic> conv = (j['conversation'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
-    return SentMessage(
-      messageId: _int(j['message_id']),
-      conversationType: _str(conv['type']),
-      conversationId: _intOrNull(conv['id']) ?? 0,
-      sentAt: _date(j['sent_at']),
-    );
-  }
-
-  final int messageId;
-  final String conversationType;
-  final int conversationId;
-  final DateTime? sentAt;
-}

@@ -102,6 +102,8 @@ server {
    | `MONDCHAT_TURMS_GATEWAY_URL` | 客户端连的 WS 地址，如 `wss://api.mondchat.com/im` |
    | `MONDCHAT_JWT_SECRET_FILE` | 可选，默认 `/opt/mondchat/secrets/jwt-hmac256.key` |
    | `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 可选，默认 `false`。`true` = 签出带写权限的 Turms statements；必须与 `allowSendMessagesToStranger=false` 同一次开，单独提前开等于让持凭据客户端绕过好友与拉黑 |
+   | `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` | 可选，默认 `2s`。Admin HTTP 连接超时 |
+   | `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` | 可选，默认 `5s`。Admin HTTP 读取超时；Turms 卡死时按既有 catch 回 `503 upstream_unavailable` |
 
 2. `/opt/mondchat/secrets/jwt-hmac256.key`（`chmod 600`）：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。
 3. `docker login ghcr.io`，用带 `read:packages` 的 PAT，否则 `docker compose pull` 拿不到私有镜像。

@@ -71,10 +71,10 @@ class ApiException implements Exception {
   String toString() => 'ApiException($code/$statusCode): $message';
 }
 
-/// 24 条 `/api/*` 路由的唯一调用点，前端目前用到 21 条（黑名单三条未接）。
+/// `/api/*` 路由的唯一调用点；消息发送与已读改走 Turms，其余 REST 动作都经这里。
 /// 路径与字段名以 controller、DTO 与运行时 OpenAPI 为准。
 class ApiClient {
-  ApiClient({String? baseUrl, http.Client? client, this.deviceType = 'browser'})
+  ApiClient({String? baseUrl, http.Client? client})
       : _base = (baseUrl ?? defaultBaseUrl).replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? http.Client(),
         _ownsClient = client == null;
@@ -84,10 +84,6 @@ class ApiClient {
     'MONDCHAT_API_BASE',
     defaultValue: '',
   );
-
-  /// 写入网关只认这几个取值（`ConversationController.java:31-37`），其余返回 400。
-  /// 与 Turms 自己的设备枚举不是一套：`/im` 登录用的设备类型在各自的 realtime 实现里。
-  final String deviceType;
 
   final String _base;
   final http.Client _client;
@@ -395,34 +391,5 @@ class ApiClient {
     required int accountId,
   }) async {
     await _send('DELETE', '/api/rooms/$roomId/members/$accountId', token: token);
-  }
-
-  // —— 发言（唯一写入口）——
-
-  /// #19 `type` 只有 `dm` / `room`；`id` 是对端账号 id 或 `room_id`。
-  Future<SentMessage> sendMessage({
-    required String token,
-    required String type,
-    required int id,
-    required String text,
-  }) async {
-    final json = await _send(
-      'POST',
-      '/api/conversations/$type/$id/messages',
-      token: token,
-      body: {'text': text},
-      headers: {'X-Device-Type': deviceType},
-    );
-    return SentMessage.fromJson(json);
-  }
-
-  /// #37 已读到服务端此刻：204 表示写进去了，客户端才可以清本地未读。
-  /// `type` 只有 `dm` / `room`；`id` 是对端账号 id 或 `room_id`。
-  Future<void> markRead({
-    required String token,
-    required String type,
-    required int id,
-  }) async {
-    await _send('POST', '/api/conversations/$type/$id/read', token: token);
   }
 }

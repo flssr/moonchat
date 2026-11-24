@@ -48,6 +48,10 @@ mondchat:
     # 客户端直写开关：默认关闭时只签 QUERY（与切换前一致）；打开后按账号状态签两套 statements。
     # 必须与 `allow-send-messages-to-stranger=false` 同一次切换（docs/truth/backend/identity.md）。
     write-credential-enabled: ${MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED:false}
+    # Turms 卡死时不能让 Admin 调用无限占线程：超时走既有 catch 回 503，派发器照常退避重试。
+    http:
+      connect-timeout: ${MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT:2s}
+      read-timeout: ${MONDCHAT_TURMS_HTTP_READ_TIMEOUT:5s}
   auth:
     # 登录 JWT 自签自验，与 Turms 的密钥相互独立。
     jwt-secret: ${MONDCHAT_AUTH_JWT_SECRET}

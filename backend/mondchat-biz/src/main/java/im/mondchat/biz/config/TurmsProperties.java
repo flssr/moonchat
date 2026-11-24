@@ -21,5 +21,11 @@ public record TurmsProperties(
          * `CONVERSATION.UPDATE`（能清角标、发不出消息）。与 `allowSendMessagesToStranger=false`
          * 必须同一次切换（docs/truth/backend/identity.md）。
          */
-        boolean writeCredentialEnabled) {
+        boolean writeCredentialEnabled,
+        /** Admin HTTP 超时：不配时由 `TurmsAdminHttpProperties` 兜 2s / 5s。 */
+        TurmsAdminHttpProperties http) {
+
+    public TurmsProperties {
+        http = http == null ? new TurmsAdminHttpProperties(null, null) : http;
+    }
 }
