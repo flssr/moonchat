@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,9 +41,15 @@ final class FakeTurmsAdmin {
     private final Set<Long> users = ConcurrentHashMap.newKeySet();
 
     private volatile int status = 200;
+    private volatile String responseBody;
+    private volatile String failNextMethod;
+    private volatile String failNextPath;
+    private volatile int failNextStatus = 500;
+    private final AtomicInteger duplicateGroupMemberResponses = new AtomicInteger();
     private volatile String lastMethod;
     private volatile String lastPath;
     private volatile String lastQuery;
+    private volatile String lastDeleteUserQuery;
     private volatile String lastBody;
     private volatile String lastAuthorization;
 
@@ -68,9 +75,15 @@ final class FakeTurmsAdmin {
 
     FakeTurmsAdmin reset() {
         status = 200;
+        responseBody = null;
+        failNextMethod = null;
+        failNextPath = null;
+        failNextStatus = 500;
+        duplicateGroupMemberResponses.set(0);
         lastMethod = null;
         lastPath = null;
         lastQuery = null;
+        lastDeleteUserQuery = null;
         lastBody = null;
         lastAuthorization = null;
         return this;
@@ -95,8 +108,26 @@ final class FakeTurmsAdmin {
 
     /** 让下一次调用失败，用来验「建用户失败要连同账号行回滚」与「投影失败留在 pending」。 */
     FakeTurmsAdmin respondWith(int statusCode) {
+        return respondWith(statusCode, null);
+    }
+
+    /** 按指定状态码与错误体失败；Turms 的业务码在 JSON body 里，不在 HTTP 状态码里。 */
+    FakeTurmsAdmin respondWith(int statusCode, String body) {
         this.status = statusCode;
+        this.responseBody = body;
         return this;
+    }
+
+    /** 只让下一次指定方法与路径失败，用于验证 outbox 的部分成功顺序。 */
+    FakeTurmsAdmin failNext(String method, String path, int statusCode) {
+        this.failNextMethod = method;
+        this.failNextPath = path;
+        this.failNextStatus = statusCode;
+        return this;
+    }
+
+    int duplicateGroupMemberResponses() {
+        return duplicateGroupMemberResponses.get();
     }
 
     /** Turms 侧某个群的成员集合：测试拿它和 `room_member` 的有效行逐条比。 */
@@ -125,6 +156,10 @@ final class FakeTurmsAdmin {
         return lastQuery;
     }
 
+    String lastDeleteUserQuery() {
+        return lastDeleteUserQuery;
+    }
+
     String lastBody() {
         return lastBody;
     }
@@ -140,9 +175,23 @@ final class FakeTurmsAdmin {
         lastAuthorization = exchange.getRequestHeaders().getFirst("Authorization");
         lastBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
         if (status != 200) {
-            exchange.sendResponseHeaders(status, -1);
-            exchange.close();
+            respond(exchange, status, responseBody);
             return;
+        }
+        if (lastMethod.equals(failNextMethod) && lastPath.equals(failNextPath)) {
+            failNextMethod = null;
+            failNextPath = null;
+            respond(exchange, failNextStatus, "{}");
+            return;
+        }
+        if ("POST".equals(lastMethod) && "/groups/members".equals(lastPath)) {
+            JsonNode json = JSON.readTree(lastBody);
+            Set<Long> members = groupMembers.get(json.path("groupId").asLong());
+            if (members != null && members.contains(json.path("userId").asLong())) {
+                duplicateGroupMemberResponses.incrementAndGet();
+                respond(exchange, 409, "{\"code\":1103}");
+                return;
+            }
         }
 
         String body = switch (lastMethod + " " + lastPath) {
@@ -152,6 +201,7 @@ final class FakeTurmsAdmin {
             case "POST /groups/members" -> addGroupMember(lastBody);
             case "DELETE /groups/members" -> removeGroupMember(lastQuery);
             case "POST /users" -> addUser(lastBody);
+            case "DELETE /users" -> deleteUsers(lastQuery);
             case "GET /users" -> queryUsers(lastQuery);
             case "POST /users/relationships" -> createRelationship(lastBody);
             case "PUT /users/relationships" -> updateRelationship(lastQuery, lastBody);
@@ -160,10 +210,15 @@ final class FakeTurmsAdmin {
             default -> null;
         };
         // 查不到时 Turms 回 204 无 body（NO_CONTENT），写接口回 200 无 body
+        respond(exchange, body == null ? 204 : 200, body);
+    }
+
+    private static void respond(com.sun.net.httpserver.HttpExchange exchange, int statusCode, String body)
+            throws IOException {
         if (body != null) {
             exchange.getResponseHeaders().add("Content-Type", "application/json");
         }
-        exchange.sendResponseHeaders(body == null ? 204 : 200, body == null ? -1 : 0);
+        exchange.sendResponseHeaders(statusCode, body == null ? -1 : 0);
         if (body != null) {
             exchange.getResponseBody().write(body.getBytes(StandardCharsets.UTF_8));
         }
@@ -225,6 +280,20 @@ final class FakeTurmsAdmin {
         long id = JSON.readTree(body).path("id").asLong();
         users.add(id);
         return "{\"code\":1000,\"data\":{\"id\":" + id + "}}";
+    }
+
+    private String deleteUsers(String query) {
+        lastDeleteUserQuery = query;
+        Map<String, String> params = params(query);
+        String id = params.get("ids");
+        // 逻辑删除不会移除用户集合；漏传 deleteLogically=false 必须让测试失败。
+        if (id != null && "false".equals(params.get("deleteLogically"))) {
+            long accountId = Long.parseLong(id);
+            users.remove(accountId);
+            relationships.keySet().removeIf(key -> key.startsWith(accountId + ":")
+                    || key.endsWith(":" + accountId));
+        }
+        return null;
     }
 
     private String queryUsers(String query) {

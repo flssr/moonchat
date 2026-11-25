@@ -113,6 +113,8 @@ server {
    | `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` | 可选，默认 `false`。`true` = 签出带写权限的 Turms statements；必须与 `allowSendMessagesToStranger=false` 同一次开（生产 2026-11-24 已同时开启），单独提前开等于让持凭据客户端绕过好友与拉黑 |
    | `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` | 可选，默认 `2s`。Admin HTTP 连接超时 |
    | `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` | 可选，默认 `5s`。Admin HTTP 读取超时；Turms 卡死时按既有 catch 回 `503 upstream_unavailable` |
+    | `MONDCHAT_PROJECTION_ENABLED` | 生产默认 `true`。账号注销的 Turms 用户删除与退群 outbox 依赖派发器；关闭时注销入口返回 `503 projection_disabled` |
+    | `MONDCHAT_LIMIT_ACCOUNT_DELETION_PER_MINUTE` | 可选，默认 `5`。注销密码确认的账号级分钟限频，失败尝试也计数 |
 
 2. `/opt/mondchat/secrets/jwt-hmac256.key`：用 `sudo sh -c 'umask 077; openssl rand -hex 32 > /opt/mondchat/secrets/jwt-hmac256.key; chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key'` 一次生成到位，`mondchat-biz` 与 `turms-gateway` 挂同一份。**属主必须是容器内 uid `10001`、权限为 `600`**：bind mount 保留宿主属主与权限，Biz 以 uid 10001 运行，读 `root:600` 会 `AccessDeniedException` 后启动失败。已有文件只修属主用 `sudo chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key`；轮换内容用上面的生成命令，别用 `sudo tee`。密钥在 Biz 与 gateway 初始化时读入，覆盖文件不会热加载，轮换后必须受控重启 `mondchat-biz` 与 `turms-gateway`，并接受旧 Turms 凭据失效、用户重新登录。Turms 两个容器以 root 读同一份文件，改属主不影响 gateway 验签。
 3. `docker login ghcr.io`，用带 `read:packages` 的 PAT，否则 `docker compose pull` 拿不到私有镜像。
@@ -174,6 +176,27 @@ server {
 5. **上线即变的一项**：`stranger=false` 在每次部署里都生效，对仍走 Biz 代发的客户端应当零影响；但这是唯一可能被误伤的地方——部署后用真实账号发一条私聊确认成功，一条就够。
 6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。打开后用真实账号调 `POST /api/sessions`，解出的 Turms 凭据 statements：正常账号应含 `QUERY *`、`MESSAGE` 的 `CREATE/UPDATE`、`CONVERSATION` 的 `UPDATE`；冻结账号只能含 `QUERY *` 与 `CONVERSATION.UPDATE`。只有 `QUERY` 说明开关没进容器（`.env` 改了没 `up -d`，或键名写错）。
 7. **插件最后才上**：限流对所有来源生效，但它与消息引擎同进程，按「插件镜像投放」单独一步做，出问题单独回滚。
+
+### 处理存量群成员事件
+
+#78 修复前可能已有 `room_member.changed` 退避到日级。代码只会在下一次整组投影成功时唤醒该群事件；已经 `synced` 且不再变化的群不会自动再 reconcile。上线后先只读检查：
+
+```sql
+select id, aggregate_id, payload, attempt_count, next_attempt_at, last_error
+from domain_event
+where event_type = 'room_member.changed' and processed_at is null
+order by id;
+```
+
+逐条把 payload 的 `room_id` / `account_id` / `member` 与 PG 当前 `room_info`、`room_member` 核对。只有 payload 表达的目标状态与 PG 一致时才按精确 id 唤醒，不要按 `attempt_count` 批量更新。派发器会跳过与 PG 当前成员状态不一致的旧事件，因此旧的 `member=true` 不会在退群后把成员加回，但仍应核对后再唤醒，避免无意义重试。
+
+```sql
+update domain_event
+set next_attempt_at = now()
+where id in (<已核对的事件 id>) and processed_at is null;
+```
+
+唤醒后观察 `processed_at` 与 Turms 成员集合。重复成员的 `409/1103` 现在按幂等成功收敛，空句柄事件会读取回填后的最新 `room_info.turms_group_id`。
 
 ## 生产回滚
 
@@ -261,7 +284,7 @@ docker compose exec -T turms-service curl -fsS -u "turms:$PW" -X PUT \
 
 返回 200 即生效；之后重启用库里的值，不会退回 `-D`。改 `-D` 而不走这条接口，重启后会被库里的旧值覆盖。
 
-Turms 自带的 IP/用户防刷会先于插件的 50 突发触发：实测约 8 请求/秒连发 80 条后，会先回几次 `1101`，随后会话以 `701` 关闭、IP 封 10 分钟。验收限流用慢速连发或单测，不要用密集压测；被封后等 10 分钟自动解封，或用 `DELETE /blocked-clients/ips?ids=<ip>&deleteAll=false` 手动解。
+Turms 自带的 IP/用户防刷会先于插件触发：实测约 8 请求/秒连发 80 条后，会先回几次 `1101`，随后会话以 `701` 关闭、IP 封 10 分钟。插件默认是账号桶 `60/60/1/1000`、会话桶 `20/20/1/3000`（容量/初始令牌/每周期补充/间隔毫秒），会话额度会先于账号额度耗尽。验收限流用慢速连发或单测，不要用密集压测；被封后等 10 分钟自动解封，或用 `DELETE /blocked-clients/ips?ids=<ip>&deleteAll=false` 手动解。
 
 Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**生产已挂载**（`.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向自建镜像），客户端直写命中限流回 `1101`；旧 REST 路径的限流仍在 Biz。Turms 的 Spring 与插件日志写容器内 `/opt/turms/turms-service/log/`，不进 stdout；`docker compose logs` 看不到插件日志是正常的，排障要读该目录并 grep `registered` 与 `extension ... has been started`。投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
 

@@ -1,6 +1,7 @@
 package im.mondchat.biz;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,10 +13,17 @@ import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -49,6 +57,31 @@ class SessionApiTest extends ApiTestSupport {
         assertThat(claims.getExpirationTime().toInstant()).isBetween(
                 Instant.now().plus(Duration.ofHours(11)),
                 Instant.now().plus(Duration.ofHours(12)));
+    }
+
+    @Test
+    void 换凭据会等待账号行锁释放() throws Exception {
+        Caller me = newCaller();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (Connection lock = jdbc.getDataSource().getConnection()) {
+            lock.setAutoCommit(false);
+            try (PreparedStatement statement = lock.prepareStatement("select id from account where id = ? for update")) {
+                statement.setLong(1, me.accountId());
+                statement.executeQuery().close();
+            }
+            Future<Integer> issued = pool.submit(() -> mockMvc.perform(post("/api/sessions")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(me.token()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"account_id\":" + me.accountId() + "}"))
+                    .andReturn().getResponse().getStatus());
+
+            assertThatThrownBy(() -> issued.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            lock.commit();
+            assertThat(issued.get(5, TimeUnit.SECONDS)).isEqualTo(200);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

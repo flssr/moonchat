@@ -45,6 +45,13 @@ public final class AccountRequests {
         }
     }
 
+    /** 注销确认只收当前密码；密码错误走独立 code，不能当作登录凭据失效。 */
+    public record DeleteAccountRequest(
+            @NotBlank(message = "密码不能为空")
+            @Size(max = 72, message = "密码最长 72 字符")
+            String password) {
+    }
+
     /** #3 的两种形态恰好一种；"恰好一种" 由服务层判，缺字段要按契约回不同的码。 */
     public record SessionRequest(Long accountId, String accountKey) {
     }

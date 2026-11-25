@@ -13,7 +13,7 @@ cd vendor/turms && mvn install -DskipUTs -DskipITs -DskipSTs
 cd backend/mondchat-turms-plugin && mvn package
 ```
 
-JDK 21+；Turms 版本对齐 `vendor/turms` 锁定提交（`d6ec799`）。升级 Turms 必须重新编译本插件，
+JDK 25+（与 pinned Turms 构件对齐）；Turms 版本对齐 `vendor/turms` 锁定提交（`d6ec799`）。升级 Turms 必须重新编译本插件，
 并回归 `ClientRequestHandler` 签名。
 
 ## 部署
@@ -31,9 +31,12 @@ JDK 21+；Turms 版本对齐 `vendor/turms` 锁定提交（`d6ec799`）。升级
 ```yaml
 turms-plugin:
   mondchat-ratelimit:
-    account:     { capacity: 60, initial-tokens: 60, tokens-per-period: 60, refill-interval-millis: 60000 }
-    conversation:{ capacity: 20, initial-tokens: 20, tokens-per-period: 20, refill-interval-millis: 60000 }
+    account:     { capacity: 60, initial-tokens: 60, tokens-per-period: 1, refill-interval-millis: 1000 }
+    conversation:{ capacity: 20, initial-tokens: 20, tokens-per-period: 1, refill-interval-millis: 3000 }
 ```
+
+四元组依次为「容量/初始令牌/每周期补充/补充间隔毫秒」。默认账号级初始可发 60 条、
+每秒补 1 个（平均 60 条/分钟）；会话级初始可发 20 条、每 3 秒补 1 个（平均 20 条/分钟）。
 
 命中时回 `CLIENT_REQUESTS_TOO_FREQUENT`（1101，HTTP 语义 429），两级用 `reason` 区分。
 

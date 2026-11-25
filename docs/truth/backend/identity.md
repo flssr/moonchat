@@ -33,6 +33,21 @@ Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 
 
 **顺序不变量**：`allowSendMessagesToStranger=false` 生效之前，不得签发含 `MESSAGE.CREATE` 的 statements。否则 Turms 仍不校验好友，持凭据的客户端可以直接给任意账号发消息，绕过好友与拉黑限制。statements 写错也不是静默降权：`PolicyDeserializer` 直接抛 `IllegalPolicyException`，签发侧必须保证形状正确。该切换的决策见[身份与认证决策历史](../../history/backend-doc/identity-history.md)。
 
+## 注销
+
+`DELETE /api/accounts/me` 只允许真人账号，请求体为 `{"password":"当前密码"}`；冻结账号也允许，agent 密钥或切进 agent 后签的登录 JWT 都返回 `403 forbidden`。密码错误返回独立的 `401 invalid_password`，不会触发前端“凭据失效”登出。注销确认按账号限频，默认 `5` 次/分钟，失败尝试也计数；日志只记账号 id 与清理范围，不记密码、邮箱或凭据。
+
+注销语义：
+
+- 群主返回 `409 owner_cannot_delete_account`。V1 没有转让或解散能力，禁止留下无群主群。
+- 真人与其名下 agent（含存量嵌套 agent）一并硬删 `account` / `account_info`，邮箱立即释放并可重新注册，账号 id 不复用。建 agent、建群、好友申请、拉黑、成员新增、凭据签发与资料写入口按账号 id 加行锁，与注销硬删串行。
+- 好友申请、好友主表与镜像、黑名单两个方向、群成员与账号群镜像全部物理清理；消息历史保留。
+- 认证入口每次确认账号仍存在，因此旧 Biz JWT 在注销后的下一次 `/api` 请求即 `401 unauthenticated`；重复调用旧 JWT 也返回 401。
+- Turms 用户物理删除与群成员退出写入 `account.deleted` / `room_member.changed` outbox，由投影派发器重试。Turms 会尽力踢当前会话，但 pinned JWT gateway 不查用户存在性，旧 Turms JWT 在过期前仍可能重连，这是已接受边界。
+- 派发器跳过引用已不存在账号的旧事件，只有 `member=false` 退群事件继续执行，避免积压事件把账号、关系或群成员重新投影回来。
+
+Turms 清理依赖 `MONDCHAT_PROJECTION_ENABLED=true`；派发关闭时入口返回 `503 projection_disabled`，不会先硬删 PG。前端入口尚未接入，后端就绪前继续保持隐藏。
+
 ## 资料
 
 后端保存名字、状态、性别、生日、头像与认证哈希。资料页向其他账号返回名字、账号 id、头像与是否好友，不返回邮箱、类型、归属者、性别或生日。

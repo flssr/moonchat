@@ -15,7 +15,7 @@ PG 是业务真相；Turms 的 `user`、`userRelationship`、`group`、`groupMem
 - 业务变更与事件行在**同一个事务**里提交，PG 提交成功即事件必达，不再有「先写库再发消息」的两阶段。
 - `payload` 是该聚合的**目标状态**（jsonb），不是差量；重放与重复投递都收敛到同一结果。
 - 派发器单 worker，`where processed_at is null and next_attempt_at <= now() order by id limit 100`；不加 `SKIP LOCKED`（当前只有一个业务进程，见[架构不变量](../architecture.md)）。
-- 失败按 `min(2^attempt, 300)` 秒退避，第 10 次失败后转日级重试并写 ERROR 日志，交给对账兜底。
+- 失败按 `2, 4, 8, 16, 32, 64, 128, 256, 256, 86400` 秒退避；第 10 次失败后转日级重试并写 WARN 日志，交给对账兜底。
 - 已处理事件保留 7 天后按批清理。事件量与关系/群成员的变更频率同频，与消息量无关。
 - **同一账号对的事件必须串行**：好友与拉黑在 Turms 里共用一行，交错执行会把 `blockDate` 弄丢；聚合键保证同一对按写入顺序派发。
 
@@ -29,13 +29,16 @@ P2 第一次打开时会一次性派发积压事件，等于一次天然增量�
 
 | 事件 | payload | Turms Admin 调用 |
 | --- | --- | --- |
-| `account.created` | `account_id`、`display_name` | 先 `GET /users?ids=`，不存在则 `POST /users`（幂等） |
+| `account.created` | `account_id`、`display_name` | 账号仍存在才创建；不存在则跳过，避免注销后重建 |
+| `account.deleted` | `account_id` | 物理删除 Turms 用户；失败由 outbox 重试，消息保留 |
 | `friendship.changed`，`accepted=true` | `a`、`b`（小 id 在前）、`accepted`、`blocked` | 两个方向各一行：行不存在 → `POST /relationships`，存在 → `PUT` 只补 `establishmentDate`，不碰 `blockDate` |
 | `friendship.changed`，`accepted=false` | 同上 | `DELETE /relationships?keys=[kAB,kBA]`；若 `blocked=true`，再 `POST` 两次只带 `blockDate` |
 | `blocklist.changed`，`blocked_now=true` | `owner`、`blocked`、`blocked_now`、`friends` | 行不存在 → `POST /relationships`（`blockDate` 有值、`establishmentDate` 为 epoch-0）；存在 → `PUT` 只写 `blockDate` |
 | `blocklist.changed`，`blocked_now=false`，`friends=true` | 同上 | `PUT /relationships` 带 `blockDate: "1970-01-01T00:00:00Z"` |
 | `blocklist.changed`，`blocked_now=false`，`friends=false` | 同上 | `DELETE /relationships?keys=[k(owner→blocked)]` |
-| `room_member.changed` | `room_id`、`account_id`、`turms_group_id`（可空）、`member` | 在册 → `POST /groups/members`；退出 → `DELETE /groups/members`；`turms_group_id` 为空时抛错让事件退避，等群投影回填 |
+| `room_member.changed` | `room_id`、`account_id`、`turms_group_id`（快照，可空）、`member` | 派发时按 `room_id` 读最新 `room_info.turms_group_id`，并比对 `room_member` 当前有效状态；过期事件直接跳过。在册 → `POST /groups/members`（`409/1103` 已存在视为幂等成功），退出 → `DELETE /groups/members`；`member=true` 且群不存在或句柄仍为空时退避，`member=false` 无法定位群时跳过 |
+
+除 `account.deleted` 与 `room_member.changed` 的 `member=false` 外，其余引用账号的事件在派发前确认 PG 账号仍存在；已注销账号的旧 `account.created`、好友、拉黑与加群事件直接跳过。成员事件还会比对 PG 当前 `room_member.deleted_at`，旧 `member=true/false` 与当前状态不一致时直接标记处理，不能覆盖后续退群或重新入群。`member=false` 仍可执行，用于清掉注销账号残留的 Turms 群成员；`account.deleted` 本身不检查账号存在，以便重试物理删除。这样 outbox 不会在硬删后重新创建用户、关系或成员，也不会把已退群账号加回。
 
 创建接口一律单条（`POST /users`、`POST /relationships`、`POST /groups/members`）；批量只出现在 `PUT/DELETE /relationships`、`PUT/DELETE /users`、`PUT /users/online-infos/statuses`。回填与新增都逐条调用，没有「批量建关系」这个接口。
 

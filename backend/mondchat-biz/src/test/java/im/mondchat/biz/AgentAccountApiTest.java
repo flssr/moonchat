@@ -1,6 +1,7 @@
 package im.mondchat.biz;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -8,6 +9,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -77,6 +85,33 @@ class AgentAccountApiTest extends ApiTestSupport {
         assertThat(jdbc.queryForObject("select count(*) from account where owner_account_id = ?", Long.class,
                 agent.accountId()))
                 .isZero();
+    }
+
+    @Test
+    void 建agent会等待账号行锁释放() throws Exception {
+        Caller me = newCaller();
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try (Connection lock = jdbc.getDataSource().getConnection()) {
+            lock.setAutoCommit(false);
+            try (PreparedStatement statement = lock.prepareStatement("select id from account where id = ? for update")) {
+                statement.setLong(1, me.accountId());
+                statement.executeQuery().close();
+            }
+            Future<Integer> created = pool.submit(() -> mockMvc.perform(post("/api/agent-accounts")
+                            .header(HttpHeaders.AUTHORIZATION, bearer(me.token()))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"display_name":"等锁的 agent"}
+                                    """))
+                    .andReturn().getResponse().getStatus());
+
+            assertThatThrownBy(() -> created.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+            lock.commit();
+            assertThat(created.get(5, TimeUnit.SECONDS)).isEqualTo(201);
+        } finally {
+            pool.shutdownNow();
+        }
     }
 
     @Test

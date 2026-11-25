@@ -12,6 +12,7 @@ import im.mondchat.biz.entity.FriendshipReverse;
 import im.mondchat.biz.mapper.account.AccountInfoMapper;
 import im.mondchat.biz.mapper.friendship.FriendshipMapper;
 import im.mondchat.biz.mapper.friendship.FriendshipReverseMapper;
+import im.mondchat.biz.service.account.AccountLockService;
 import im.mondchat.biz.service.blocklist.BlocklistService;
 import im.mondchat.biz.service.friendship.FriendshipService;
 import im.mondchat.biz.service.limiter.AccountRateLimiter;
@@ -41,6 +42,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     private final FriendshipMapper friendshipMapper;
     private final FriendshipReverseMapper reverseMapper;
     private final AccountInfoMapper accountInfoMapper;
+    private final AccountLockService accountLocks;
     private final AccountRateLimiter accountRateLimiter;
     private final BlocklistService blocklistService;
     private final ProjectionEvents projectionEvents;
@@ -92,6 +94,7 @@ public class FriendshipServiceImpl implements FriendshipService {
         if (meId == peerId) {
             throw ApiException.validationFailed("peer_account_id", "不能给自己发好友申请");
         }
+        accountLocks.lockAll(List.of(meId, peerId));
         AccountInfo peer = accountInfoMapper.selectById(peerId);
         if (peer == null) {
             throw ApiException.notFound("账号不存在");
@@ -168,6 +171,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     @Override
     @Transactional
     public FriendshipResponses.AcceptResponse accept(CurrentAccount me, long peerAccountId) {
+        accountLocks.lockAll(List.of(me.accountId(), peerAccountId));
         Friendship row = pendingRowForAnswer(me, peerAccountId);
         markRow(row.getId(), ACCEPTED, OffsetDateTime.now(), false);
         projectionEvents.friendshipChanged(me.accountId(), peerAccountId, true,
@@ -178,6 +182,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     @Override
     @Transactional
     public void reject(CurrentAccount me, long peerAccountId) {
+        accountLocks.lockAll(List.of(me.accountId(), peerAccountId));
         Friendship row = pendingRowForAnswer(me, peerAccountId);
         markRow(row.getId(), row.getStatus(), OffsetDateTime.now(), true);
     }
@@ -185,6 +190,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     @Override
     @Transactional
     public void delete(CurrentAccount me, long peerAccountId) {
+        accountLocks.lockAll(List.of(me.accountId(), peerAccountId));
         ensureNotFrozen(me.accountId());
         long lower = Math.min(me.accountId(), peerAccountId);
         long higher = Math.max(me.accountId(), peerAccountId);

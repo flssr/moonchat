@@ -5,7 +5,12 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import im.mondchat.biz.client.turms.TurmsAdminClient;
 import im.mondchat.biz.config.ProjectionProperties;
 import im.mondchat.biz.entity.DomainEvent;
+import im.mondchat.biz.entity.RoomInfo;
+import im.mondchat.biz.entity.RoomMember;
+import im.mondchat.biz.mapper.account.AccountMapper;
 import im.mondchat.biz.mapper.projection.DomainEventMapper;
+import im.mondchat.biz.mapper.room.RoomInfoMapper;
+import im.mondchat.biz.mapper.room.RoomMemberMapper;
 import java.time.OffsetDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +36,9 @@ public class ProjectionDispatcher {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final DomainEventMapper events;
+    private final AccountMapper accounts;
+    private final RoomInfoMapper rooms;
+    private final RoomMemberMapper roomMembers;
     private final TurmsAdminClient admin;
     private final ProjectionProperties properties;
 
@@ -61,6 +69,7 @@ public class ProjectionDispatcher {
         JsonNode payload = JSON.readTree(event.getPayload());
         switch (event.getEventType()) {
             case ProjectionEvents.ACCOUNT_CREATED -> applyAccount(payload);
+            case ProjectionEvents.ACCOUNT_DELETED -> applyAccountDeleted(payload);
             case ProjectionEvents.FRIENDSHIP_CHANGED -> applyFriendship(event, payload);
             case ProjectionEvents.BLOCKLIST_CHANGED -> applyBlocklist(event, payload);
             case ProjectionEvents.ROOM_MEMBER_CHANGED -> applyRoomMember(payload);
@@ -70,14 +79,28 @@ public class ProjectionDispatcher {
 
     private void applyAccount(JsonNode payload) {
         long accountId = payload.path("account_id").asLong();
+        if (!accountExists(accountId)) {
+            return;
+        }
         if (!admin.userExists(accountId)) {
             admin.createUser(accountId, payload.path("display_name").asString());
         }
     }
 
+    private void applyAccountDeleted(JsonNode payload) {
+        admin.deleteUser(payload.path("account_id").asLong());
+    }
+
+    private boolean accountExists(long accountId) {
+        return accounts.selectById(accountId) != null;
+    }
+
     private void applyFriendship(DomainEvent event, JsonNode payload) {
         long a = payload.path("a").asLong();
         long b = payload.path("b").asLong();
+        if (!accountExists(a) || !accountExists(b)) {
+            return;
+        }
         boolean accepted = payload.path("accepted").asBoolean();
         boolean blocked = payload.path("blocked").asBoolean();
         long establishment = event.getCreatedAt().toInstant().toEpochMilli();
@@ -108,6 +131,9 @@ public class ProjectionDispatcher {
     private void applyBlocklist(DomainEvent event, JsonNode payload) {
         long ownerId = payload.path("owner").asLong();
         long blockedId = payload.path("blocked").asLong();
+        if (!accountExists(ownerId) || !accountExists(blockedId)) {
+            return;
+        }
         boolean blockedNow = payload.path("blocked_now").asBoolean();
         boolean friends = payload.path("friends").asBoolean();
         long now = event.getCreatedAt().toInstant().toEpochMilli();
@@ -130,13 +156,36 @@ public class ProjectionDispatcher {
     }
 
     private void applyRoomMember(JsonNode payload) {
-        long turmsGroupId = payload.path("turms_group_id").asLong(0);
+        long roomId = payload.path("room_id").asLong();
+        long accountId = payload.path("account_id").asLong();
+        boolean member = payload.path("member").asBoolean();
+        RoomInfo room = rooms.selectById(roomId);
+        if (room == null) {
+            if (!member) {
+                return;
+            }
+            throw new IllegalStateException("群不存在，等整组投影重建后再落成员");
+        }
+        RoomMember membership = roomMembers.selectOne(new LambdaQueryWrapper<RoomMember>()
+                .eq(RoomMember::getRoomId, roomId)
+                .eq(RoomMember::getAccountId, accountId));
+        boolean currentMember = membership != null && membership.getDeletedAt() == null;
+        // 旧事件不能覆盖 PG 当前状态；账号硬删后行已不存在，但 member=false 仍要清 Turms。
+        if ((membership != null && member != currentMember) || (membership == null && member)) {
+            return;
+        }
+        if (member && !accountExists(accountId)) {
+            return;
+        }
+        long turmsGroupId = room.getTurmsGroupId() == null ? 0 : room.getTurmsGroupId();
         if (turmsGroupId <= 0) {
-            // 群投影还没回填 group 句柄：抛出去让事件退避重试，别拿 room_id 去撞
+            if (!member) {
+                return;
+            }
+            // 快照里的句柄可能为空或过期：群尚未回填时退避，等整组投影完成
             throw new IllegalStateException("群还没有 turms_group_id，等投影回填后再落成员");
         }
-        long accountId = payload.path("account_id").asLong();
-        if (payload.path("member").asBoolean()) {
+        if (member) {
             admin.addGroupMember(turmsGroupId, accountId);
         } else {
             admin.removeGroupMember(turmsGroupId, accountId);

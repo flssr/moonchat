@@ -38,4 +38,10 @@ public interface AccountService {
 
     /** #20 登录 JWT 滑动续期。 */
     AccountResponses.TokenResponse refresh(CurrentAccount me);
+
+    /** 认证入口统一确认账号仍存在；硬删后旧 JWT 与账号密钥都不能再进业务层。 */
+    void requireExists(long accountId);
+
+    /** 注销真人账号：校验密码、拒绝群主、级联清理名下 agent，并写远端删除事件。 */
+    void deleteMe(CurrentAccount me, AccountRequests.DeleteAccountRequest request);
 }

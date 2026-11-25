@@ -5,12 +5,14 @@ import im.mondchat.biz.auth.CurrentAccount;
 import im.mondchat.biz.common.ApiException;
 import im.mondchat.biz.dto.blocklist.BlocklistRequests;
 import im.mondchat.biz.dto.blocklist.BlocklistResponses;
+import im.mondchat.biz.entity.Account;
 import im.mondchat.biz.entity.AccountInfo;
 import im.mondchat.biz.entity.Blocklist;
 import im.mondchat.biz.entity.Friendship;
 import im.mondchat.biz.mapper.account.AccountInfoMapper;
 import im.mondchat.biz.mapper.blocklist.BlocklistMapper;
 import im.mondchat.biz.mapper.friendship.FriendshipMapper;
+import im.mondchat.biz.service.account.AccountLockService;
 import im.mondchat.biz.service.blocklist.BlocklistService;
 import im.mondchat.biz.service.projection.ProjectionEvents;
 import java.time.OffsetDateTime;
@@ -20,6 +22,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 黑名单的读写。这是一条**单向**关系：只断「被拉黑方 → 拉黑方」（docs/truth/backend/friendship.md），
@@ -30,6 +33,7 @@ import org.springframework.stereotype.Service;
 public class BlocklistServiceImpl implements BlocklistService {
 
     private static final String FROZEN = "frozen";
+    private static final String HUMAN = "human";
 
     /** 与群成员列表同一个上限：`size` 最多 100。 */
     private static final int MAX_PAGE_SIZE = 100;
@@ -39,6 +43,7 @@ public class BlocklistServiceImpl implements BlocklistService {
 
     private final BlocklistMapper blocklistMapper;
     private final AccountInfoMapper accountInfoMapper;
+    private final AccountLockService accountLocks;
     private final FriendshipMapper friendshipMapper;
     private final ProjectionEvents projectionEvents;
 
@@ -67,14 +72,16 @@ public class BlocklistServiceImpl implements BlocklistService {
     }
 
     @Override
+    @Transactional
     public BlocklistResponses.Item block(CurrentAccount me, BlocklistRequests.CreateRequest request) {
-        ensureHuman(me);
-        ensureNotFrozen(me.accountId());
         long ownerId = me.accountId();
         long targetId = request.accountId();
         if (ownerId == targetId) {
             throw ApiException.validationFailed("account_id", "不能拉黑自己");
         }
+        Map<Long, Account> locked = accountLocks.lockAll(List.of(ownerId, targetId));
+        ensureHuman(me, locked.get(ownerId));
+        ensureNotFrozen(ownerId);
         AccountInfo target = accountInfoMapper.selectById(targetId);
         if (target == null) {
             throw ApiException.notFound("账号不存在");
@@ -101,8 +108,10 @@ public class BlocklistServiceImpl implements BlocklistService {
     }
 
     @Override
+    @Transactional
     public void unblock(CurrentAccount me, long accountId) {
-        ensureHuman(me);
+        Map<Long, Account> locked = accountLocks.lockAll(List.of(me.accountId(), accountId));
+        ensureHuman(me, locked.get(me.accountId()));
         ensureNotFrozen(me.accountId());
         int deleted = blocklistMapper.delete(new LambdaQueryWrapper<Blocklist>()
                 .eq(Blocklist::getOwnerAccountId, me.accountId())
@@ -132,8 +141,8 @@ public class BlocklistServiceImpl implements BlocklistService {
     }
 
     /** 关系动作只有真人能做：agent 连好友申请都只限这一个动作，拉黑更不在它能力内。 */
-    private void ensureHuman(CurrentAccount me) {
-        if (me.source() == CurrentAccount.Source.AGENT) {
+    private void ensureHuman(CurrentAccount me, Account account) {
+        if (me.source() == CurrentAccount.Source.AGENT || !HUMAN.equals(account.getType())) {
             throw ApiException.forbidden("拉黑与取消拉黑只有真人能做");
         }
     }

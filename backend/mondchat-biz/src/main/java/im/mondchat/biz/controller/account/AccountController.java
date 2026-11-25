@@ -6,11 +6,14 @@ import im.mondchat.biz.dto.account.AccountResponses;
 import im.mondchat.biz.service.account.AccountService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 /** #4 我的账号 + 我名下的 agent（切账号入口的数据源），#6 改本账号名字，#7 资料页。 */
@@ -43,6 +46,14 @@ public class AccountController {
     public AccountResponses.AvatarResponse updateAvatar(CurrentAccount me,
             @Valid @RequestBody AccountRequests.AvatarRequest request) {
         return accountService.updateAvatar(me, request);
+    }
+
+    /** 硬删真人账号及其名下 agent；远端 Turms 清理由 account.deleted outbox 重试。 */
+    @DeleteMapping("/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteMe(CurrentAccount me,
+            @Valid @RequestBody AccountRequests.DeleteAccountRequest request) {
+        accountService.deleteMe(me, request);
     }
 
     @GetMapping("/{accountId}")

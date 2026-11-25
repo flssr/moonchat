@@ -13,12 +13,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * im-facade 打 Turms Admin REST 的那几支手：建用户、改名、建群与成员集合。
@@ -35,6 +39,8 @@ public class TurmsAdminClient {
     private static final int MEMBER_PAGE_SIZE = 1000;
 
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final JsonMapper JSON = JsonMapper.builder().build();
+    private static final int DUPLICATE_GROUP_MEMBER_CODE = 1103;
 
     private final RestClient restClient;
 
@@ -90,6 +96,25 @@ public class TurmsAdminClient {
                     .toBodilessEntity();
         } catch (RestClientException e) {
             log.warn("同步名字进 Turms 失败：accountId={}", accountId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /**
+     * 物理删除 Turms 用户。上游会尽力断开当前会话，但不删除消息文档，也不删群成员行；
+     * 群成员由注销事务写出的 member=false 事件清理，消息按产品决定保留。
+     */
+    public void deleteUser(long accountId) {
+        try {
+            restClient.delete()
+                    .uri(uri -> uri.path("/users")
+                            .queryParam("ids", accountId)
+                            .queryParam("deleteLogically", false)
+                            .build())
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("删 Turms 用户失败：accountId={}", accountId, e);
             throw ApiException.upstreamUnavailable();
         }
     }
@@ -160,7 +185,7 @@ public class TurmsAdminClient {
         }
     }
 
-    /** 把一个人加进 Turms 的群（Admin 一次一个成员）。 */
+    /** 把一个人加进 Turms 的群（Admin 一次一个成员）；成员已存在的 409/1103 视为幂等成功。 */
     public void addGroupMember(long turmsGroupId, long accountId) {
         try {
             restClient.post()
@@ -170,8 +195,26 @@ public class TurmsAdminClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (RestClientException e) {
+            if (isDuplicateGroupMember(e)) {
+                return;
+            }
             log.warn("往 Turms 群里加成员失败：turmsGroupId={} accountId={}", turmsGroupId, accountId, e);
             throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    private static boolean isDuplicateGroupMember(RestClientException error) {
+        if (!(error instanceof HttpClientErrorException response)
+                || response.getStatusCode() != HttpStatus.CONFLICT) {
+            return false;
+        }
+        try {
+            JsonNode body = JSON.readTree(response.getResponseBodyAsByteArray());
+            JsonNode code = body == null ? null : body.path("code");
+            return code != null && code.isIntegralNumber() && code.canConvertToInt()
+                    && code.intValue() == DUPLICATE_GROUP_MEMBER_CODE;
+        } catch (JacksonException e) {
+            return false;
         }
     }
 
