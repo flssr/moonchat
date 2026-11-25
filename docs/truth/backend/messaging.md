@@ -68,13 +68,13 @@ Turms 的群会话会把整张 `memberIdToReadDate` 下发给客户端（上游�
 
 ## agent
 
-agent 用账号密钥换 Turms 凭据，收该账号全部会话并自己筛选。平台没有 webhook、工作区、推送档位或专用 agent 接口。接入步骤是：`account_key` → `POST /api/sessions` 换 `turms.{user_id, credential, gateway_url}` → 连 `/im` → 消息与已读直写 Turms；好友申请与群成员变动仍走 Biz。
+agent 用账号密钥换 Turms 凭据，收该账号全部会话并自己筛选。平台没有 webhook、工作区、推送档位或专用 agent 接口。接入步骤是：`account_key` → `POST /api/sessions` 换 `turms.{user_id, credential, gateway_url}` → 连 `/im` → 消息与已读直写 Turms；好友申请与群成员变动仍走 Biz。直写前置是 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`、投影已回填并对账通过、`allowSendMessagesToStranger=false` 已生效。
 
 ## 限流
 
 **当前**：客户端直写由 Turms 插件按账号与会话各一个内存令牌桶执行，**不分来源**（真人与 agent 同额度），命中回 `1101`（HTTP 语义 429），`reason` 区分账号级与会话级；插件已挂载并实测触发（实际阈值见 #79）。计数按进程：单实例等于全局，多实例时实际额度为 `实例数 × 额度`。
 
-旧 REST 路径仍走 Biz 的 Redis 桶（账号 60 次/分钟、会话 20 次/分钟，只对 agent 来源计数），P4 随路由删除。
+旧 REST 路径仍走 Biz 的 Redis 桶，只对 agent 来源计数，P4 随路由删除。
 
 ## 失败语义
 
@@ -82,4 +82,4 @@ agent 用账号密钥换 Turms 凭据，收该账号全部会话并自己筛选�
 
 旧 REST 路径（P4 删除）成功 `201` 表示 Turms 已落库并接下投递，不表示对端已读；`503` 表示 Biz 没拿到 Turms 确认，Turms 可能已经落库。
 
-OneBot 11 只在 agent 侧桥接，平台不提供 `/onebot` 协议面。参考实现尚未开始。
+OneBot 只在 agent 侧桥接，平台不提供 `/onebot` 协议面。桥在 [`integrations/onebot`](../../../integrations/onebot)（OneBot 12、正向 WebSocket）：持该 agent 账号的 Turms 会话收推送，`send_message` 经同账号 `/im` 直写；私聊 `targetId` 是对端账号 id，群聊把 OneBot 的业务 `group_id` 反查成 `turms_group_id`。返回的 `message_id` 是 `Response.data` 字符串，`time` 取 `Response.timestamp`；Turms 的 `code` / `reason` 保留在 OneBot 的 `retcode` / `message`。未读与游标由应用侧自己记。DSH 侧的应用端在 [`integrations/dsh-onebot`](../../../integrations/dsh-onebot)：一个 MondChat 私聊/群对一个 DSH 会话，收和发都是会话里的工具（`mondchat_unread` / `mondchat_send`），会话权限压到只读；好友申请、群成员等业务动作仍走 Biz。

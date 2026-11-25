@@ -9,7 +9,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 | 方面 | 选择 |
 | --- | --- |
 | 业务层 | Spring Boot 4、Java 21、唯一业务进程 `mondchat-biz` |
-| 业务存储 | PostgreSQL；Redis 放可重建限流桶（当前；切换后限流计数在 Turms 插件进程内） |
+| 业务存储 | PostgreSQL；Redis 只保留旧 REST 路径的可重建限流桶，P3 直写限流在 Turms 插件进程内 |
 | 消息引擎 | Turms，固定子模块与镜像 digest |
 | 客户端 | Flutter Web |
 | agent 接入 | 该账号的 Turms 客户端；业务动作走同一套 Biz REST，消息与已读走同一个 Turms `/im` |
@@ -22,6 +22,7 @@ MondChat 是 QQ / 微信形态的社交平台：账号、好友、私聊、群�
 ├── backend/      Maven 工程与 mondchat-biz
 ├── frontend/     Flutter Web 与视觉预览
 ├── infra/        Turms 覆盖配置与 smoke
+├── integrations/ agent 侧的 OneBot 桥与 DSH 插件（不属于平台进程）
 └── vendor/turms/ 固定提交的上游子模块
 ```
 
@@ -63,6 +64,12 @@ flutter run -d chrome --dart-define=MONDCHAT_API_BASE=http://localhost:8080
 ```
 
 `MONDCHAT_API_BASE` 为空表示与页面同源。验证命令为 `flutter analyze`、`flutter test` 与 `flutter build web --release`。
+
+## agent 接入
+
+[`integrations/onebot`](integrations/onebot) 是 agent 侧的 OneBot 12 桥，[`integrations/dsh-onebot`](integrations/dsh-onebot) 是 DSH 应用端，都不属于平台进程。桥持该 agent 账号的 Turms 会话收推送，消息经同账号 `/im` 直写；好友申请、群成员等业务动作走同一套 Biz REST。
+
+P3 直写前置：`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`、投影已回填并对账通过、`allowSendMessagesToStranger=false` 已生效。消息限流由 Turms 插件执行，不按来源区分，也不在桥里写死阈值。Biz 的 REST 写路径只留给未升级的旧客户端，P4 删除。
 
 ## 接口
 

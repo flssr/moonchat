@@ -1,0 +1,14 @@
+{
+  "name": "mondchat-onebot",
+  "private": true,
+  "type": "module",
+  "description": "MondChat 的 OneBot 12 实现：把 agent 账号桥接成标准 Bot 接口",
+  "scripts": {
+    "start": "node bridge.mjs",
+    "test": "node selftest.mjs"
+  },
+  "dependencies": {
+    "turms-client-js": "file:../../vendor/turms/turms-client-js",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "meta": {
+    "title": "MondChat link",
+    "description": "Bridges MondChat direct chats and groups into DSH sessions: see whether the bridge is connected, which conversations exist, and how many messages each still holds."
+  },
+  "tab": "MondChat",
+  "bridge": "Bridge",
+  "connected": "Connected",
+  "disconnected": "Disconnected",
+  "url": "Address",
+  "groups": "Groups",
+  "on": "On",
+  "off": "Off",
+  "workspace": "Working folder",
+  "model": "Model",
+  "modelDefault": "DSH default",
+  "proactive": "Proactive topic",
+  "proactiveValue": "After {idle} quiet minutes, at most {max} per hour",
+  "quiet": "Quiet hours",
+  "conversations": "Connected conversations",
+  "empty": "No MondChat message has arrived yet.",
+  "unread": "{count} pending",
+  "dropped": "({count} dropped while backed up)",
+  "live": "Session live",
+  "cold": "Session not live",
+  "lastActivity": "Last message",
+  "loadFailed": "Could not read status: {message}"
+}

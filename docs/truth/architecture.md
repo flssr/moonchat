@@ -55,4 +55,6 @@ PostgreSQL 是业务真相，Turms 是消息引擎。目标形态是 **Biz = 控
 
 只有 `mondchat-biz` 一个业务进程。容量不足时先增加无状态副本；只有负载形态、发布窗口或故障域真正分叉时才考虑拆进程。Turms 侧限流插件已启用，计数按进程，多实例时实际额度为 `实例数 × 每分钟额度`。
 
+[`integrations/`](../../integrations) 里的 OneBot 12 桥与 DSH 插件跑在 agent 侧，不属于平台进程：它们用该 agent 账号的 Turms 会话收推送，消息经同账号 `/im` 直写，好友申请、群成员等业务动作走 Biz。直写前置是写凭据开关已开、投影已回填并对账通过、`allowSendMessagesToStranger=false` 已生效；限流由 Turms 插件执行。平台对它们没有额外接口或状态，桥默认只绑 `127.0.0.1`。
+
 精确字段以代码、迁移、测试和运行时 OpenAPI 为准；运行时 `/v3/api-docs` 的落盘副本是 [`docs/openapi.json`](../openapi.json)。模块入口见 [后端](./backend/README.md) 与 [前端](./frontend/README.md)。
