@@ -47,6 +47,7 @@ AppState _stateOn(_Recorder recorder) =>
 class _RecordingSettingsStore implements SettingsStore {
   MoonSettings? saved;
   Map<int, String> avatars = <int, String>{};
+  String? lastEmail;
 
   @override
   MoonSettings load() => MoonSettings.defaults;
@@ -59,6 +60,12 @@ class _RecordingSettingsStore implements SettingsStore {
 
   @override
   void saveAvatars(Map<int, String> next) => avatars = next;
+
+  @override
+  String? loadLastEmail() => lastEmail;
+
+  @override
+  void saveLastEmail(String email) => lastEmail = email;
 }
 
 void main() {
@@ -74,6 +81,16 @@ void main() {
     expect(find.text('邮箱'), findsOneWidget);
     expect(find.text('密码'), findsOneWidget);
     expect(find.text('登录'), findsOneWidget);
+  });
+
+  testWidgets('登录页预填上次邮箱（不勾记住我也保留）', (WidgetTester tester) async {
+    final _RecordingSettingsStore store = _RecordingSettingsStore()
+      ..lastEmail = 'me@example.com';
+    final AppState state = AppState(store: store);
+    addTearDown(state.dispose);
+
+    await tester.pumpWidget(_page(state));
+    expect(find.text('me@example.com'), findsOneWidget);
   });
 
   testWidgets('每次进入登录页显示不同的引言', (WidgetTester tester) async {

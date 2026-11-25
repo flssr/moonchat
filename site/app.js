@@ -78,7 +78,7 @@
   }
 
   // 安装包只跑在 x64 的 Windows 10+：点「现在体验」先提醒，确认了才去下载。
-  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe';
+  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-0.0.2.exe';
   const gate = document.getElementById('getGate');
   const getBtn = document.getElementById('getBtn');
 

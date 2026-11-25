@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -10,6 +12,24 @@ import '../theme.dart';
 import 'friend_picker.dart';
 import 'profile_panel.dart';
 import 'widgets.dart';
+
+/// 空会话区的问候语：按本地时间分五档，和右侧昵称拼成一句。
+String greetingKeyFor(DateTime now) {
+  final int hour = now.hour;
+  if (hour >= 18 || hour < 6) {
+    return '晚上好';
+  }
+  if (hour < 9) {
+    return '早上好';
+  }
+  if (hour < 12) {
+    return '上午好';
+  }
+  if (hour < 14) {
+    return '中午好';
+  }
+  return '下午好';
+}
 
 /// S3 消息：会话列表 + 消息区 + 信息栏（`docs/truth/frontend/README.md`）。
 /// 当前会话、筛选、跳转都在 `AppState` 里，这里只读状态、只调动作。
@@ -43,6 +63,9 @@ class _MessagesViewState extends State<MessagesView> {
   /// 发送错误也按会话存。
   final Map<String, String> _sendErrors = <String, String>{};
   bool _sending = false;
+
+  /// 群聊输入框里 `@` 后面的成员名前缀；null 表示当前没在选人。
+  String? _mentionQuery;
 
   /// 已经为哪个会话拉过历史：防止重建时反复翻页。
   String? _loadedKey;
@@ -118,11 +141,10 @@ class _MessagesViewState extends State<MessagesView> {
 
   List<Conversation> get _filtered {
     final List<Conversation> all = widget.state.conversations;
-    final List<Conversation> list = widget.state.filter == 'dm'
-        ? all.where((Conversation c) => c.type == 'dm').toList()
-        : widget.state.filter == 'room'
-            ? all.where((Conversation c) => c.isRoom).toList()
-            : List<Conversation>.of(all);
+    // 只有私聊/群聊两个页签：默认私聊，群聊靠页签右上角的未读数提示。
+    final List<Conversation> list = widget.state.filter == 'room'
+        ? all.where((Conversation c) => c.isRoom).toList()
+        : all.where((Conversation c) => c.type == 'dm').toList();
     // 有新消息的会话排到最前，按最后一条消息时间倒序；没有消息的留在后面。
     list.sort((Conversation a, Conversation b) {
       final DateTime? ta = widget.state.lastMessage(a.key)?.sentAt;
@@ -159,6 +181,45 @@ class _MessagesViewState extends State<MessagesView> {
     return KeyEventResult.handled;
   }
 
+  /// 输入框变化：更新草稿、群聊里的 @ 候选，并在有内容时上报输入状态。
+  void _onComposerChanged(Conversation conv, String value) {
+    widget.state.setDraft(conv.key, value);
+    setState(() {
+      _mentionQuery = conv.isRoom ? _mentionPrefix(_draftFor(conv.key)) : null;
+    });
+    if (value.trim().isNotEmpty) {
+      unawaited(widget.state.sendTyping(conv));
+    }
+  }
+
+  /// 光标前最后一段 `@名字前缀`；不在 @ 语境里返回 null。
+  String? _mentionPrefix(TextEditingController controller) {
+    final String text = controller.text;
+    final int offset = controller.selection.baseOffset;
+    final int cursor = offset >= 0 ? offset.clamp(0, text.length) : text.length;
+    final RegExpMatch? match = RegExp(r'@([^\s@]*)$').firstMatch(text.substring(0, cursor));
+    return match?.group(1);
+  }
+
+  /// 选一个成员：把 `@前缀` 替换成 `@显示名 `，光标放到后面。
+  void _pickMention(Conversation conv, RoomMember member) {
+    final TextEditingController controller = _draftFor(conv.key);
+    final String text = controller.text;
+    final int offset = controller.selection.baseOffset;
+    final int cursor = offset >= 0 ? offset.clamp(0, text.length) : text.length;
+    final RegExpMatch? match = RegExp(r'@([^\s@]*)$').firstMatch(text.substring(0, cursor));
+    final int start = match == null ? cursor : cursor - match.group(0)!.length;
+    final String insert = '@${member.displayName} ';
+    final String next = text.replaceRange(start, cursor, insert);
+    controller.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + insert.length),
+    );
+    widget.state.setDraft(conv.key, next);
+    setState(() => _mentionQuery = null);
+    _composerFocus.requestFocus();
+  }
+
   Future<void> _send(Conversation conv) async {
     final TextEditingController composer = _draftFor(conv.key);
     final String text = composer.text;
@@ -192,6 +253,7 @@ class _MessagesViewState extends State<MessagesView> {
     setState(() {
       _sending = true;
       _sendErrors.remove(conv.key);
+      _mentionQuery = null;
     });
     try {
       await widget.state.sendMessage(conv, text);
@@ -255,30 +317,58 @@ class _MessagesViewState extends State<MessagesView> {
                 child: Row(
                   children: <Widget>[
                     for (final (String key, String label) in <(String, String)>[
-                      ('all', '全部'),
                       ('dm', '私聊'),
                       ('room', '群聊'),
                     ])
                       Expanded(
                         child: InkWell(
                           onTap: () => widget.state.setFilter(key),
-                          child: Container(
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              border: Border(
-                                bottom: BorderSide(
-                                  color: widget.state.filter == key ? p.ink : Colors.transparent,
-                                  width: 1,
+                          child: Stack(
+                            children: <Widget>[
+                              Container(
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: widget.state.filter == key ? p.ink : Colors.transparent,
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                                child: Text(
+                                  context.tr(label),
+                                  // 大字号 + 英文时页签会放不下：单行省略，别换行压到会话行上。
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: widget.state.filter == key ? p.ink : p.ink3,
+                                  ),
                                 ),
                               ),
-                            ),
-                            child: Text(
-                              context.tr(label),
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: widget.state.filter == key ? p.ink : p.ink3,
-                              ),
-                            ),
+                              // 未读数挂在页签右上角：切到另一类时也能看到另一类有几条。
+                              if (widget.state.unreadForType(key) > 0)
+                                Positioned(
+                                  top: 2,
+                                  right: 8,
+                                  child: Container(
+                                    constraints: const BoxConstraints(minWidth: 14),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: p.accent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      widget.state.unreadForType(key) > 99
+                                          ? '99+'
+                                          : '${widget.state.unreadForType(key)}',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 9, color: p.accentInk),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
                       ),
@@ -358,15 +448,26 @@ class _MessagesViewState extends State<MessagesView> {
                                                 overflow: TextOverflow.ellipsis,
                                               );
                                             }
+                                            if (widget.state.isTyping(c.key)) {
+                                              return Text(
+                                                context.tr(c.isRoom ? '有人正在输入…' : '对方正在输入…'),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(fontSize: 11.5, color: p.accent),
+                                              );
+                                            }
+                                            final ChatMessage? last = widget.state.lastMessage(c.key);
                                             return Text(
-                                              widget.state.lastMessage(c.key)?.text ??
-                                                  (c.isRoom
-                                                      ? (c.memberCount == null
-                                                          ? context.tr('群聊')
-                                                          : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                                              'm': '${c.memberCount}',
-                                                            }))
-                                                      : context.tr('私聊')),
+                                              (last?.recalled ?? false)
+                                                  ? context.tr('已撤回')
+                                                  : (last?.text ??
+                                                      (c.isRoom
+                                                          ? (c.memberCount == null
+                                                              ? context.tr('群聊')
+                                                              : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                                  'm': '${c.memberCount}',
+                                                                }))
+                                                          : context.tr('私聊'))),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                               style: TextStyle(fontSize: 11.5, color: p.ink3),
@@ -376,6 +477,8 @@ class _MessagesViewState extends State<MessagesView> {
                                       ],
                                     ),
                                   ),
+                                  if (widget.state.isMentioned(c.key))
+                                    MoonTag(text: context.tr('有人@我')),
                                   if (c.isRoom && c.ownerAccountId == widget.state.account?.accountId)
                                     MoonTag(text: context.tr('群主')),
                                   if (widget.state.unreadFor(c.key) > 0)
@@ -443,9 +546,18 @@ class _MessagesViewState extends State<MessagesView> {
         // 消息区。
         Expanded(
           child: active == null
-              ? MoonEmpty(
-                  title: context.tr('选一个会话'),
-                  hint: context.tr('私聊只能从好友进入，群聊只能从自己已加入的群进入。'),
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      trArgs(context, '{g}，{name}', <String, String>{
+                        'g': context.tr(greetingKeyFor(DateTime.now())),
+                        'name': widget.state.account?.displayName ?? '',
+                      }),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500, color: p.ink2),
+                    ),
+                  ),
                 )
               : Column(
                   children: <Widget>[
@@ -476,14 +588,19 @@ class _MessagesViewState extends State<MessagesView> {
                                 style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: p.ink),
                               ),
                               Text(
-                                active.isRoom
-                                    ? (active.memberCount == null
-                                        ? context.tr('群聊')
-                                        : trArgs(context, '群聊 · {m} 人', <String, String>{
-                                            'm': '${active.memberCount}',
-                                          }))
-                                    : context.tr('私聊'),
-                                style: TextStyle(fontSize: 11, color: p.ink3),
+                                widget.state.isTyping(active.key)
+                                    ? context.tr(active.isRoom ? '有人正在输入…' : '对方正在输入…')
+                                    : (active.isRoom
+                                        ? (active.memberCount == null
+                                            ? context.tr('群聊')
+                                            : trArgs(context, '群聊 · {m} 人', <String, String>{
+                                                'm': '${active.memberCount}',
+                                              }))
+                                        : context.tr('私聊')),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: widget.state.isTyping(active.key) ? p.accent : p.ink3,
+                                ),
                               ),
                             ],
                           ),
@@ -500,6 +617,8 @@ class _MessagesViewState extends State<MessagesView> {
                           state: widget.state,
                           conversation: active,
                           onRetry: (ChatMessage m) {
+                            // 重试成功要收掉旧的横幅：否则「连接已断开」会一直挂着。
+                            setState(() => _sendErrors.remove(active.key));
                             // retry 失败会 rethrow：这里自己接住，别让它变成无人接的异步错误。
                             widget.state.retryMessage(active, m).catchError((Object e) {
                               if (mounted) {
@@ -523,6 +642,13 @@ class _MessagesViewState extends State<MessagesView> {
                         color: p.surface,
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                         child: Text(context.tr(_sendErrors[active.key]!), style: TextStyle(fontSize: 11.5, color: p.accent)),
+                      ),
+                    if (_mentionQuery != null && active.isRoom)
+                      _MentionPicker(
+                        state: widget.state,
+                        conversation: active,
+                        query: _mentionQuery!,
+                        onPick: (RoomMember member) => _pickMention(active, member),
                       ),
                     Container(
                       padding: const EdgeInsets.fromLTRB(16, 10, 12, 12),
@@ -550,7 +676,7 @@ class _MessagesViewState extends State<MessagesView> {
                                   controller: _draftFor(active.key),
                                   focusNode: _composerFocus,
                                   onChanged: (String value) =>
-                                      widget.state.setDraft(active.key, value),
+                                      _onComposerChanged(active, value),
                                   minLines: 1,
                                   maxLines: 4,
                                   maxLength: 500,
@@ -709,7 +835,9 @@ class _MessageListState extends State<_MessageList> {
     }
 
     for (final ChatMessage m in messages) {
-      final DateTime d = DateTime(m.sentAt.year, m.sentAt.month, m.sentAt.day);
+      // 日期线按本地日历日切：气泡时钟用的是本地时间，按 UTC 切会在午夜前后错一天。
+      final DateTime local = m.sentAt.toLocal();
+      final DateTime d = DateTime(local.year, local.month, local.day);
       if (day != d) {
         flush();
         rows.add(d);
@@ -1022,7 +1150,8 @@ class _RoomInfoState extends State<_RoomInfo> {
         const SizedBox(height: 4),
         MonoText(trArgs(context, '群 {id} · {m} 人', <String, String>{
           'id': '${widget.roomId}',
-          'm': '${detail?.memberCount ?? 0}',
+          // 邀请/移除后 `loadMembers` 已刷新总数，群详情里的旧值会滞后。
+          'm': '${members?.total ?? detail?.memberCount ?? 0}',
         })),
         if (detail?.description != null && detail!.description!.trim().isNotEmpty) ...<Widget>[
           const SizedBox(height: 10),
@@ -1232,6 +1361,75 @@ class _ConversationMark extends StatelessWidget {
           MonoText('+$extra'),
         ],
       ],
+    );
+  }
+}
+
+/// 群聊输入 `@` 后的成员候选：按前缀过滤，点一个把 `@前缀` 替换成 `@显示名 `。
+class _MentionPicker extends StatelessWidget {
+  const _MentionPicker({
+    required this.state,
+    required this.conversation,
+    required this.query,
+    required this.onPick,
+  });
+
+  final AppState state;
+  final Conversation conversation;
+  final String query;
+  final ValueChanged<RoomMember> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final MoonPalette p = context.moon;
+    final int me = state.account?.accountId ?? 0;
+    final String needle = query.toLowerCase();
+    final List<RoomMember> members = (state.membersOf(conversation.targetId)?.items ?? const <RoomMember>[])
+        .where((RoomMember m) =>
+            m.accountId != me && (needle.isEmpty || m.displayName.toLowerCase().contains(needle)))
+        .take(8)
+        .toList(growable: false);
+    if (members.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 168),
+      decoration: BoxDecoration(
+        color: p.surface,
+        border: Border(top: BorderSide(color: p.line)),
+      ),
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        children: <Widget>[
+          for (final RoomMember m in members)
+            InkWell(
+              onTap: () => onPick(m),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: <Widget>[
+                    MoonAvatar(
+                      name: m.displayName,
+                      seed: m.accountId,
+                      avatar: state.avatarOf(m.accountId),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        m.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, color: p.ink),
+                      ),
+                    ),
+                    MonoText('#${shortAccountId(m.accountId)}', color: p.ink3),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

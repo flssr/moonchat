@@ -24,7 +24,7 @@ Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 
 
 | 开关 | 正常账号 | 冻结账号 |
 | --- | --- | --- |
-| `false`（今天） | `QUERY *` | `QUERY *`，签发入口回 `403 account_frozen` |
+| `false`（默认/未配置） | `QUERY *` | `QUERY *`，签发入口回 `403 account_frozen` |
 | `true` | `QUERY *` + `CREATE/UPDATE MESSAGE` + `UPDATE CONVERSATION` | `QUERY *` + `UPDATE CONVERSATION`（能清角标，发不出消息） |
 
 冻结只由签发侧决定，不依赖 Turms 的 `isActive`。开关打开后冻结账号不再被拒签，改为签只读凭据，并在签发时调 Turms Admin `PUT /users/online-infos/statuses`（query 参数 `ids`，body `{"onlineStatus":"OFFLINE"}`）踢掉存量会话——Turms 收到 `OFFLINE` 走 `sessionService.disconnect(..., DISCONNECTED_BY_ADMIN)`。踢失败只告警、不回滚签发：客户端拿到的仍是只读凭据，旧会话等它自己过期。

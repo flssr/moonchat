@@ -16,10 +16,15 @@ import 'package:mondchat/state/app_state.dart';
 import 'package:mondchat/theme.dart';
 import 'package:mondchat/turms/realtime.dart';
 import 'package:mondchat/ui/home_shell.dart';
+import 'package:mondchat/ui/messages_view.dart';
 import 'package:mondchat/ui/profile_panel.dart';
 
 /// 读写通道在测试里不连 Turms：只验证直写调用与状态机。
 class _FakeRealtime implements RealtimeClient {
+  /// 测试里自己就是唯一的“通道”，不排队状态层的重连定时器。
+  @override
+  bool get reconnectsByItself => true;
+
   bool connected = false;
   int? connectedAccountId;
   void Function(IncomingMessage message)? _onMessage;
@@ -44,8 +49,13 @@ class _FakeRealtime implements RealtimeClient {
   /// 设置后 `send()` 会等它完成，用来验证「推送回声先到、直写响应后到」。
   Completer<String>? sendGate;
 
-  final Map<int, DateTime?> privateDates = <int, DateTime?>{};
   final Map<String, DateTime?> groupDates = <String, DateTime?>{};
+
+  /// 收到的输入状态与发出的输入状态都记下来，测试里一条断言就够。
+  final List<IncomingTyping> typingReceived = <IncomingTyping>[];
+  final List<(String, String)> typingSent = <(String, String)>[];
+
+  void Function(IncomingTyping typing)? _onTyping;
 
   @override
   Future<void> connect({
@@ -53,6 +63,7 @@ class _FakeRealtime implements RealtimeClient {
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -64,6 +75,7 @@ class _FakeRealtime implements RealtimeClient {
     connectedAccountId = myAccountId;
     _onMessage = onMessage;
     _onMessageUpdated = onMessageUpdated;
+    _onTyping = onTyping;
     _onError = onError;
     onConnected?.call(true);
   }
@@ -73,6 +85,20 @@ class _FakeRealtime implements RealtimeClient {
 
   /// 模拟服务端推来撤回/编辑通知。
   void emitUpdate(MessageUpdate update) => _onMessageUpdated?.call(update);
+
+  /// 模拟对端输入状态。
+  void emitTyping(IncomingTyping typing) {
+    typingReceived.add(typing);
+    _onTyping?.call(typing);
+  }
+
+  @override
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    typingSent.add((conversationType, targetId));
+  }
 
   /// 模拟读通道报错（断线/凭据失效）。
   void fail(Object error) => _onError?.call(error);
@@ -116,10 +142,6 @@ class _FakeRealtime implements RealtimeClient {
     }
     recalled.add(messageId);
   }
-
-  @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async =>
-      <int, DateTime?>{for (final int id in peerAccountIds) id: privateDates[id]};
 
   @override
   Future<Map<String, DateTime?>> groupReadDates({
@@ -433,6 +455,28 @@ void main() {
     expect(message.mine, isTrue);
   });
 
+  test('欢迎语撞新好友投影延迟：2 秒后自动补发一次', () async {
+    final _FakeBiz biz = _FakeBiz();
+    biz.pending.add(<String, Object?>{
+      'peer_account_id': 4,
+      'display_name': '阿星',
+      'status': 'pending',
+      'incoming': true,
+      'requested_at': '2026-11-10T09:00:00Z',
+    });
+    final _FakeRealtime rt = _FakeRealtime()..sendError = TurmsException(turmsCode: 5001);
+    final AppState state = _stateOn(biz, realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    await state.respondFriend(4, 'accept');
+    expect(state.lastMessage('dm:4')?.state, MessageState.failed, reason: '第一次发送被投影延迟拒绝');
+
+    rt.sendError = null;
+    await Future<void>.delayed(const Duration(milliseconds: 2300));
+    expect(state.lastMessage('dm:4')?.state, MessageState.sent, reason: '2 秒后补发成功');
+  });
+
   test('删好友：写 tombstone 后从列表消失', () async {
     final _FakeBiz biz = _FakeBiz();
     final AppState state = _stateOn(biz);
@@ -614,6 +658,9 @@ void main() {
     await tester.enterText(find.byType(TextField).last, '给甲的草稿');
     await tester.pump();
 
+    // 会话列表现在分「私聊 / 群聊」两个页签，群会话要先切到群聊页。
+    state.setFilter('room');
+    await tester.pumpAndSettle();
     await tester.tap(find.text('月球基地'));
     await tester.pumpAndSettle();
 
@@ -757,13 +804,13 @@ void main() {
     expect(second.lastMessage(dm.key)?.text, '缓存这条');
   });
 
-  test('登录补拉每个会话最新一页：预览和离线未读按服务端 readDate 算', () async {
+  test('登录补拉每个会话最新一页：预览和离线未读按本机已读时间算', () async {
     final _FakeRealtime rt = _FakeRealtime();
     final _FakeCache cache = _FakeCache();
     cache.saved[1] = <String, dynamic>{
       'messages': <String, dynamic>{},
+      'read_dates': <String, String>{'dm:2': '2026-11-10T09:00:00.000Z'},
     };
-    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -850,9 +897,8 @@ void main() {
     expect(rt.readMarks.single.targetId, '2');
   });
 
-  test('登录未读以服务端 readDate 为准，没有本机缓存也算出来', () async {
+  test('没有本机已读基线时首登静默上报，历史不算未读', () async {
     final _FakeRealtime rt = _FakeRealtime();
-    rt.privateDates[2] = DateTime.parse('2026-11-10T09:00:00Z');
     rt.pages.add(<IncomingMessage>[
       IncomingMessage(
         id: '901',
@@ -871,7 +917,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(state.lastMessage(dm.key)?.text, '离线来的');
-    expect(state.unreadFor(dm.key), 1, reason: 'readDate 之前的对端消息都算未读');
+    expect(state.unreadFor(dm.key), 0, reason: '本机没有基线：补报一次已读，不把历史全算成未读');
+    expect(
+      rt.readMarks.any((({String type, String targetId}) m) =>
+          m.type == 'dm' && m.targetId == '2'),
+      isTrue,
+    );
   });
 
   test('已读上报失败时角标保留，不假装读过', () async {
@@ -1032,6 +1083,42 @@ void main() {
     expect(restored.account?.accountId, 1);
   });
 
+  test('取消记住我后，切号不会把本机会话写回', () async {
+    final _MemorySessionStore session = _MemorySessionStore();
+    final AppState state = _stateOn(_FakeBiz(), session: session);
+    addTearDown(state.dispose);
+
+    await state.login(email: 'a@b.c', password: 'password1', remember: false);
+    expect(session.session, isNull, reason: '取消勾选后登录要清掉本机副本');
+
+    await state.switchAccount(2);
+    expect(session.session, isNull, reason: '切号要沿用登录时的“不记住”选择');
+  });
+
+  test('切号清掉上一个账号的草稿', () async {
+    final AppState state = _stateOn(_FakeBiz());
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    state.setDraft('dm:2', '别带过去');
+    expect(state.draftFor('dm:2'), '别带过去');
+
+    await state.switchAccount(2);
+    expect(state.draftFor('dm:2'), isEmpty, reason: '草稿不能跟着账号切过去');
+  });
+
+  test('群被移除后轮询清掉选中项，窄屏不会停在空会话上', () async {
+    final _FakeBiz biz = _FakeBiz();
+    final AppState state = _stateOn(biz);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+    state.selectConversation('room:7');
+    expect(state.activeConversationKey, 'room:7');
+
+    biz.rooms.removeWhere((Map<String, Object?> r) => r['room_id'] == 7);
+    await state.refreshRelations();
+    expect(state.activeConversationKey, isNull);
+  });
+
   testWidgets('刷新后登录页显示记住的账号，点登录恢复会话', (WidgetTester tester) async {
     final _MemorySessionStore session = _MemorySessionStore()
       ..session = const StoredSession(token: 'login-jwt', accountId: 1, displayName: '阿星');
@@ -1101,6 +1188,72 @@ void main() {
     expect(state.conversations.map((Conversation c) => c.key), contains('room:9'));
   });
 
+  test('问候语按时间分五档', () {
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 5)), '晚上好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 7)), '早上好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 10)), '上午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 13)), '中午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 17)), '下午好');
+    expect(greetingKeyFor(DateTime(2026, 11, 24, 20)), '晚上好');
+  });
+
+  test('群消息 @ 我：会话标「有人@我」，打开后清掉', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _stateOn(_FakeBiz(), realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emit(IncomingMessage(
+      id: '900',
+      text: '@阿月 早',
+      senderId: 2,
+      sentAt: DateTime.now().toUtc(),
+      groupId: '7000000000000000007',
+    ));
+    expect(state.isMentioned('room:7'), isTrue);
+
+    state.selectConversation('room:7');
+    expect(state.isMentioned('room:7'), isFalse, reason: '打开会话就把提醒消费掉');
+  });
+
+  test('对端正在输入：显示并 3 秒后自动消失', () async {
+    final _FakeRealtime rt = _FakeRealtime();
+    final AppState state = _stateOn(_FakeBiz(), realtime: rt);
+    addTearDown(state.dispose);
+    await state.login(email: 'a@b.c', password: 'password1');
+
+    rt.emitTyping(const IncomingTyping(senderId: 2, toId: '1', isGroup: false));
+    expect(state.isTyping('dm:2'), isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 3100));
+    expect(state.isTyping('dm:2'), isFalse);
+  });
+
+  testWidgets('消息页只有私聊/群聊两个页签', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+
+    expect(find.text('全部'), findsNothing);
+    expect(find.text('私聊'), findsWidgets);
+    expect(find.text('群聊'), findsWidgets);
+    state.dispose();
+  });
+
+  testWidgets('联系人查找只找好友：非好友显示未搜索到此好友', (WidgetTester tester) async {
+    final AppState state = await _loggedIn();
+    await tester.pumpWidget(_shell(state));
+    await tester.pumpAndSettle();
+    state.showView('contacts');
+    await tester.pumpAndSettle();
+
+    expect(find.text('添加好友'), findsWidgets);
+    await tester.enterText(find.byType(TextField).first, '3');
+    await tester.tap(find.text('查找'));
+    await tester.pumpAndSettle();
+    expect(find.text('未搜索到此好友'), findsOneWidget);
+    state.dispose();
+  });
+
   testWidgets('Enter 发送，Shift+Enter 只换行', (WidgetTester tester) async {
     final AppState state = await _loggedIn();
     await tester.pumpWidget(_shell(state));
@@ -1145,6 +1298,8 @@ Widget _shell(AppState state) => MaterialApp(
         onToggleTheme: (Brightness _) {},
         brightness: Brightness.light,
         textScale: 1.0,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: (ThemeMode _) {},
         onLanguageChanged: (String _) {},
         onTextScaleChanged: (double _) {},
       ),

@@ -40,11 +40,15 @@ class MondChatApp extends StatefulWidget {
   State<MondChatApp> createState() => _MondChatAppState();
 }
 
-class _MondChatAppState extends State<MondChatApp> {
+class _MondChatAppState extends State<MondChatApp> with WidgetsBindingObserver {
   late final AppState _state = widget.state ?? AppState();
   late final bool _ownsState = widget.state == null;
   late final SettingsStore _store = widget.store ?? createSettingsStore();
   late final MoonSettings _initial = widget.settings ?? _store.load();
+
+  /// 弹窗（设置/黑名单/资料编辑）挂在根 Navigator 上：登出要统一收掉。
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _wasHome = false;
 
   late ThemeMode _mode;
   late double _textScale;
@@ -61,6 +65,7 @@ class _MondChatAppState extends State<MondChatApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // 预览参数优先于上次保存；其余设置从本地偏好恢复。
     final String? forced = Uri.base.queryParameters['theme'];
     _themeForced = forced == 'light' || forced == 'dark';
@@ -73,11 +78,19 @@ class _MondChatAppState extends State<MondChatApp> {
     _locale = _localeFor(_initial.languageCode);
     _notify = _initial.notifyOnMessage;
     _state.setNotifyOnMessage(_notify);
+    _state.setLanguageCode(_locale.languageCode);
     // 本机记住的账号由登录页的“记住我”卡片显示，点登录再恢复；不再自动跳过登录页。
+  }
+
+  /// 浏览器/桌面切到后台也算“不在看”：否则后台标签页收到消息会直接上报已读。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    _state.setWindowFocused(lifecycle == AppLifecycleState.resumed);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_ownsState) {
       _state.dispose();
     }
@@ -105,6 +118,13 @@ class _MondChatAppState extends State<MondChatApp> {
     _persist();
   }
 
+  /// 设置页的三档主题：把它设成 system 后导航栏二态切换仍可覆盖，但能再选回跟随系统。
+  void _setThemeMode(ThemeMode mode) {
+    _themeForced = false;
+    setState(() => _mode = mode);
+    _persist();
+  }
+
   void _setTextScale(double value) {
     setState(() => _textScale = value);
     _persist();
@@ -112,6 +132,7 @@ class _MondChatAppState extends State<MondChatApp> {
 
   void _setLanguage(String code) {
     setState(() => _locale = _localeFor(code));
+    _state.setLanguageCode(code);
     _persist();
   }
 
@@ -131,10 +152,12 @@ class _MondChatAppState extends State<MondChatApp> {
   Brightness? _gateBrightness;
   double? _gateTextScale;
   Locale? _gateLocale;
+  bool? _gateNotify;
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'MondChat',
       debugShowCheckedModeBanner: false,
       theme: buildMoonTheme(Brightness.light),
@@ -164,22 +187,34 @@ class _MondChatAppState extends State<MondChatApp> {
           }
           // 两条入口（密码登录 / 「记住我」卡片）都由登录页播完登舱过渡再置 `_arrived`。
           final bool showHome = ready && _arrived;
+          if (_wasHome && !showHome) {
+            // 登出时设置/黑名单/资料编辑这些弹窗还挂在根路由上，
+            // 不 pop 就会盖在登录页上露出上个账号的数据。
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _navigatorKey.currentState?.popUntil((Route<dynamic> r) => r.isFirst);
+            });
+          }
+          _wasHome = showHome;
           final Brightness brightness = Theme.of(context).brightness;
           if (_gate == null ||
               showHome != _gateHome ||
               brightness != _gateBrightness ||
               _textScale != _gateTextScale ||
-              _locale != _gateLocale) {
+              _locale != _gateLocale ||
+              _notify != _gateNotify) {
             _gateHome = showHome;
             _gateBrightness = brightness;
             _gateTextScale = _textScale;
             _gateLocale = _locale;
+            _gateNotify = _notify;
             _gate = showHome
                 ? HomeShell(
                     state: _state,
                     onToggleTheme: _toggleTheme,
                     brightness: brightness,
                     textScale: _textScale,
+                    themeMode: _mode,
+                    onThemeModeChanged: _setThemeMode,
                     onLanguageChanged: _setLanguage,
                     onTextScaleChanged: _setTextScale,
                     notifyOnMessage: _notify,

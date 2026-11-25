@@ -2,9 +2,9 @@
 
 PG 是业务真相；Turms 的 `user`、`userRelationship`、`group`、`groupMember` 是派生读模型，可以整份丢弃后从 PG 重建。投影失败不回滚业务写，由派发器与对账收敛。
 
-**授权的真相在 PG，执行点在 Turms**：当前（未切换）写入网关按 `friendship` / `blocklist` / `room_member` 判定，Turms 侧这些行只做读模型、不参与授权。客户端切到直写 Turms 之后，改由 Turms 用这些投影判定（前提 `allowSendMessagesToStranger=false` 且回填与对账已通过）；切换前投影不改变任何用户可见行为。
+**授权的真相在 PG，执行点在 Turms**：Turms 用投影后的 `userRelationship` / `groupMember` 判定私聊与群发言（生产 `allowSendMessagesToStranger=false` 已生效）；旧客户端的 Biz REST 路径仍按 PG 判定，P4 后退场。
 
-派发默认关闭：`mondchat.projection.enabled=false` 时事件照常在业务事务里写入 `domain_event`，只是不派发、不对账。这是 P2 之前的默认状态。
+代码默认关闭：`mondchat.projection.enabled=false` 时事件照常在业务事务里写入 `domain_event`，只是不派发、不对账。生产用 `MONDCHAT_PROJECTION_ENABLED=true` 打开并已完成回填。
 
 关系的创建、删除与拉黑从 `domain_event` 异步投影；建群、解散群与 Turms 群句柄的生成仍走 `RoomProjectionService` 的同步投影，规则见[群与成员投影](room.md)。
 
@@ -61,8 +61,8 @@ Turms 的语义决定了写法，不能想当然：
 ## 已知上限
 
 - 派发是单 worker、不加 `SKIP LOCKED`；多 worker 时必须先补行锁。
-- 「删好友且仍在拉黑」要两次调用（`DELETE` 后 `POST`），中间有毫秒级窗口该对既非好友也无拉黑；当前 `allowSendMessagesToStranger = true`，窗口不产生用户可见后果。
-- Turms 侧关系缓存上限 8096 条、过期 60 秒：投影对 Turms 判定的影响最坏滞后一分钟。切换授权前必须把这条写进切换验收。
+- 「删好友且仍在拉黑」要两次调用（`DELETE` 后 `POST`），中间有毫秒级窗口该对既非好友也无拉黑；`allowSendMessagesToStranger=false` 已生效，窗口内的私聊会短暂回 `5001`，下一事件收敛。
+- Turms 侧关系缓存上限 8096 条、过期 60 秒：投影对 Turms 判定的影响最坏滞后一分钟。验收拉黑/删好友时要等过这个窗口再断言。
 
 ## 已知风险
 

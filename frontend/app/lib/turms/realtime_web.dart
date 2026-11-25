@@ -22,6 +22,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
 @JS()
 extension type _Driver._(JSObject _) implements JSObject {
   external void addOnDisconnectedListener(JSFunction listener);
+  external JSPromise<JSObject> send(JSObject request);
 }
 
 @JS()
@@ -46,8 +47,9 @@ extension type _NotificationService._(JSObject _) implements JSObject {
 extension type _ConversationService._(JSObject _) implements JSObject {
   external JSPromise<JSObject> queryPrivateConversations(JSObject options);
   external JSPromise<JSObject> queryGroupConversations(JSObject options);
-  external JSPromise<JSObject> updatePrivateConversationReadDate(JSObject options);
-  external JSPromise<JSObject> updateGroupConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updateConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updatePrivateConversationTypingStatus(JSObject options);
+  external JSPromise<JSObject> updateGroupConversationTypingStatus(JSObject options);
 }
 
 /// `turms-client-js` 的会话查询：私聊与群分开两个方法（issue #37 读已读时间）。
@@ -195,6 +197,30 @@ MessageUpdate? _toMessageUpdate(JSObject notification) {
   );
 }
 
+/// 业务通知里的输入状态：`updateTypingStatusRequest` 带 `toId` 与 `isGroupMessage`。
+IncomingTyping? _toTyping(JSObject notification) {
+  final JSAny? rawRequest = notification.getProperty<JSAny?>('relayedRequest'.toJS);
+  if (rawRequest == null || rawRequest.isUndefinedOrNull) {
+    return null;
+  }
+  final JSAny? rawTyping =
+      (rawRequest as JSObject).getProperty<JSAny?>('updateTypingStatusRequest'.toJS);
+  if (rawTyping == null || rawTyping.isUndefinedOrNull) {
+    return null;
+  }
+  final JSObject typing = rawTyping as JSObject;
+  final int senderId = _readInt(notification, 'requesterId') ?? 0;
+  final String? toId = _readString(typing, 'toId');
+  if (senderId == 0 || toId == null || toId.isEmpty) {
+    return null;
+  }
+  return IncomingTyping(
+    senderId: senderId,
+    toId: toId,
+    isGroup: _read(typing, 'isGroupMessage') == true,
+  );
+}
+
 /// 把 Turms 网关地址规整成 WebSocket 形式。
 String _wsUrl(String gatewayUrl) {
   if (gatewayUrl.startsWith('ws://') || gatewayUrl.startsWith('wss://')) {
@@ -211,6 +237,10 @@ String _wsUrl(String gatewayUrl) {
 
 class WebRealtime implements RealtimeClient {
   _TurmsClient? _client;
+
+  /// Web 端没有内置重连：状态层在断开事件后按退避换凭据重连。
+  @override
+  bool get reconnectsByItself => false;
 
   /// 连接代次：disconnect 或新 connect 会自增；旧连接晚到的回调按代次丢弃。
   int _generation = 0;
@@ -230,6 +260,7 @@ class WebRealtime implements RealtimeClient {
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
     void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -256,16 +287,24 @@ class WebRealtime implements RealtimeClient {
       }
 
       client.messageService.addMessageListener(handler.toJS);
-      if (onMessageUpdated != null) {
-        // `notificationService` 只回调非创建类业务通知，正好是撤回/编辑。
+      if (onMessageUpdated != null || onTyping != null) {
+        // `notificationService` 只回调非创建类业务通知：撤回/编辑与输入状态都在这里。
         client.notificationService.addNotificationListener(((JSObject notification) {
           try {
             final MessageUpdate? update = _toMessageUpdate(notification);
             if (update != null) {
-              onMessageUpdated(update);
+              onMessageUpdated?.call(update);
             }
           } catch (e) {
             debugPrint('解析 Turms 消息更新失败：$e');
+          }
+          try {
+            final IncomingTyping? typing = _toTyping(notification);
+            if (typing != null) {
+              onTyping?.call(typing);
+            }
+          } catch (e) {
+            debugPrint('解析 Turms 输入状态失败：$e');
           }
         }).toJS);
       }
@@ -381,25 +420,19 @@ class WebRealtime implements RealtimeClient {
   }
 
   @override
-  Future<Map<int, DateTime?>> privateReadDates(List<int> peerAccountIds) async {
-    if (peerAccountIds.isEmpty) {
-      return const <int, DateTime?>{};
-    }
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
     try {
       final _TurmsClient client = _requireClient();
-      final JSObject response = await client.conversationService
-          .queryPrivateConversations(_object(<String, JSAny?>{
-            'userIds': peerAccountIds.map((int id) => '$id'.toJS).toList().toJS,
-          }))
-          .toDart;
-      final Map<int, DateTime?> out = <int, DateTime?>{};
-      for (final JSObject raw in _dataItems(response)) {
-        final int? peer = _readInt(raw, 'targetId');
-        if (peer != null) {
-          out[peer] = _readDate(raw, 'readDate');
-        }
-      }
-      return out;
+      final JSObject params = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      });
+      final JSPromise<JSObject> call = conversationType == 'room'
+          ? client.conversationService.updateGroupConversationTypingStatus(params)
+          : client.conversationService.updatePrivateConversationTypingStatus(params);
+      await call.toDart;
     } catch (e) {
       throw _turmsError(e);
     }
@@ -445,13 +478,19 @@ class WebRealtime implements RealtimeClient {
   }) async {
     try {
       final _TurmsClient client = _requireClient();
-      final JSObject params = _object(<String, JSAny?>{
-        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      // `turms-client-js` 的生成模型把 UpdateConversationRequest 私聊字段叫 `targetId`
+      // （proto 的 target_id），而会话服务的封装还在写 `userId`——那个字段名会被编码器
+      // 忽略，服务端只会回 `1102 userId/groupId both null`。所以这里直接按模型字段发，
+      // 群聊一并走 driver，避免两个封装层再分叉。
+      final JSObject update = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'targetId'): targetId.toJS,
+        'readDate': '${DateTime.now().millisecondsSinceEpoch}'.toJS,
       });
-      final JSPromise<JSObject> call = conversationType == 'room'
-          ? client.conversationService.updateGroupConversationReadDate(params)
-          : client.conversationService.updatePrivateConversationReadDate(params);
-      await call.toDart;
+      final JSObject request = _object(<String, JSAny?>{
+        'updateConversationRequest': update,
+        'customAttributes': (<JSAny?>[]).toJS,
+      });
+      await client.driver.send(request).toDart;
     } catch (e) {
       throw _turmsError(e);
     }

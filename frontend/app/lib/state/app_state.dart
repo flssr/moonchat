@@ -9,6 +9,7 @@ import '../session/session_store.dart';
 import '../settings/settings.dart';
 import '../settings/settings_store.dart';
 import '../account_id.dart';
+import '../i18n/moon_strings.dart';
 import '../message_cache.dart';
 import '../notify.dart';
 import '../turms/realtime.dart';
@@ -116,10 +117,33 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _drafts = <String, String>{};
   final Map<String, String> _dmTitles = <String, String>{};
 
+  /// 群聊里被 @ 的会话（“有人@我”），打开会话或切号时清掉。
+  final Set<String> _mentioned = <String>{};
+
+  /// 正在输入的会话 → 过期定时器；对端每发一次输入状态就顺延 3 秒。
+  final Map<String, Timer> _typingTimers = <String, Timer>{};
+  final Set<String> _typing = <String>{};
+
+  /// 每个会话上一次发出“正在输入”的时间：别让每个按键都打一次 Turms。
+  final Map<String, DateTime> _typingSentAt = <String, DateTime>{};
+
   /// 服务端读时间基线（只取自己的那条），本地只用于算未读。
   final Map<String, DateTime> _readDates = <String, DateTime>{};
   final Set<String> _pendingReadReports = <String>{};
   Timer? _readTimer;
+
+  /// Web 端断线后的退避重连（桌面壳自己会重连，见 `reconnectsByItself`）。
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+
+  /// 欢迎语撞上好友投影延迟时的单次补发（见 `respondFriend`）。
+  Timer? _welcomeRetryTimer;
+
+  /// 登录页“记住我”的选择：续期与切号要沿用，不能当成一次新的“记住”。
+  bool _rememberSession = true;
+
+  /// 当前界面语言：通知正文这类没有 widget 上下文的文案按它翻译。
+  String languageCode = 'zh';
 
   String draftFor(String key) => _drafts[key] ?? '';
 
@@ -137,6 +161,11 @@ class AppState extends ChangeNotifier {
 
   /// 本机记住的登录态：刷新页面后用它恢复会话（issue #24）。
   final SessionStore _session;
+
+  /// 上次登录用的邮箱（本机偏好）：登录页预填，不跟“记住我”绑定。
+  String? get lastEmail => _store.loadLastEmail();
+
+  void rememberEmail(String email) => _store.saveLastEmail(email);
 
   /// 关系列表的轮询间隔：好友与群没有推送通道，只能定时重拉。
   static const Duration _pollInterval = Duration(seconds: 15);
@@ -184,7 +213,7 @@ class AppState extends ChangeNotifier {
   /// 当前视图：`messages` / `contacts` / `account`（`docs/truth/frontend/README.md`）。
   String view = 'messages';
   String? activeConversationKey;
-  String filter = 'all'; // all | dm | room
+  String filter = 'dm'; // dm | room
   String contactsTab = 'friends'; // friends | pending
   int? selectedContactId;
 
@@ -203,6 +232,8 @@ class AppState extends ChangeNotifier {
     view = 'messages';
     activeConversationKey = key;
     if (key != null) {
+      // 打开会话就把“有人@我”的提醒消费掉。
+      _mentioned.remove(key);
       // 重新打开会话时允许再试一次历史（上次可能只是读通道没连上）。
       _historyFailed.remove(key);
       if ((_unread[key] ?? 0) > 0) {
@@ -215,6 +246,15 @@ class AppState extends ChangeNotifier {
 
   int unreadFor(String key) => _unread[key] ?? 0;
 
+  bool isMentioned(String key) => _mentioned.contains(key);
+
+  bool isTyping(String key) => _typing.contains(key);
+
+  /// 会话分类的未读合计：私聊/群聊页签右上角用它。
+  int unreadForType(String type) => conversations
+      .where((Conversation c) => type == 'dm' ? c.type == 'dm' : c.isRoom)
+      .fold<int>(0, (int sum, Conversation c) => sum + unreadFor(c.key));
+
   int get totalUnread => _unread.values.fold<int>(0, (int sum, int n) => sum + n);
 
   ChatMessage? lastMessage(String key) {
@@ -225,6 +265,9 @@ class AppState extends ChangeNotifier {
   bool isBlocked(int accountId) => _blocked.contains(accountId);
 
   void setNotifyOnMessage(bool value) => notifyOnMessage = value;
+
+  /// 界面语言变了：通知正文等非 widget 文案跟着换。
+  void setLanguageCode(String code) => languageCode = code;
 
   void setWindowFocused(bool value) {
     if (windowFocused == value) {
@@ -315,7 +358,7 @@ class AppState extends ChangeNotifier {
   void _resetNavigation() {
     view = 'messages';
     activeConversationKey = null;
-    filter = 'all';
+    filter = 'dm';
     contactsTab = 'friends';
     selectedContactId = null;
     profileAccountId = null;
@@ -449,7 +492,8 @@ class AppState extends ChangeNotifier {
       await _openSession(result.account.accountId);
       phase = AuthPhase.ready;
       _scheduleLoginRenewal();
-      _persistSession(remember: remember);
+      _rememberSession = remember;
+      _persistSession();
       _startPolling();
     } catch (e) {
       // 会话可能已经建了一半（token、读通道、推送订阅）：清干净再回登录页。
@@ -478,6 +522,7 @@ class AppState extends ChangeNotifier {
       await _openSession(saved.accountId);
       phase = AuthPhase.ready;
       _scheduleLoginRenewal();
+      _rememberSession = true;
       _persistSession();
       _startPolling();
     } catch (_) {
@@ -488,8 +533,8 @@ class AppState extends ChangeNotifier {
   }
 
   /// 记住当前登录态：归属者 JWT + 最后用的账号 id（切号后是 agent 的 id）。
-  void _persistSession({bool remember = true}) {
-    if (!remember) {
+  void _persistSession() {
+    if (!_rememberSession) {
       _session.clear();
       return;
     }
@@ -512,8 +557,24 @@ class AppState extends ChangeNotifier {
   Future<void> _openSession(int accountId) async {
     _readTimer?.cancel();
     _readTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    _welcomeRetryTimer?.cancel();
+    _welcomeRetryTimer = null;
     _pendingReadReports.clear();
     _readDates.clear();
+    // 上一个账号的草稿、会话标题与黑名单不能带进新账号：缓存会按账号各自恢复。
+    _drafts.clear();
+    _dmTitles.clear();
+    _blocked.clear();
+    _mentioned.clear();
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
+    _typing.clear();
+    _typingSentAt.clear();
     _recoveringRealtime = false;
     // 用归属者 JWT 换目标账号的会话；切进 agent 后仍靠它切回来。
     final AccountSession session = await api.sessionForOwner(token: identityToken!, accountId: accountId);
@@ -566,6 +627,21 @@ class AppState extends ChangeNotifier {
         }
       });
     }
+    final Object? rawReadDates = data['read_dates'];
+    if (rawReadDates is Map<String, dynamic>) {
+      rawReadDates.forEach((String key, Object? value) {
+        final DateTime? parsed = value is String ? DateTime.tryParse(value) : null;
+        if (parsed != null) {
+          _readDates[key] = parsed.toUtc();
+        }
+      });
+    }
+    final Object? rawMentioned = data['mentioned'];
+    if (rawMentioned is List<dynamic>) {
+      _mentioned
+        ..clear()
+        ..addAll(rawMentioned.whereType<String>());
+    }
     final Object? rawMessages = data['messages'];
     if (rawMessages is Map<String, dynamic>) {
       _messages.clear();
@@ -617,8 +693,10 @@ class AppState extends ChangeNotifier {
 
   /// 登录后把每个会话的最新一页拉回来：会话列表的预览、离线期间的消息和未读都靠这一步。
   ///
-  /// 未读基线取服务端读时间（私聊 `readDate`、群 `memberIdToReadDate[自己]`）；
-  /// 服务端还没有这个会话的读时间，说明从未上报过：静默上报一次，别把历史全算成未读。
+  /// 未读基线：私聊用本机已读时间（`read_dates` 随缓存落盘）；Turms 的会话查询只能查到
+  /// 「对方对我的会话」，拿不到自己的读时间（#37），所以不拿它当私聊基线。
+  /// 群取 Turms `memberIdToReadDate[自己]`。没有任何基线说明本机第一次读这个会话：
+  /// 静默上报一次，别把历史全算成未读。
   Future<void> _primeConversations() async {
     if (!realtimeUp || _disposed) {
       return;
@@ -627,27 +705,24 @@ class AppState extends ChangeNotifier {
     if (me == 0) {
       return;
     }
+    final DateTime primeStarted = DateTime.now().toUtc();
+    bool stillMine() => !_disposed && realtimeUp && account?.accountId == me;
     final List<Conversation> convs = conversations;
-    final List<int> peers = <int>[
-      for (final Conversation c in convs)
-        if (!c.isRoom) c.targetId,
-    ];
     final List<String> groups = <String>[
       for (final Conversation c in convs)
         if (c.isRoom && (c.turmsGroupId?.isNotEmpty ?? false)) c.turmsGroupId!,
     ];
     bool baselineLoaded = true;
     try {
-      final List<Object> results = await Future.wait(<Future<Object>>[
-        realtime.privateReadDates(peers),
-        realtime.groupReadDates(turmsGroupIds: groups, selfAccountId: me),
-      ]);
-      final Map<int, DateTime?> privateDates = results[0] as Map<int, DateTime?>;
-      final Map<String, DateTime?> groupDates = results[1] as Map<String, DateTime?>;
+      final Map<String, DateTime?> groupDates = await realtime.groupReadDates(
+        turmsGroupIds: groups,
+        selfAccountId: me,
+      );
       for (final Conversation c in convs) {
-        final DateTime? date = c.isRoom
-            ? (c.turmsGroupId == null ? null : groupDates[c.turmsGroupId])
-            : privateDates[c.targetId];
+        if (!c.isRoom || c.turmsGroupId == null) {
+          continue;
+        }
+        final DateTime? date = groupDates[c.turmsGroupId];
         if (date != null) {
           _readDates[c.key] = date;
         }
@@ -657,7 +732,7 @@ class AppState extends ChangeNotifier {
       baselineLoaded = false;
     }
     for (final Conversation c in convs) {
-      if (_disposed || !realtimeUp) {
+      if (!stillMine()) {
         return;
       }
       await loadHistory(c);
@@ -668,26 +743,34 @@ class AppState extends ChangeNotifier {
       return;
     }
     for (final Conversation c in convs) {
-      if (_disposed) {
+      if (!stillMine()) {
         return;
       }
       final DateTime? readDate = _readDates[c.key];
       if (readDate == null) {
-        // 从未上报过：上报一次并跳过未读，否则首登的历史会话会一次性全红。
-        _unread.remove(c.key);
-        await _reportRead(c.key);
+        // 补拉期间实时到的消息不能被这次静默上报吞掉：留着角标，只把基线钉在补拉起点。
+        final bool arrivedDuringPrime = (_messages[c.key] ?? const <ChatMessage>[])
+            .any((ChatMessage m) => !m.mine && m.sentAt.isAfter(primeStarted));
+        if (arrivedDuringPrime) {
+          _readDates[c.key] = primeStarted;
+        } else {
+          // 从未上报过：上报一次并跳过未读，否则首登的历史会话会一次性全红。
+          _unread.remove(c.key);
+          await _reportRead(c.key);
+        }
         continue;
       }
       int missed = 0;
       ChatMessage? latest;
       for (final ChatMessage m in _messages[c.key] ?? const <ChatMessage>[]) {
-        if (!m.mine && m.sentAt.isAfter(readDate)) {
+        // 已撤回的消息不参与未读与通知正文（`docs/truth/frontend/messages.md` 的「未删除」）。
+        if (!m.mine && !m.recalled && m.sentAt.isAfter(readDate)) {
           missed++;
           latest = m;
         }
       }
       if (missed == 0 || latest == null) {
-        // 服务端读时间是权威：旧缓存里的未读不能留下来。
+        // 读时间之后没有对端消息：旧缓存里的未读不能留下来。
         _unread.remove(c.key);
         continue;
       }
@@ -696,9 +779,11 @@ class AppState extends ChangeNotifier {
       _unread[c.key] = missed;
       if (notifyOnMessage) {
         // 和在线提示一样走桌面通知，把离线期间收到的条数和最后一条内容带上。
+        final String line =
+            moonText(languageCode, '{n} 条新消息').replaceAll('{n}', '$missed');
         unawaited(_notifier.show(
           title: c.title,
-          body: '$missed 条新消息\n${latest.text}',
+          body: '$line\n${latest.text}',
         ));
       }
     }
@@ -731,6 +816,11 @@ class AppState extends ChangeNotifier {
       'unread': _unread,
       'drafts': _drafts,
       'dm_titles': _dmTitles,
+      'read_dates': <String, String>{
+        for (final MapEntry<String, DateTime> entry in _readDates.entries)
+          entry.key: entry.value.toUtc().toIso8601String(),
+      },
+      'mentioned': _mentioned.toList(growable: false),
       'messages': messages,
     };
   }
@@ -835,18 +925,52 @@ class AppState extends ChangeNotifier {
         final bool wasUp = realtimeUp;
         realtimeUp = up;
         // 断线期间 Turms 不会补推：重连成功后补拉一次当前会话最新一页。
-        if (up && !wasUp) {
-          unawaited(_refreshActiveMessages());
+        if (up) {
+          _reconnectTimer?.cancel();
+          _reconnectAttempt = 0;
+          if (!wasUp) {
+            unawaited(_refreshActiveMessages());
+          }
+        } else if (!realtime.reconnectsByItself) {
+          _scheduleRealtimeReconnect();
         }
         notifyListeners();
       },
       onMessage: _ingest,
       onMessageUpdated: _ingestUpdate,
+      onTyping: _onTyping,
       onError: (Object error) {
         realtimeUp = false;
+        if (!realtime.reconnectsByItself) {
+          _scheduleRealtimeReconnect();
+        }
         notifyListeners();
       },
     );
+  }
+
+  /// Web 断线后自己按 1/2/4/8/16/30 秒退避重连（桌面壳有自己的重连，不走这里）。
+  void _scheduleRealtimeReconnect() {
+    if (_disposed || realtime.reconnectsByItself) {
+      return;
+    }
+    if (account == null || phase != AuthPhase.ready) {
+      return;
+    }
+    _reconnectTimer?.cancel();
+    final int seconds = 1 << (_reconnectAttempt < 5 ? _reconnectAttempt : 5);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(Duration(seconds: seconds > 30 ? 30 : seconds), () {
+      if (_disposed || account == null || phase != AuthPhase.ready) {
+        return;
+      }
+      unawaited(() async {
+        final bool ok = await _renewTurmsSession();
+        if (!ok) {
+          _scheduleRealtimeReconnect();
+        }
+      }());
+    });
   }
 
   /// 重连后补拉当前会话最新一页：断线/挂机期间丢失的推送只能靠历史补回来。
@@ -960,8 +1084,76 @@ class AppState extends ChangeNotifier {
       // 正看着这条会话：把服务端已读也推到这条消息上，下次登录才不会又算成未读。
       _scheduleReadReport(key);
     }
+    if (live && incoming.senderId != me && incoming.groupId != null && !reading &&
+        _mentionsMe(incoming.text)) {
+      // 群聊里被点名：会话行显示“有人@我”，打开会话时清掉。
+      _mentioned.add(key);
+    }
     notifyListeners();
     _scheduleCacheSave();
+  }
+
+  /// 群消息是否 @ 了我：按自己的显示名做文本匹配（Turms 不提供结构化 mentions）。
+  bool _mentionsMe(String text) {
+    final String me = account?.displayName ?? '';
+    if (me.isEmpty) {
+      return false;
+    }
+    final String escaped = RegExp.escape(me);
+    // 显示名是另一个名字的前缀时（@张三 vs @张三丰）不算被 @。
+    return RegExp('@$escaped(?![A-Za-z0-9_\\u4e00-\\u9fff])').hasMatch(text);
+  }
+
+  /// 输入状态：同一会话 2 秒最多发一次；没权限或断线都静默跳过（只是锦上添花）。
+  Future<void> sendTyping(Conversation conv) async {
+    final DateTime now = DateTime.now();
+    final DateTime? last = _typingSentAt[conv.key];
+    if (last != null && now.difference(last).inMilliseconds < 2000) {
+      return;
+    }
+    final String? targetId = conv.isRoom ? conv.turmsGroupId : '${conv.targetId}';
+    if (targetId == null || targetId.isEmpty) {
+      return;
+    }
+    _typingSentAt[conv.key] = now;
+    try {
+      await realtime.sendTyping(conversationType: conv.type, targetId: targetId);
+    } catch (_) {
+      // 输入状态不挡聊天。
+    }
+  }
+
+  /// 对端正在输入：3 秒没有新的输入状态就自动消失。
+  void _onTyping(IncomingTyping typing) {
+    final int me = account?.accountId ?? 0;
+    if (me == 0 || typing.senderId == me) {
+      return;
+    }
+    String? key;
+    if (typing.isGroup) {
+      final int? roomId = _roomIdByTurmsGroupId[typing.toId];
+      if (roomId == null) {
+        return;
+      }
+      key = 'room:$roomId';
+    } else {
+      key = 'dm:${typing.senderId}';
+    }
+    if (!conversations.any((Conversation c) => c.key == key)) {
+      return;
+    }
+    _typing.add(key);
+    _typingTimers.remove(key)?.cancel();
+    _typingTimers[key] = Timer(const Duration(seconds: 3), () {
+      if (_disposed) {
+        return;
+      }
+      _typingTimers.remove(key);
+      if (_typing.remove(key)) {
+        notifyListeners();
+      }
+    });
+    notifyListeners();
   }
 
   /// 服务端发来的消息更新：撤回把正文藏掉，编辑替换正文。找不到就丢弃。
@@ -1037,8 +1229,9 @@ class AppState extends ChangeNotifier {
       _readDates[key] = DateTime.now().toUtc();
       if (_unread.remove(key) != null) {
         notifyListeners();
-        _scheduleCacheSave();
       }
+      // 私聊基线只在本机：读时间要跟着缓存落盘，重启后未读才不会算错。
+      _scheduleCacheSave();
       return true;
     } on TurmsException catch (e) {
       _recoverRealtime(e);
@@ -1117,6 +1310,18 @@ class AppState extends ChangeNotifier {
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
     _readTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempt = 0;
+    _welcomeRetryTimer?.cancel();
+    _welcomeRetryTimer = null;
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
+    _typing.clear();
+    _typingSentAt.clear();
+    _mentioned.clear();
     _pendingReadReports.clear();
     _readDates.clear();
     _recoveringRealtime = false;
@@ -1203,11 +1408,12 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addEntries(rooms.where((Room r) => r.turmsGroupId != null)
           .map((Room r) => MapEntry<String, int>(r.turmsGroupId!, r.roomId)));
-    // 关系变了之后资料页的 `is_friend` 与群详情的成员数都会过期，清掉重取。
-    _profiles.clear();
-    _roomDetails.clear();
+    // 资料页/群详情的缓存按需失效：关系动作各自删掉受影响的那一条，
+    // 不在这里整片清空，否则已经打开的资料栏会停在加载态（用户看不到重拉）。
+    _dropStaleActive();
     try {
-      final BlocklistPage page = await api.blocklist(token: token);
+      // 与黑名单弹窗一致取满 100 人；服务端上限也是 100。
+      final BlocklistPage page = await api.blocklist(token: token, size: 100);
       _blocked
         ..clear()
         ..addAll(page.items.map((BlocklistItem item) => item.accountId));
@@ -1215,6 +1421,15 @@ class AppState extends ChangeNotifier {
       // 黑名单拉不到不影响主流程。
     }
     notifyListeners();
+  }
+
+  /// 会话已经不存在（被移出群、被处理掉）时把选中项放掉：
+  /// 否则窄屏会停在“列表已收起 + 一个不存在的会话”的死路上。
+  void _dropStaleActive() {
+    final String? key = activeConversationKey;
+    if (key != null && conversationOf(key) == null) {
+      activeConversationKey = null;
+    }
   }
 
   /// 关系与群列表没有推送通道（Biz 只校验不投递），只能定时重拉，
@@ -1261,6 +1476,7 @@ class AppState extends ChangeNotifier {
         ..clear()
         ..addEntries(nextRooms.where((Room r) => r.turmsGroupId != null)
             .map((Room r) => MapEntry<String, int>(r.turmsGroupId!, r.roomId)));
+      _dropStaleActive();
       notifyListeners();
     } catch (_) {
       // 下一轮再试。401 已由 ApiClient 统一登出，其余失败不值得每轮弹一次提示。
@@ -1460,6 +1676,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> respondFriend(int peerAccountId, String action) async {
     await api.respondFriend(token: loginToken!, peerAccountId: peerAccountId, action: action);
+    _profiles.remove(peerAccountId);
     await refreshAll();
     if (action != 'accept') {
       return;
@@ -1474,16 +1691,31 @@ class AppState extends ChangeNotifier {
     if (conv == null) {
       return;
     }
+    final String key = conv.key;
     try {
       // 被加的一方同意后自动打招呼（限一次，失败不回滚好友关系）。
       await sendMessage(conv, '我们已经是好友啦，一起来聊天吧OWO');
     } catch (_) {
-      // 好友已经加上了，欢迎语发失败不阻塞。
+      // 新好友在 Turms 的投影有秒级延迟，第一次发送可能撞 `5001`：
+      // 2 秒后拿同一个气泡补发一次，仍失败就留给用户手动重试。
+      _welcomeRetryTimer?.cancel();
+      _welcomeRetryTimer = Timer(const Duration(seconds: 2), () {
+        if (_disposed) {
+          return;
+        }
+        final ChatMessage? msg = lastMessage(key);
+        final Conversation? live = conversationOf(key);
+        if (msg == null || msg.state != MessageState.failed || live == null) {
+          return;
+        }
+        unawaited(retryMessage(live, msg).catchError((Object _) {}));
+      });
     }
   }
 
   Future<void> deleteFriend(int peerAccountId) async {
     await api.deleteFriend(token: loginToken!, peerAccountId: peerAccountId);
+    _profiles.remove(peerAccountId);
     _drafts.remove('dm:$peerAccountId');
     if (activeConversationKey == 'dm:$peerAccountId') {
       activeConversationKey = null;
@@ -1501,6 +1733,7 @@ class AppState extends ChangeNotifier {
       // 好友已经删了；拉黑失败不回滚。
     }
     _drafts.remove('dm:$peerAccountId');
+    _profiles.remove(peerAccountId);
     if (activeConversationKey == 'dm:$peerAccountId') {
       activeConversationKey = null;
     }
@@ -1528,6 +1761,9 @@ class AppState extends ChangeNotifier {
       activeConversationKey = null;
     }
     _members.remove(roomId);
+    _roomDetails.remove(roomId);
+    // 会话行没了以后没有入口能把它清零，角标会一直挂在导航栏上。
+    _unread.remove('room:$roomId');
     await refreshAll();
   }
 
@@ -1626,6 +1862,12 @@ class AppState extends ChangeNotifier {
     _renewTimer?.cancel();
     _turmsTimer?.cancel();
     _readTimer?.cancel();
+    _reconnectTimer?.cancel();
+    _welcomeRetryTimer?.cancel();
+    for (final Timer timer in _typingTimers.values) {
+      timer.cancel();
+    }
+    _typingTimers.clear();
     _stopPolling();
     flushCache();
     // 先摘掉回调再关连接：晚到的 401 或推送不能对已 dispose 的 notifier 调 notifyListeners。

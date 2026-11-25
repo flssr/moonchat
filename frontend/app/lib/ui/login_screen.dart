@@ -65,6 +65,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   bool _leftDark = false;
   bool _leftDarkReady = false;
 
+  /// 上次登录的邮箱预填：未勾选“记住我”时仍只记邮箱，省得每次重新输入。
+  @override
+  void initState() {
+    super.initState();
+    final String? email = widget.state.lastEmail;
+    if (email != null && email.isNotEmpty) {
+      _email.text = email;
+    }
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -91,8 +101,10 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final String email = _email.text.trim();
     final String password = _password.text;
     final String name = _name.text.trim();
+    // 与后端 `^[^@]+@.+$` 对齐：@ 前有内容，@ 后也要有内容。
+    final int at = email.indexOf('@');
     setState(() {
-      _emailError = (email.isEmpty || !email.contains('@') || email.indexOf('@') == 0)
+      _emailError = (email.isEmpty || at <= 0 || at == email.length - 1)
           ? '需要一个带 @ 的邮箱'
           : null;
       _passwordError = (password.length < 8 || password.length > 72)
@@ -133,6 +145,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
         password: _password.text,
         remember: _remember,
       );
+      widget.state.rememberEmail(_email.text.trim());
       await _playArrival();
     } on ApiException catch (e) {
       if (!mounted) {

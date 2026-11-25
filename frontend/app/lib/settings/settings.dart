@@ -85,4 +85,8 @@ abstract interface class SettingsStore {
   /// 所以跟着设备走，不跟账号走。
   Map<int, String> loadAvatars();
   void saveAvatars(Map<int, String> avatars);
+
+  /// 上次登录用的邮箱：不是敏感信息，未勾选“记住我”也保留，登录页用它预填。
+  String? loadLastEmail();
+  void saveLastEmail(String email);
 }

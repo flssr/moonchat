@@ -20,7 +20,13 @@
 
 ## 目录
 
-- [生产打开 Turms 写凭据](#生产打开-turms-写凭据)
+- [部署判活与密钥属主口径](#部署判活与密钥属主口径)
+- [P3 验收通过，#72 关闭](#p3-验收通过72-关闭)
+- [发布 MondChat v0.0.2 安装包](#发布-mondchat-v002-安装包)
+- [2026-11-24 生产服务器变更汇总](#2026-11-24-生产服务器变更汇总)
+- [生产切客户端直写授权](#生产切客户端直写授权)
+- [私聊未读基线回到本机](#私聊未读基线回到本机)
+- [Turms 全局属性不再由 compose 决定](#turms-全局属性不再由-compose-决定)
 - [Turms Admin 调用加超时](#turms-admin-调用加超时)
 - [写路径回归 Turms](#写路径回归-turms)
 - [自研插件与消息引擎发布耦合](#自研插件与消息引擎发布耦合)
@@ -59,13 +65,67 @@
 
 ## 议题
 
-### 生产打开 Turms 写凭据
+### 部署判活与密钥属主口径
 
-2026-11-25 00:52 CST   [2026-11-24 16:52 UTC]
+2026-11-25 23:20 CST   [2026-11-25 15:20 UTC]
 
-决策：生产 `/opt/mondchat/.env` 增加 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true` 并 `docker compose up -d --wait`，`POST /api/sessions` 签出的 Turms 凭据从只有 `QUERY` 变为含 `MESSAGE.CREATE`、`MESSAGE.UPDATE`、`CONVERSATION.UPDATE` 三项；探针账号 `100000008` 实测就是这个 statement 集合。
+决策：部署文档补三条可执行口径：WebSocket 命令行探测固定 HTTP/1.1 并加超时，输出 101 才算通；共享 JWT 密钥文件必须为 `10001:10001`、权限 600，轮换内容后受控重启 Biz 与 gateway；打开写凭据后按正常/冻结两套 statements 验收。限流现状明确为客户端/agent 直写走 Turms 插件、旧 REST 仍走 Biz Redis，不再写成已整体迁走。
 
-原因：客户端直写（PR #74）已合入并上线，但凭据不带写权限时发消息与已读会被 gateway 回 `1106`，P3 灰度验收无法开始。打开前的前置已核过：关系投影三类差异为 0（好友 8 对双向共 16 行齐、黑名单 0、两群成员与角色一致），且 `allow-send-messages-to-stranger=false` 已在同一份 `compose.yaml` 里生效，两者不再分开切换。开关放在 `.env` 而不是 `compose.yaml`，是为了回滚不重走 CD；CD 只 `scp compose.yaml`，不碰 `.env`，这一行不会被部署覆盖。
+原因：历史 PR #35 与 #76 都停在旧基线上，前者的密钥属主内容被后者覆盖，后者又混入已被 P3 生产记录取代的切换时间和状态。合并时以最新 main 为底，只保留仍未覆盖且可执行的运维事实，避免回退 shared config、双路径限流等现有结论。
+
+### P3 验收通过，#72 关闭
+
+2026-11-25 00:45 CET   [2026-11-24 23:45 UTC]
+
+决策：在生产上用新客户端做 P3 验收，确认发送、已读与撤回都走 Turms `/im`：A→B 私聊与群聊均送达；打开会话后单会话与分类角标清零；浏览器 `performance` 里 `/api/conversations` 请求数为 0（发送端、已读端各测一次），说明客户端不再调 Biz 的 REST 写路径。前端 93 个测试、桌面 5 个测试、后端 statements 测试与 CI 全绿。关闭跟踪 issue #72（标题改为 P1–P3 已完成）；P4（删 `/messages`、`/read`）与 P5（删 Biz 两个 Redis 限流桶）未做，按 #63 的终态与顺序另行排期。
+
+原因：#72 的 P3 三件（发送直写、错误码按 Turms `code`、已读直写）与凭据开关已在 2026-11-24 上线；这次验收补「生产实测 + 客户端不再调旧 REST」的闭环证据，并把 P4/P5 的归属写清，避免跟踪 issue 关掉后没人接。
+
+### 发布 MondChat v0.0.2 安装包
+
+2026-11-25 00:28 CET   [2026-11-24 23:28 UTC]
+
+决策：用 main `ab4666f` 的 Windows CI 产物，按既有 Inno Setup 规格打 `MondChat-Setup-0.0.2.exe`（x64、当前用户安装、中文向导、内置 VC++ 运行库、桌面与开始菜单快捷方式、自定义卸载），把 `preview` release 更新为「Mondchat V0.0.2 preview」，资产为安装包与 `Readme.md`，删除旧的 `MondChat-Setup-1.0.0.exe`；`site/app.js` 与 `site/index.html` 的下载链接同步指向 0.0.2，由 Site 流水线随 `site/**` 部署。安装包 12,028,922 字节，SHA256 `7A1BB7A373415623AD44AAACC0EAD1A4C99EB0616D4784A27204CD76D88CF7D9`。
+
+原因：把「测试改进3」的交互带给测试用户，沿用之前的安装包要求；`preview` 是固定标签、预览包始终挂最新资产，所以原地替换而不是新开标签。打包时发现启动过的 app 会把 `MondChat\session.json`、`cache.json` 等本机私有数据写进载荷目录，已移出载荷并在本地打包脚本里加了「载荷出现 `MondChat\` 就拒绝打包」的防呆。
+
+### 2026-11-24 生产服务器变更汇总
+
+2026-11-25 00:30 CET   [2026-11-24 23:30 UTC]
+
+决策：今天生产环境的实际改动如下（UTC），供汇报：
+
+- 20:20–21:20 切客户端直写（P3）：`/opt/mondchat/.env` 置 `MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`（正常账号签 `QUERY *` + `MESSAGE.CREATE/UPDATE` + `CONVERSATION.UPDATE`，冻结账号只读 + 清角标）；Turms 全局属性 `allowSendMessagesToStranger=false` 走 Admin API `PUT /cluster/settings` 写 shared config；客户端与 agent 改各自的 Turms `/im` 直写，Biz REST 写路径保留给旧客户端。
+- 20:20–21:20 限流插件上线：`.env` 设 `MONDCHAT_TURMS_SERVICE_IMAGE=ghcr.io/flssr/mondchat-turms-service:latest`（镜像 2026-11-23 16:23 UTC 构建成功），`docker compose pull/up turms-service` 后日志有 `registered` / `extension ... has been started`，`127.0.0.1:8510/health` 200。Turms 自带防刷在约 8 请求/秒先于插件触发（`701` 关会话、IP 封 10 分钟）。
+- Biz 部署（CD，健康检查均通过）：13:39 UTC `e7ceace`、21:16 UTC `7cd3dbf`、22:17 UTC `8a2cf89`、22:46 UTC `ab4666f`。今天没改后端代码、没有新 Flyway 迁移（仍 V7），这几次部署不改接口与数据，只是容器随镜像更新重启；`ab4666f` 是业务代码的最新镜像，本次发布只改站点与文档，push 后 CD 仍会按惯例重建一次、无后端变化。
+- 验收：好友私聊/群聊正常；非好友 `5001`；被拉黑 `5001` 且未送达；解除拉黑恢复；连发触发 `1101`。
+- 安装包与官网：见上一条。
+
+原因：P3 把好友/拉黑的执行点从 Biz 交回 Turms；写权限必须和 `stranger=false` 同一次开，单独开等于让持凭据客户端绕过好友与拉黑。开关与回滚路径见 [部署与运行](../truth/deployment.md)。
+
+### 生产切客户端直写授权
+
+2026-11-25 05:20 CST   [2026-11-24 21:20 UTC]
+
+决策：生产把 Turms 的 `allowSendMessagesToStranger` 从 `true` 翻成 `false`（走 admin API `PUT /cluster/settings`，`compose` 的 `-D` 只是种子），客户端与 agent 从 Biz 代发改成各自的 Turms `/im` 直写；限流插件镜像已挂载（`MONDCHAT_TURMS_SERVICE_IMAGE`）。Biz 的 REST 写路径只留给未升级的旧客户端，P4 删除。
+
+原因：P3 的验收前提是好友与拉黑由 Turms 按投影判定。投影已回填、好友关系行已在 Turms，翻开关前实测好友发送不受影响。翻后验收：好友私聊/群聊正常，非好友 `5001`，被拉黑 `5001` 且未送达（`stranger=false` 压码）、解除拉黑恢复，连发触发 `1101`。验收同时发现桌面端把 `1101`（1xxx 里的错误码）当成功，已改成 `1000..1099` 判成功。Turms 自带防刷在约 8 请求/秒时先于插件触发（会话以 `701` 关闭、IP 封 10 分钟），验收限流不要用密集压测。
+
+### 私聊未读基线回到本机
+
+2026-11-25 04:20 CST   [2026-11-24 20:20 UTC]
+
+决策：私聊未读基线改回本机已读时间，随 `cache.json` 的 `read_dates` 落盘（键是会话 key）；群聊仍取 Turms `memberIdToReadDate[自己]`。删除 `RealtimeClient.privateReadDates`。没有任何本机基线的会话（首登/重装）补报一次已读，不把历史算成未读。
+
+原因：P3 生产验收（#73）实测 `QUERY_CONVERSATIONS_REQUEST` 的 `userIds` 在服务端是 owner、target 固定为请求者，返回的是「对方对我的会话」，`readDate` 是对方的读时间。原实现把它按对端 id 当自己的基线，永远取不到，导致每次登录都把私聊会话当成「从未上报」→ 上报后清角标，私聊未读数实际不出现（复现已记到 #37）。跨设备的服务端基线需要 Turms 侧补查询或换未读计数，仍由 #37 跟踪；本机重登先保证准确。
+
+### Turms 全局属性不再由 compose 决定
+
+2026-11-25 04:20 CST   [2026-11-24 20:20 UTC]
+
+决策：`allowSendMessagesToStranger` 这类 Turms 全局可变属性以 Mongo shared config 为准，改动走 admin API `PUT /cluster/settings`；`compose.yaml` 里的 `-D` 只是首次启动的种子值，不再当作生效开关。
+
+原因：`SharedPropertyService.initializeSharedProperties()` 在 shared config 里已有记录时直接用库里的 `TurmsProperties`，`-D` 只在库为空时写入；重启会被旧值覆盖。2026-11-24 P3 验收实测：compose 已写 `false`，线上仍允许陌生人私聊、拉黑后消息照常送达，限流插件也没装（`.env` 未设 `MONDCHAT_TURMS_SERVICE_IMAGE`）。改属性与限流的操作步骤写进 `docs/truth/deployment.md`。
 
 ### Turms Admin 调用加超时
 

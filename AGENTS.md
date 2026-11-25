@@ -22,16 +22,16 @@
 
 | 边界 | 含义 |
 | --- | --- |
-| 消息唯一写入者是 Turms | 消息与已读的入口是客户端的 Turms `/im`；当前（P1，未切换）仍由 Biz 经 `im-facade` 的 Admin `POST /messages` 代发，切换后 Biz 不再有会话写路径。任何服务不得直写 Mongo |
-| 客户端 Turms 权限按阶段 | 当前 JWT 只授 `QUERY`。切换后签两套 statements：正常账号 `QUERY *` + `MESSAGE.CREATE/UPDATE` + `CONVERSATION.UPDATE`；冻结账号 `QUERY *` + `CONVERSATION.UPDATE`（能清角标、发不出消息）。`MESSAGE.UPDATE` 同时放开撤回与改自己消息正文，已接受 |
+| 消息唯一写入者是 Turms | 消息与已读的入口是客户端的 Turms `/im`；P3 起客户端与 agent 直写，Biz 经 `im-facade` 的 Admin `POST /messages` 只留给未升级的旧客户端、P4 删除。任何服务不得直写 Mongo |
+| 客户端 Turms 权限按阶段 | 当前（`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`）签两套 statements：正常账号 `QUERY *` + `MESSAGE.CREATE/UPDATE` + `CONVERSATION.UPDATE`；冻结账号 `QUERY *` + `CONVERSATION.UPDATE`（能清角标、发不出消息）。`MESSAGE.UPDATE` 同时放开撤回与改自己消息正文，已接受 |
 | 业务真相在 PG | 账号、好友、群、成员与黑名单以 PG 为准；Turms 里的账号、关系、群成员与黑名单都是可重建投影 |
 | 身份只有一处 | `account.id` 就是 Turms 用户 id；归属关系即授权，没有第二映射或授权表 |
 | Biz 只校验不投递 | 不订阅消息事件，不做计数、通知或审计投递 |
 | agent 与真人同构 | 业务动作（账号、好友、群）走同一套 `/api` 与同一签发路径；消息与已读走同一个 Turms `/im`，没有专用转发层 |
 
-**当前阶段**：P1 投影地基已合入（`domain_event` + 派发 + 对账 + 限流插件骨架），但 `mondchat.projection.enabled` 默认 `false`、插件未挂载、写路径仍是 Biz。切换（P2–P5）见 issue #63 与 [架构](docs/truth/architecture.md)。
+**当前阶段**：P3 客户端直写已上线——客户端与 agent 经 `/im` 直写消息/已读/撤回，投影已回填，限流插件已挂载，`allowSendMessagesToStranger=false` 已生效；P4（删 Biz REST 写路径）未做。切换（P4–P5）见 issue #63 与 [架构](docs/truth/architecture.md)。
 
-授权分两层写：真相在 PG，执行在 Turms。切换后私聊授权由 Turms 用投影后的好友/拉黑关系判定，前提是 `allowSendMessagesToStranger = false` 且投影回填与对账已通过；当前（未切换）由 Biz 写入网关判定，`allowSendMessagesToStranger = true`。黑名单双向都投影：拉黑方与被拉黑方的发送都由 Turms 拦。
+授权分两层写：真相在 PG，执行在 Turms。私聊授权由 Turms 用投影后的好友/拉黑关系判定，`allowSendMessagesToStranger = false` 已在生产生效，投影回填与对账已通过；旧客户端走 Biz REST 时仍按 PG 判定。黑名单双向都投影：拉黑方与被拉黑方的发送都由 Turms 拦。
 
 ## 当前范围
 

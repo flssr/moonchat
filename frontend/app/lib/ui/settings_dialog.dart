@@ -9,6 +9,8 @@ import 'widgets.dart';
 Future<void> showSettingsDialog(
   BuildContext context, {
   required double textScale,
+  required ThemeMode themeMode,
+  required ValueChanged<ThemeMode> onThemeModeChanged,
   required ValueChanged<double> onTextScaleChanged,
   required ValueChanged<String> onLanguageChanged,
   bool notifyOnMessage = true,
@@ -19,6 +21,8 @@ Future<void> showSettingsDialog(
     context: context,
     builder: (BuildContext context) => _SettingsDialog(
       textScale: textScale,
+      themeMode: themeMode,
+      onThemeModeChanged: onThemeModeChanged,
       onTextScaleChanged: onTextScaleChanged,
       onLanguageChanged: onLanguageChanged,
       notifyOnMessage: notifyOnMessage,
@@ -31,6 +35,8 @@ Future<void> showSettingsDialog(
 class _SettingsDialog extends StatefulWidget {
   const _SettingsDialog({
     required this.textScale,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     required this.onTextScaleChanged,
     required this.onLanguageChanged,
     required this.notifyOnMessage,
@@ -39,6 +45,8 @@ class _SettingsDialog extends StatefulWidget {
   });
 
   final double textScale;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<double> onTextScaleChanged;
   final ValueChanged<String> onLanguageChanged;
   final bool notifyOnMessage;
@@ -52,6 +60,7 @@ class _SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
   late bool _notify = widget.notifyOnMessage;
+  late ThemeMode _themeMode = widget.themeMode;
   String? _language;
 
   @override
@@ -75,6 +84,11 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   void _setLanguage(String value) {
     setState(() => _language = value);
     widget.onLanguageChanged(value);
+  }
+
+  void _setThemeMode(ThemeMode mode) {
+    setState(() => _themeMode = mode);
+    widget.onThemeModeChanged(mode);
   }
 
   void _setNotify(bool value) {
@@ -147,6 +161,25 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                       label: label,
                       selected: _language == code,
                       onTap: () => _setLanguage(code),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              Text(_t('主题'), style: _labelStyle(p)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final (ThemeMode mode, String label) in <(ThemeMode, String)>[
+                    (ThemeMode.light, '浅色'),
+                    (ThemeMode.dark, '深色'),
+                    (ThemeMode.system, '跟随系统'),
+                  ])
+                    MoonChoicePill(
+                      label: _t(label),
+                      selected: _themeMode == mode,
+                      onTap: () => _setThemeMode(mode),
                     ),
                 ],
               ),
