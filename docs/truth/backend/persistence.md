@@ -23,7 +23,7 @@ PostgreSQL 当前有九张表，Flyway 八个迁移文件，持久层统一使�
 - 消息、会话、限流桶、来源日志都不进 PG。
 - 投影事件表 `domain_event` 是业务事件的暂存，不是业务真相；它可清空、不参与授权，设计与派发规则见[投影](projection.md)。
 
-`friendship_reverse` 与 `account_room` 是可重建查询镜像，主表才是授权真相。好友与成员删除写 tombstone，物理 purge 的保留期和频率尚未确定。
+`friendship_reverse` 与 `account_room` 是可重建查询镜像，主表才是授权真相。好友与成员删除写 tombstone，物理 purge 的保留期和频率尚未确定。账号注销是明确的硬删例外：同一事务清理 `account` / `account_info`、好友主表与镜像、黑名单、群成员与账号群镜像，删除旧 `account` 事件快照，并写 `account.deleted` 与退群 outbox；不新增迁移表。会新增账号引用的写入口按账号 id 加 `for update` 行锁，多账号固定顺序，与注销互斥。
 
 ## 只能由应用守的规则
 

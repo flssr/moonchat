@@ -12,23 +12,23 @@
 | 消息 | 直写已交 Turms；Biz 只保留旧客户端 REST 写路径（P4 删除）与 Redis 限流 | `controller/message`、`service/message`、`service/limiter` |
 | 持久层 | MyBatis-Plus、迁移与事务 | `entity`、`mapper`、`db/migration` |
 | 投影 | outbox 派发、关系/群成员/账号投影与对账 | `service/projection`、`mapper/projection`、`entity/DomainEvent` |
-| 限流插件 | 客户端直写由 Turms 进程内执行两级令牌桶；生产已挂载，命中回 `1101` 已实测（实际阈值见 #79） | `mondchat-turms-plugin` |
+| 限流插件 | 客户端直写由 Turms 进程内执行两级令牌桶；账号默认 60 初始 + 1/秒，会话默认 20 初始 + 1/3秒，命中回 `1101` | `mondchat-turms-plugin` |
 | Turms 客户端 | Admin API 与凭据签发 | `client/turms`、`service/turms` |
 
 ## 接口面
 
-当前共 26 条 `/api/*` 路由：
+当前共 27 条 `/api/*` 路由：
 
 | 功能 | 路由 |
 | --- | --- |
-| 身份与账号 | `POST /api/auth/register`、`/login`、`/refresh`、`/api/sessions`、`GET/PUT /api/accounts/me`、`PUT /api/accounts/me/avatar`、`GET /api/accounts/mine`、`GET /api/accounts/{accountId}`、`POST /api/agent-accounts` |
+| 身份与账号 | `POST /api/auth/register`、`/login`、`/refresh`、`/api/sessions`、`GET/PUT/DELETE /api/accounts/me`、`PUT /api/accounts/me/avatar`、`GET /api/accounts/mine`、`GET /api/accounts/{accountId}`、`POST /api/agent-accounts` |
 | 好友 | `GET/POST /api/friendships`、`POST/DELETE /api/friendships/{peerAccountId}` |
 | 群 | `POST/GET /api/rooms`、`GET /api/rooms/{roomId}`、`GET/POST /api/rooms/{roomId}/members`、`DELETE /api/rooms/{roomId}/members/me`、`DELETE /api/rooms/{roomId}/members/{accountId}` |
 | 黑名单 | `GET/POST /api/blocklist`、`DELETE /api/blocklist/{accountId}` |
 | 发言 | `POST /api/conversations/{type}/{id}/messages`（切换后删除） |
 | 已读 | `POST /api/conversations/{type}/{id}/read`（切换后删除） |
 
-消息历史、会话列表、未读数与在线状态不由 Biz 提供，客户端直接查 Turms。**当前** Biz 代写消息与已读两条会话写路径；**切换后**（issue #63）两条路由删除、路由数 26 → 24，消息与已读由客户端经 Turms `/im` 直写，Biz 不再写会话。完整路径、字段与响应以控制器、DTO 和 `/v3/api-docs` 为准，不做提交到仓库的手写副本。
+消息历史、会话列表、未读数与在线状态不由 Biz 提供，客户端直接查 Turms。**当前** Biz 代写消息与已读两条会话写路径；**切换后**（issue #63）两条路由删除、路由数 27 → 25，消息与已读由客户端经 Turms `/im` 直写，Biz 不再写会话。完整路径、字段与响应以控制器、DTO 和 `/v3/api-docs` 为准，不做提交到仓库的手写副本。
 
 ## 通用行为
 

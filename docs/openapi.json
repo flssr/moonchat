@@ -55,6 +55,25 @@
             }
           }
         }
+      },
+      "delete" : {
+        "tags" : [ "account-controller" ],
+        "operationId" : "deleteMe",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/DeleteAccountRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "204" : {
+            "description" : "No Content"
+          }
+        }
       }
     },
     "/api/accounts/me/avatar" : {
@@ -1337,6 +1356,17 @@
             }
           }
         }
+      },
+      "DeleteAccountRequest" : {
+        "type" : "object",
+        "properties" : {
+          "password" : {
+            "type" : "string",
+            "maxLength" : 72,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "password" ]
       }
     },
     "securitySchemes" : {

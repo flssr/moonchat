@@ -31,6 +31,7 @@ PostgreSQL 是业务真相，Turms 是消息引擎。目标形态是 **Biz = 控
 - **客户端 Turms 权限按阶段**：`mondchat.turms.write-credential-enabled=true` 时正常账号含 `MESSAGE.CREATE/UPDATE` 与 `CONVERSATION.UPDATE`，冻结账号只保留 `QUERY` 与 `CONVERSATION.UPDATE`（能清角标、发不出消息）。statements 写错不是静默降权，签发侧会直接抛错。翻 `allowSendMessagesToStranger=false` 不影响走 Biz 的旧客户端：Admin `POST /messages` 直接进 `saveMessage`，不经过好友校验那条 `authAndSaveMessage`。
 - 群与成员只从 PG 单向投影到 Turms，失败不回滚业务写，由派发器与对账收敛。
 - 账号、好友与黑名单也单向投影进 Turms 读模型；投影只写 Turms、永不反写 PG。规则见[投影](./backend/projection.md)。
+- Biz 认证入口每次确认账号仍存在；账号硬删后旧登录 JWT 下一次 `/api` 请求即 401。注销的远端清理由 outbox 重试，规则见[账号与认证](./backend/identity.md#注销)。
 - Turms 中没有 PG 记录的群不进入平台业务视图。
 - 所有读取按 Turms 的会话和成员可见范围；关系判定读 Turms 投影（旧客户端走 Biz REST 时读 PG）。
 
