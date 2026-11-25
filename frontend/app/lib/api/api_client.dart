@@ -37,6 +37,12 @@ class ApiException implements Exception {
         return '有一项输入不合法，请检查后重试';
       case 'unauthenticated':
         return '邮箱或密码不对';
+      case 'invalid_password':
+        return '密码不正确';
+      case 'owner_cannot_delete_account':
+        return '群主不能注销账号（V1 没有转让或解散）';
+      case 'projection_disabled':
+        return '服务暂时不可用，请重试';
       case 'forbidden':
         return '这个动作当前账号没有权限';
       case 'account_frozen':
@@ -265,6 +271,11 @@ class ApiClient {
   Future<Profile> profile({required String token, required int accountId}) async {
     final json = await _send('GET', '/api/accounts/$accountId', token: token);
     return Profile.fromJson(json);
+  }
+
+  /// #81 注销真人账号：密码是唯一确认凭据，成功后返回 204，旧 JWT 随即失效。
+  Future<void> deleteAccount({required String token, required String password}) async {
+    await _send('DELETE', '/api/accounts/me', token: token, body: {'password': password});
   }
 
   // —— 好友 ——

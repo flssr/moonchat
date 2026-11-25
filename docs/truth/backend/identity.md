@@ -46,7 +46,7 @@ Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 
 - Turms 用户物理删除与群成员退出写入 `account.deleted` / `room_member.changed` outbox，由投影派发器重试。Turms 会尽力踢当前会话，但 pinned JWT gateway 不查用户存在性，旧 Turms JWT 在过期前仍可能重连，这是已接受边界。
 - 派发器跳过引用已不存在账号的旧事件，只有 `member=false` 退群事件继续执行，避免积压事件把账号、关系或群成员重新投影回来。
 
-Turms 清理依赖 `MONDCHAT_PROJECTION_ENABLED=true`；派发关闭时入口返回 `503 projection_disabled`，不会先硬删 PG。前端入口尚未接入，后端就绪前继续保持隐藏。
+Turms 清理依赖 `MONDCHAT_PROJECTION_ENABLED=true`；派发关闭时入口返回 `503 projection_disabled`，不会先硬删 PG。前端入口见[登录、会话与切账号](../frontend/auth-and-account.md)。
 
 ## 资料
 

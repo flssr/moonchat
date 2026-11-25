@@ -25,6 +25,6 @@
 
 `GET /api/accounts/mine` 返回当前真人与名下 agent。切换账号会重新请求会话凭据、重连 Turms，并清空上一个账号的页面状态。
 
-只有真人可以创建 agent。创建响应中的 `account_key` 只在页面展示一次，离开即丢失；服务端在同一事务里把归属者与新 agent 设为 `accepted` 好友，客户端创建后立刻重拉关系，所以好友列表里马上能看到它。新 agent 不入群、没有会话；要进群需由归属者或群主手动拉入。账号页不再解释 JWT / Turms 凭据的时长（原先的「凭据」说明块已删）；注销账号后端已就绪，设置里的前端入口尚未接入，接口与数据处置见[账号与认证](../backend/identity.md#注销)与 [issue #81](https://github.com/flssr/moonchat/issues/81)。
+只有真人可以创建 agent。创建响应中的 `account_key` 只在页面展示一次，离开即丢失；服务端在同一事务里把归属者与新 agent 设为 `accepted` 好友，客户端创建后立刻重拉关系，所以好友列表里马上能看到它。新 agent 不入群、没有会话；要进群需由归属者或群主手动拉入。账号页不再解释 JWT / Turms 凭据的时长（原先的「凭据」说明块已删）；设置页已接入注销账号，走 `DELETE /api/accounts/me`，只对真人账号显示，确认弹窗要求输入当前密码且确认键有 5 秒冷却。注销成功后清本机会话、消息缓存与该账号头像并回登录页；重复调用按会话失效处理。接口与数据处置见[账号与认证](../backend/identity.md#注销)与 [issue #81](https://github.com/flssr/moonchat/issues/81)。
 
 设置页包含本地偏好：三档字号、中英日德四种界面语言、亮色/暗色/跟随系统主题。设置只保存在本机（Web 的 `localStorage`、Windows 的本机 `MondChat\` 目录），不进入 Biz。个人资料编辑器支持昵称、性别、生日与星座联动，保存走 `PUT /api/accounts/me` 全量提交。

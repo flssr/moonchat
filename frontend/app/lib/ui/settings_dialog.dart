@@ -16,6 +16,7 @@ Future<void> showSettingsDialog(
   bool notifyOnMessage = true,
   ValueChanged<bool>? onNotifyChanged,
   Future<void> Function()? onOpenBlocklist,
+  Future<void> Function()? onDeleteAccount,
 }) async {
   await showDialog<void>(
     context: context,
@@ -28,6 +29,7 @@ Future<void> showSettingsDialog(
       notifyOnMessage: notifyOnMessage,
       onNotifyChanged: onNotifyChanged,
       onOpenBlocklist: onOpenBlocklist,
+      onDeleteAccount: onDeleteAccount,
     ),
   );
 }
@@ -42,6 +44,7 @@ class _SettingsDialog extends StatefulWidget {
     required this.notifyOnMessage,
     required this.onNotifyChanged,
     this.onOpenBlocklist,
+    this.onDeleteAccount,
   });
 
   final double textScale;
@@ -52,6 +55,7 @@ class _SettingsDialog extends StatefulWidget {
   final bool notifyOnMessage;
   final ValueChanged<bool>? onNotifyChanged;
   final Future<void> Function()? onOpenBlocklist;
+  final Future<void> Function()? onDeleteAccount;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -215,6 +219,17 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                 label: _t('我的友情关系'),
                 trailing: MoonTag(text: _t('敬请期待')),
               ),
+              if (widget.onDeleteAccount != null) ...<Widget>[
+                const SizedBox(height: 12),
+                Text(_t('账号'), style: _labelStyle(p)),
+                const SizedBox(height: 4),
+                _PrivacyRow(
+                  label: _t('注销账号'),
+                  danger: true,
+                  onTap: widget.onDeleteAccount,
+                  trailing: Icon(Icons.chevron_right, size: 16, color: p.ink3),
+                ),
+              ],
             ],
           ),
         ),
@@ -231,11 +246,17 @@ class _SettingsDialogState extends State<_SettingsDialog> {
 }
 
 class _PrivacyRow extends StatelessWidget {
-  const _PrivacyRow({required this.label, required this.trailing, this.onTap});
+  const _PrivacyRow({
+    required this.label,
+    required this.trailing,
+    this.onTap,
+    this.danger = false,
+  });
 
   final String label;
   final Widget trailing;
   final VoidCallback? onTap;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
@@ -248,7 +269,10 @@ class _PrivacyRow extends StatelessWidget {
         child: Row(
           children: <Widget>[
             Expanded(
-              child: Text(label, style: TextStyle(fontSize: 13, color: p.ink)),
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 13, color: danger ? p.accent : p.ink),
+              ),
             ),
             trailing,
           ],
