@@ -3,7 +3,7 @@
 生产是单机 docker compose 加宿主机上的 1Panel OpenResty 反代。仓库只带编排 [`infra/prod/compose.yaml`](../../infra/prod/compose.yaml)，不带任何 nginx/Caddy 容器：反代是宿主机上 1Panel 管的 OpenResty，不在 compose 里。
 
 - 真人与 agent 都从 `/api` 做业务读写，用各自账号凭据从 `/im` 收发与查询消息。
-- Biz 无状态，会话不在进程内。**当前**限流状态在 Redis，可重建；**切换后**限流计数在 Turms 插件的进程内存里，按进程一份。
+- Biz 无状态，会话不在进程内。**当前**客户端/agent 直写由 Turms 插件限流，计数在进程内存里、按进程一份；旧客户端 REST 路径仍由 Biz 的 Redis 桶限流，P4/P5 再删。
 - 客户端与 agent 端点不在服务端部署单元里。
 - Flutter Web 产物不在这台机器上部署，本机不放静态站目录。
 
@@ -84,6 +84,15 @@ server {
 - `/api/` 必须保留前缀：控制器都挂在 `/api/**`，所以 `proxy_pass` 不带 URI 部分。
 - 部署前提里 Biz 侧回给客户端的 WS 地址由 `.env` 的 `MONDCHAT_TURMS_GATEWAY_URL` 决定，形如 `wss://api.mondchat.com/im`。
 - **生产不开 CORS**：`DevCorsConfig` 只在 `dev` profile 生效。放在别处的前端必须由那一侧把 `/api`、`/im` 反代到 `api.mondchat.com`（浏览器视角同源），直接从别的 origin 调本机入口会被浏览器拦掉。
+- **命令行探测 WebSocket 必须固定 HTTP/1.1**：`Connection: Upgrade` 是 HTTP/1.1 语义，站点启用 `http2 on` 时，不带 `--http1.1` 会在 h2 层直接回 `400`，请求到不了 `/im`。用下面的命令探测，输出 `101` 才算通；`--max-time` 避免握手后脚本挂住。真实浏览器的 WebSocket 握手固定走 HTTP/1.1，不受此探测项影响。
+
+  ```bash
+  curl --http1.1 --max-time 5 -sS -o /dev/null -w '%{http_code}\n' \
+    -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+    -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+    https://api.mondchat.com/im
+  ```
 
 ## 服务器预置
 
@@ -105,7 +114,7 @@ server {
    | `MONDCHAT_TURMS_HTTP_CONNECT_TIMEOUT` | 可选，默认 `2s`。Admin HTTP 连接超时 |
    | `MONDCHAT_TURMS_HTTP_READ_TIMEOUT` | 可选，默认 `5s`。Admin HTTP 读取超时；Turms 卡死时按既有 catch 回 `503 upstream_unavailable` |
 
-2. `/opt/mondchat/secrets/jwt-hmac256.key`（`chmod 600`）：`openssl rand -hex 32` 生成，`mondchat-biz` 与 `turms-gateway` 挂同一份。
+2. `/opt/mondchat/secrets/jwt-hmac256.key`：用 `sudo sh -c 'umask 077; openssl rand -hex 32 > /opt/mondchat/secrets/jwt-hmac256.key; chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key'` 一次生成到位，`mondchat-biz` 与 `turms-gateway` 挂同一份。**属主必须是容器内 uid `10001`、权限为 `600`**：bind mount 保留宿主属主与权限，Biz 以 uid 10001 运行，读 `root:600` 会 `AccessDeniedException` 后启动失败。已有文件只修属主用 `sudo chown 10001:10001 /opt/mondchat/secrets/jwt-hmac256.key`；轮换内容用上面的生成命令，别用 `sudo tee`。密钥在 Biz 与 gateway 初始化时读入，覆盖文件不会热加载，轮换后必须受控重启 `mondchat-biz` 与 `turms-gateway`，并接受旧 Turms 凭据失效、用户重新登录。Turms 两个容器以 root 读同一份文件，改属主不影响 gateway 验签。
 3. `docker login ghcr.io`，用带 `read:packages` 的 PAT，否则 `docker compose pull` 拿不到私有镜像。
 4. 2G swap：`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`，并写进 `/etc/fstab`；`vm.swappiness=10`。
 5. 宿主要有 `curl`（CD 的健康检查用它打本机 `8080/actuator/health`），以及 Compose 2.17+（用到 `up -d --wait`）。
@@ -163,7 +172,7 @@ server {
 4. **回填存量关系**：建号、好友、黑名单、群成员的存量没有事件（投影从 P1 之后才开始记事件），回填靠对账。默认每天 03:00（`0 0 3 * * *`，六段、秒在最前），要快就临时设 `MONDCHAT_PROJECTION_RECONCILE_CRON='0 */2 * * * *'` 跑一两轮再改回默认。对账只修 Turms、不反写 PG。
    派发器 2 秒一轮（`dispatch-interval-ms: 2000`）、一批 100 条，所以 `pending` 从 0 跳到几百属正常波动；判「卡住」要连续三次采样都只增不减，不能看单次快照。
 5. **上线即变的一项**：`stranger=false` 在每次部署里都生效，对仍走 Biz 代发的客户端应当零影响；但这是唯一可能被误伤的地方——部署后用真实账号发一条私聊确认成功，一条就够。
-6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。
+6. **验三类差异为 0** 后，才允许客户端开始直写；`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED` 与 `stranger=false` 是同一次切换，不分开。打开后用真实账号调 `POST /api/sessions`，解出的 Turms 凭据 statements：正常账号应含 `QUERY *`、`MESSAGE` 的 `CREATE/UPDATE`、`CONVERSATION` 的 `UPDATE`；冻结账号只能含 `QUERY *` 与 `CONVERSATION.UPDATE`。只有 `QUERY` 说明开关没进容器（`.env` 改了没 `up -d`，或键名写错）。
 7. **插件最后才上**：限流对所有来源生效，但它与消息引擎同进程，按「插件镜像投放」单独一步做，出问题单独回滚。
 
 ## 生产回滚
@@ -254,7 +263,7 @@ docker compose exec -T turms-service curl -fsS -u "turms:$PW" -X PUT \
 
 Turms 自带的 IP/用户防刷会先于插件的 50 突发触发：实测约 8 请求/秒连发 80 条后，会先回几次 `1101`，随后会话以 `701` 关闭、IP 封 10 分钟。验收限流用慢速连发或单测，不要用密集压测；被封后等 10 分钟自动解封，或用 `DELETE /blocked-clients/ips?ids=<ip>&deleteAll=false` 手动解。
 
-Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**生产已挂载**（`.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向自建镜像），客户端直写命中限流回 `1101`；旧 REST 路径的限流仍在 Biz。投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
+Turms 容器的家目录是 `/opt/turms/turms-service`，Java 插件加载目录是 `/opt/turms/turms-service/plugins`（不是镜像根目录）；pinned digest 镜像里没有 JS 引擎，插件只能是 Java jar。插件**生产已挂载**（`.env` 的 `MONDCHAT_TURMS_SERVICE_IMAGE` 指向自建镜像），客户端直写命中限流回 `1101`；旧 REST 路径的限流仍在 Biz。Turms 的 Spring 与插件日志写容器内 `/opt/turms/turms-service/log/`，不进 stdout；`docker compose logs` 看不到插件日志是正常的，排障要读该目录并 grep `registered` 与 `extension ... has been started`。投放与回滚步骤见[插件镜像投放](#插件镜像投放一次性人工操作)。
 
 插件的故障半径是**整个 turms-service**：`plugin.yaml` 里的 `class` 不存在或加载失败会让 Spring 上下文 refresh 中止、容器以退出码 1 起不来，不是「插件不生效」。因此：
 
