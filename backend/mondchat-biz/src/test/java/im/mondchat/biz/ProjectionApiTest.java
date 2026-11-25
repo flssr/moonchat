@@ -1,18 +1,24 @@
 package im.mondchat.biz;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.jayway.jsonpath.JsonPath;
+import im.mondchat.biz.client.turms.TurmsAdminClient;
+import im.mondchat.biz.common.ApiException;
 import im.mondchat.biz.service.projection.ProjectionDispatcher;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import im.mondchat.biz.service.projection.ProjectionReconciliation;
+import im.mondchat.biz.service.turms.RoomProjectionService;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 
 /**
@@ -31,6 +37,15 @@ class ProjectionApiTest extends ApiTestSupport {
 
     @Autowired
     ProjectionReconciliation reconciliation;
+
+    @Autowired
+    RoomProjectionService roomProjection;
+
+    @Autowired
+    ProjectionEvents projectionEvents;
+
+    @Autowired
+    TurmsAdminClient turmsAdmin;
 
     @Test
     void 接受好友后派发成Turms的两个方向行() throws Exception {
@@ -134,12 +149,117 @@ class ProjectionApiTest extends ApiTestSupport {
     }
 
     @Test
-    void 群还没有Turms群id时群成员事件等待重试() throws Exception {
+    void 群还没有Turms群id时先退避回填后恢复并保留重试次数() throws Exception {
         Caller owner = newCaller();
-        // 建群会写一条带 null turms_group_id 的成员事件：不能拿 room_id 去撞
+        TestStack.TURMS_ADMIN.respondWith(500);
         long roomId = createRoom(owner);
+        String aggregateId = roomId + ":" + owner.accountId();
+
+        Map<String, Object> failed = dispatchUntilSettled("room_member", aggregateId);
+        assertThat(((Number) failed.get("attempt_count")).intValue()).isEqualTo(1);
+        assertThat(failed.get("processed_at")).isNull();
+
+        TestStack.TURMS_ADMIN.reset();
+        roomProjection.replayPending();
+
+        Long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
+        assertThat(turmsGroupId).isNotNull();
+        Map<String, Object> woken = latestEvent("room_member", aggregateId);
+        assertThat(((Number) woken.get("attempt_count")).intValue()).isEqualTo(1);
+        assertThat(woken.get("processed_at")).isNull();
+        assertThat(woken.get("payload")).isEqualTo(failed.get("payload"));
+        assertThat(jdbc.queryForObject("select next_attempt_at <= now() from domain_event "
+                + "where aggregate_type = 'room_member' and aggregate_id = ? order by id desc limit 1",
+                Boolean.class, aggregateId)).isTrue();
+
+        Map<String, Object> recovered = null;
+        for (int i = 0; i < 30; i++) {
+            dispatcher.dispatchPending();
+            recovered = latestEvent("room_member", aggregateId);
+            if (recovered.get("processed_at") != null) {
+                break;
+            }
+        }
+        assertThat(recovered.get("processed_at")).isNotNull();
+        assertThat(((Number) recovered.get("attempt_count")).intValue()).isEqualTo(1);
+        assertThat(recovered.get("payload")).isEqualTo(failed.get("payload"));
+        assertThat(TestStack.TURMS_ADMIN.membersOf(turmsGroupId)).containsExactly(owner.accountId());
+    }
+
+    @Test
+    void 重复群成员按Turms的409_1103幂等收敛() throws Exception {
+        Caller owner = newCaller();
+        long roomId = createRoom(owner);
+        Long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
 
         Map<String, Object> event = dispatchUntilSettled("room_member", roomId + ":" + owner.accountId());
+
+        assertThat(event.get("processed_at")).isNotNull();
+        assertThat(((Number) event.get("attempt_count")).intValue()).isZero();
+        assertThat(TestStack.TURMS_ADMIN.duplicateGroupMemberResponses()).isEqualTo(1);
+        assertThat(TestStack.TURMS_ADMIN.membersOf(turmsGroupId)).containsExactly(owner.accountId());
+    }
+
+    @Test
+    void 非1103的409仍失败且非409的1103也不当幂等() throws Exception {
+        Caller owner = newCaller();
+        long roomId = createRoom(owner);
+        Long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
+        TestStack.TURMS_ADMIN.respondWith(409, "{\"code\":1102,\"message\":\"1103\"}");
+
+        Map<String, Object> event = dispatchUntilSettled("room_member", roomId + ":" + owner.accountId());
+
+        assertThat(((Number) event.get("attempt_count")).intValue()).isEqualTo(1);
+        assertThat(event.get("processed_at")).isNull();
+        assertThat(event.get("last_error").toString()).contains("Turms 没有确认这次请求");
+        assertThatThrownBy(() -> turmsAdmin.addGroupMember(turmsGroupId, owner.accountId()))
+                .isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo("upstream_unavailable");
+                    assertThat(error.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                });
+
+        TestStack.TURMS_ADMIN.respondWith(500, "{\"code\":1103}");
+        assertThatThrownBy(() -> turmsAdmin.addGroupMember(turmsGroupId, owner.accountId()))
+                .isInstanceOfSatisfying(ApiException.class, error -> {
+                    assertThat(error.getCode()).isEqualTo("upstream_unavailable");
+                    assertThat(error.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+                });
+    }
+
+    @Test
+    void 旧成员事件不能覆盖PG当前状态() throws Exception {
+        Caller owner = newCaller();
+        Caller guest = newCaller();
+        long roomId = createRoom(owner);
+        Long turmsGroupId = jdbc.queryForObject("select turms_group_id from room_info where id = ?",
+                Long.class, roomId);
+        addMember(owner, roomId, guest.accountId());
+        mockMvc.perform(delete("/api/rooms/" + roomId + "/members/" + guest.accountId())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(owner.token())))
+                .andExpect(status().isNoContent());
+
+        projectionEvents.roomMemberChanged(roomId, guest.accountId(), turmsGroupId, true);
+        Map<String, Object> staleAdd = dispatchUntilSettled("room_member", roomId + ":" + guest.accountId());
+        assertThat(staleAdd.get("processed_at")).isNotNull();
+        assertThat(TestStack.TURMS_ADMIN.membersOf(turmsGroupId)).doesNotContain(guest.accountId());
+
+        addMember(owner, roomId, guest.accountId());
+        projectionEvents.roomMemberChanged(roomId, guest.accountId(), turmsGroupId, false);
+        Map<String, Object> staleRemove = dispatchUntilSettled("room_member", roomId + ":" + guest.accountId());
+        assertThat(staleRemove.get("processed_at")).isNotNull();
+        assertThat(TestStack.TURMS_ADMIN.membersOf(turmsGroupId)).contains(guest.accountId());
+    }
+
+    @Test
+    void 群不存在时成员事件退避() throws Exception {
+        Caller owner = newCaller();
+        long missingRoomId = Long.MAX_VALUE;
+        projectionEvents.roomMemberChanged(missingRoomId, owner.accountId(), 123L, true);
+
+        Map<String, Object> event = dispatchUntilSettled("room_member", missingRoomId + ":" + owner.accountId());
 
         assertThat(((Number) event.get("attempt_count")).intValue()).isEqualTo(1);
         assertThat(event.get("processed_at")).isNull();
@@ -179,9 +299,7 @@ class ProjectionApiTest extends ApiTestSupport {
         Map<String, Object> event = null;
         for (int i = 0; i < 30; i++) {
             dispatcher.dispatchPending();
-            event = jdbc.queryForMap("select attempt_count, processed_at, next_attempt_at from domain_event "
-                    + "where aggregate_type = ? and aggregate_id = ? order by id desc limit 1",
-                    aggregateType, aggregateId);
+            event = latestEvent(aggregateType, aggregateId);
             boolean settled = event.get("processed_at") != null
                     || ((Number) event.get("attempt_count")).intValue() > 0;
             if (settled) {
@@ -189,6 +307,13 @@ class ProjectionApiTest extends ApiTestSupport {
             }
         }
         return event;
+    }
+
+    private Map<String, Object> latestEvent(String aggregateType, String aggregateId) {
+        return jdbc.queryForMap("select attempt_count, processed_at, next_attempt_at, last_error, "
+                        + "payload::text as payload from domain_event "
+                        + "where aggregate_type = ? and aggregate_id = ? order by id desc limit 1",
+                aggregateType, aggregateId);
     }
 
     private static String lower(Caller one, Caller another) {
@@ -239,5 +364,15 @@ class ProjectionApiTest extends ApiTestSupport {
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         return ((Number) JsonPath.read(body, "$.room_id")).longValue();
+    }
+
+    private void addMember(Caller operator, long roomId, long accountId) throws Exception {
+        mockMvc.perform(post("/api/rooms/" + roomId + "/members")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(operator.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"account_id":%d}
+                                """.formatted(accountId)))
+                .andExpect(status().isCreated());
     }
 }

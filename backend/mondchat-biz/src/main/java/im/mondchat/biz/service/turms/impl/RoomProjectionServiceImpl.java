@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import im.mondchat.biz.client.turms.TurmsAdminClient;
 import im.mondchat.biz.common.ApiException;
+import im.mondchat.biz.entity.DomainEvent;
 import im.mondchat.biz.entity.RoomInfo;
 import im.mondchat.biz.entity.RoomMember;
 import im.mondchat.biz.entity.TurmsSyncState;
+import im.mondchat.biz.mapper.projection.DomainEventMapper;
 import im.mondchat.biz.mapper.room.RoomInfoMapper;
 import im.mondchat.biz.mapper.room.RoomMemberMapper;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import im.mondchat.biz.service.turms.RoomProjectionService;
 import java.time.OffsetDateTime;
 import java.util.HashSet;
@@ -20,7 +23,7 @@ import org.springframework.stereotype.Service;
 
 /**
  * 投影按 PG 重算：`room_member` 的有效行是唯一真相，Turms 的成员集合只是副本。
- * 一次 reconcile 只做三件事——群不在就建、缺的人加进去、多的人移出来。
+ * 整组对齐成功后唤醒本群待处理的成员事件。
  */
 @Slf4j
 @Service
@@ -29,6 +32,7 @@ public class RoomProjectionServiceImpl implements RoomProjectionService {
 
     private final RoomInfoMapper roomInfoMapper;
     private final RoomMemberMapper roomMemberMapper;
+    private final DomainEventMapper events;
     private final TurmsAdminClient turmsAdmin;
 
     @Override
@@ -52,6 +56,7 @@ public class RoomProjectionServiceImpl implements RoomProjectionService {
                     .forEach(accountId -> turmsAdmin.removeGroupMember(turmsGroupId, accountId));
 
             markSynced(roomId);
+            wakeRoomMemberEvents(roomId);
         } catch (ApiException e) {
             // 投影失败不回滚业务写：留在 pending，重放器下一轮按 PG 重算（§4 的 S3 边界）
             log.warn("群投影失败，留在 pending：roomId={}", roomId, e);
@@ -98,5 +103,15 @@ public class RoomProjectionServiceImpl implements RoomProjectionService {
                 .eq(RoomInfo::getId, roomId)
                 .set(RoomInfo::getTurmsSyncState, TurmsSyncState.SYNCED)
                 .set(RoomInfo::getUpdatedAt, OffsetDateTime.now()));
+    }
+
+    /** 只改重试时间：事件仍带着原目标状态与失败次数，由派发器正常收敛。 */
+    private void wakeRoomMemberEvents(long roomId) {
+        events.update(null, new LambdaUpdateWrapper<DomainEvent>()
+                .eq(DomainEvent::getAggregateType, ProjectionEvents.ROOM_MEMBER)
+                .likeRight(DomainEvent::getAggregateId, roomId + ":")
+                .eq(DomainEvent::getEventType, ProjectionEvents.ROOM_MEMBER_CHANGED)
+                .isNull(DomainEvent::getProcessedAt)
+                .set(DomainEvent::getNextAttemptAt, OffsetDateTime.now().minusSeconds(1)));
     }
 }

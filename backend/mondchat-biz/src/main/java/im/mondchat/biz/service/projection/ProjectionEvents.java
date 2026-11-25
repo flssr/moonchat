@@ -1,8 +1,10 @@
 package im.mondchat.biz.service.projection;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import im.mondchat.biz.entity.DomainEvent;
 import im.mondchat.biz.mapper.projection.DomainEventMapper;
 import java.time.OffsetDateTime;
+import java.util.Collection;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -23,6 +25,7 @@ public class ProjectionEvents {
     public static final String BLOCKLIST_CHANGED = "blocklist.changed";
     public static final String ROOM_MEMBER_CHANGED = "room_member.changed";
     public static final String ACCOUNT_CREATED = "account.created";
+    public static final String ACCOUNT_DELETED = "account.deleted";
 
     private final DomainEventMapper events;
 
@@ -41,7 +44,7 @@ public class ProjectionEvents {
                         + ",\"blocked_now\":" + blockedNow + ",\"friends\":" + friends + "}");
     }
 
-    /** `turmsGroupId` 为空时派发器会退避重试，等群投影把句柄回填后再落。 */
+    /** `turmsGroupId` 只是建群时的快照；派发器按 `roomId` 读最新句柄，空快照不再阻塞收敛。 */
     public void roomMemberChanged(long roomId, long accountId, Long turmsGroupId, boolean member) {
         append(ROOM_MEMBER, roomId + ":" + accountId, ROOM_MEMBER_CHANGED,
                 "{\"room_id\":" + roomId + ",\"account_id\":" + accountId + ",\"turms_group_id\":"
@@ -52,6 +55,21 @@ public class ProjectionEvents {
         append(ACCOUNT, Long.toString(accountId), ACCOUNT_CREATED,
                 "{\"account_id\":" + accountId + ",\"display_name\":\"" + displayName.replace("\"", "'")
                         + "\"}");
+    }
+
+    public void accountDeleted(long accountId) {
+        append(ACCOUNT, Long.toString(accountId), ACCOUNT_DELETED,
+                "{\"account_id\":" + accountId + "}");
+    }
+
+    /** 硬删账号时抹掉旧 account 事件里的 display_name 等快照，再写入新的删除事件。 */
+    public void deleteAccountEvents(Collection<Long> accountIds) {
+        if (accountIds.isEmpty()) {
+            return;
+        }
+        events.delete(new LambdaQueryWrapper<DomainEvent>()
+                .eq(DomainEvent::getAggregateType, ACCOUNT)
+                .in(DomainEvent::getAggregateId, accountIds.stream().map(String::valueOf).toList()));
     }
 
     private void append(String aggregateType, String aggregateId, String eventType, String payload) {
