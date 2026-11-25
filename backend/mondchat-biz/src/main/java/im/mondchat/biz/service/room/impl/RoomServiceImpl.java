@@ -6,6 +6,7 @@ import im.mondchat.biz.auth.CurrentAccount;
 import im.mondchat.biz.common.ApiException;
 import im.mondchat.biz.dto.room.RoomRequests;
 import im.mondchat.biz.dto.room.RoomResponses;
+import im.mondchat.biz.entity.Account;
 import im.mondchat.biz.entity.AccountInfo;
 import im.mondchat.biz.entity.AccountRoom;
 import im.mondchat.biz.entity.RoomInfo;
@@ -15,6 +16,7 @@ import im.mondchat.biz.mapper.account.AccountInfoMapper;
 import im.mondchat.biz.mapper.room.AccountRoomMapper;
 import im.mondchat.biz.mapper.room.RoomInfoMapper;
 import im.mondchat.biz.mapper.room.RoomMemberMapper;
+import im.mondchat.biz.service.account.AccountLockService;
 import im.mondchat.biz.service.friendship.FriendshipService;
 import im.mondchat.biz.service.room.RoomService;
 import im.mondchat.biz.service.projection.ProjectionEvents;
@@ -41,6 +43,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 public class RoomServiceImpl implements RoomService {
 
     private static final String FROZEN = "frozen";
+    private static final String HUMAN = "human";
     private static final String ACCEPTED = "accepted";
     private static final int MAX_PAGE_SIZE = 100;
 
@@ -48,6 +51,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomMemberMapper roomMemberMapper;
     private final AccountRoomMapper accountRoomMapper;
     private final AccountInfoMapper accountInfoMapper;
+    private final AccountLockService accountLocks;
     private final FriendshipService friendshipService;
     private final RoomProjectionService projectionService;
     private final ProjectionEvents projectionEvents;
@@ -56,26 +60,26 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public RoomResponses.CreateResponse create(CurrentAccount me, RoomRequests.CreateRequest request) {
-        ensureHuman(me);
-        ensureNotFrozen(me.accountId());
+        Account owner = lockHuman(me);
+        ensureNotFrozen(owner.getId());
 
         OffsetDateTime now = OffsetDateTime.now();
         RoomInfo room = RoomInfo.builder()
                 .name(request.name())
                 .description(request.description())
-                .ownerAccountId(me.accountId())
+                .ownerAccountId(owner.getId())
                 .turmsSyncState(TurmsSyncState.PENDING)
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
         roomInfoMapper.insert(room);
-        join(room.getId(), me.accountId(), now);
-        // 建群时还没有 Turms group 句柄：事件带 null，派发器退避重试到投影回填后再落
-        projectionEvents.roomMemberChanged(room.getId(), me.accountId(), null, true);
+        join(room.getId(), owner.getId(), now);
+        // 建群时还没有 Turms group 句柄：事件带 null，派发器按 room_id 读回填后的最新句柄
+        projectionEvents.roomMemberChanged(room.getId(), owner.getId(), null, true);
         projectAfterCommit(room.getId());
 
         return new RoomResponses.CreateResponse(room.getId(), room.getName(), room.getDescription(),
-                me.accountId(), now.toInstant());
+                owner.getId(), now.toInstant());
     }
 
     /** 不读 Turms 的群列表：它的群列表不等于业务列表（Turms 里可能有残留的游离群）。 */
@@ -150,13 +154,15 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     public RoomResponses.MemberResponse addMember(CurrentAccount me, long roomId,
             RoomRequests.AddMemberRequest request) {
-        ensureHuman(me);
-        ensureNotFrozen(me.accountId());
+        long accountId = request.accountId();
+        Map<Long, Account> locked = accountLocks.lockAll(List.of(me.accountId(), accountId));
+        Account operator = locked.get(me.accountId());
+        ensureHuman(me, operator);
+        ensureNotFrozen(operator.getId());
         RoomInfo room = requireRoom(roomId);
-        if (!isMember(roomId, me.accountId())) {
+        if (!isMember(roomId, operator.getId())) {
             throw ApiException.forbidden("你不是这个群的成员");
         }
-        long accountId = request.accountId();
         if (accountInfoMapper.selectById(accountId) == null) {
             throw ApiException.notFound("账号不存在");
         }
@@ -176,19 +182,19 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public void leave(CurrentAccount me, long roomId) {
-        ensureHuman(me);
-        ensureNotFrozen(me.accountId());
+        Account account = lockHuman(me);
+        ensureNotFrozen(account.getId());
         RoomInfo room = requireRoom(roomId);
-        if (room.getOwnerAccountId() == me.accountId()) {
+        if (room.getOwnerAccountId() == account.getId().longValue()) {
             throw ApiException.ownerCannotLeave();
         }
-        if (!isMember(roomId, me.accountId())) {
+        if (!isMember(roomId, account.getId())) {
             throw ApiException.notRoomMember();
         }
 
         OffsetDateTime now = OffsetDateTime.now();
-        quit(roomId, me.accountId(), now);
-        projectionEvents.roomMemberChanged(roomId, me.accountId(), room.getTurmsGroupId(), false);
+        quit(roomId, account.getId(), now);
+        projectionEvents.roomMemberChanged(roomId, account.getId(), room.getTurmsGroupId(), false);
         markPending(roomId, now);
         projectAfterCommit(roomId);
     }
@@ -196,10 +202,12 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public void removeMember(CurrentAccount me, long roomId, long accountId) {
-        ensureHuman(me);
-        ensureNotFrozen(me.accountId());
+        Map<Long, Account> locked = accountLocks.lockAll(List.of(me.accountId(), accountId));
+        Account operator = locked.get(me.accountId());
+        ensureHuman(me, operator);
+        ensureNotFrozen(operator.getId());
         RoomInfo room = requireRoom(roomId);
-        if (room.getOwnerAccountId() != me.accountId()) {
+        if (room.getOwnerAccountId() != operator.getId().longValue()) {
             throw ApiException.forbidden("只有群主能移除成员");
         }
         if (accountId == room.getOwnerAccountId()) {
@@ -317,8 +325,14 @@ public class RoomServiceImpl implements RoomService {
                 .isNull(RoomMember::getDeletedAt));
     }
 
-    private void ensureHuman(CurrentAccount me) {
-        if (me.source() == CurrentAccount.Source.AGENT) {
+    private Account lockHuman(CurrentAccount me) {
+        Account account = accountLocks.require(me.accountId());
+        ensureHuman(me, account);
+        return account;
+    }
+
+    private void ensureHuman(CurrentAccount me, Account account) {
+        if (me.source() == CurrentAccount.Source.AGENT || !HUMAN.equals(account.getType())) {
             throw ApiException.forbidden("群与成员的操作只有真人能做");
         }
     }

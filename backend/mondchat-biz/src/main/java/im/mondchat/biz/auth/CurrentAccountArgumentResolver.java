@@ -2,6 +2,7 @@ package im.mondchat.biz.auth;
 
 import im.mondchat.biz.common.ApiException;
 import im.mondchat.biz.service.account.AccountKeyService;
+import im.mondchat.biz.service.account.AccountService;
 import im.mondchat.biz.service.auth.LoginTokenService;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -32,6 +33,7 @@ public class CurrentAccountArgumentResolver implements HandlerMethodArgumentReso
 
     private final LoginTokenService loginTokens;
     private final AccountKeyService accountKeys;
+    private final AccountService accounts;
 
     @Override
     public boolean supportsParameter(MethodParameter parameter) {
@@ -57,9 +59,11 @@ public class CurrentAccountArgumentResolver implements HandlerMethodArgumentReso
         }
         String token = header.substring(BEARER.length()).trim();
         // 两种凭据的形状不同：登录 JWT 是三段 base64url（带点），账号密钥是 UUID（不带点）。
-        CurrentAccount account = token.indexOf('.') > 0
-                ? new CurrentAccount(loginTokens.verify(token), CurrentAccount.Source.OWNER)
-                : new CurrentAccount(accountKeys.authenticate(token), CurrentAccount.Source.AGENT);
+        boolean loginToken = token.indexOf('.') > 0;
+        long accountId = loginToken ? loginTokens.verify(token) : accountKeys.authenticate(token);
+        accounts.requireExists(accountId);
+        CurrentAccount account = new CurrentAccount(accountId,
+                loginToken ? CurrentAccount.Source.OWNER : CurrentAccount.Source.AGENT);
         return optional ? Optional.of(account) : account;
     }
 }

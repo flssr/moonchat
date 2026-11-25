@@ -26,6 +26,9 @@ final class TestStack {
     /** 会话级桶更小：先撞会话级才能验到「两级逐级更小」。 */
     static final int CONVERSATION_RATE_PER_MINUTE = 2;
 
+    /** 注销确认桶：覆盖成功与失败尝试，测试里限制为 2 次/分钟。 */
+    static final int ACCOUNT_DELETION_RATE_PER_MINUTE = 2;
+
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(DockerImageName.parse("postgres:17-alpine"));
     static final RedisContainer REDIS = new RedisContainer(DockerImageName.parse("redis:8.0.3-alpine"));
     static final FakeTurmsAdmin TURMS_ADMIN = FakeTurmsAdmin.start();
@@ -52,6 +55,8 @@ final class TestStack {
         registry.add("mondchat.limit.account-per-minute", () -> Integer.toString(ACCOUNT_RATE_PER_MINUTE));
         registry.add("mondchat.limit.conversation-per-minute",
                 () -> Integer.toString(CONVERSATION_RATE_PER_MINUTE));
+        registry.add("mondchat.limit.account-deletion-per-minute",
+                () -> Integer.toString(ACCOUNT_DELETION_RATE_PER_MINUTE));
         // 重放器在测试里手动调，定时器拉长到一小时，避免它在断言中间插一脚
         registry.add("mondchat.turms.replay-interval", () -> "1h");
         // 投影派发/对账同样手动调：开着也行，但定时器每次都跑到假 Admin 上会干扰 lastPath 断言

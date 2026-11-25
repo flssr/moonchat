@@ -29,6 +29,11 @@ public class ApiException extends RuntimeException {
         return new ApiException("unauthenticated", HttpStatus.UNAUTHORIZED, "凭据缺失或无效", null);
     }
 
+    /** 注销时密码错误：与凭据失效分开，前端不能因此把当前会话登出。 */
+    public static ApiException invalidPassword() {
+        return new ApiException("invalid_password", HttpStatus.UNAUTHORIZED, "密码不正确", null);
+    }
+
     public static ApiException forbidden(String message) {
         return new ApiException("forbidden", HttpStatus.FORBIDDEN, message, null);
     }
@@ -66,6 +71,12 @@ public class ApiException extends RuntimeException {
         return new ApiException("owner_cannot_leave", HttpStatus.CONFLICT, "群主不能退群，V1 也不能转让群", null);
     }
 
+    /** 注销会留下无群主群；V1 没有转让或解散能力，只能拒绝。 */
+    public static ApiException ownerCannotDeleteAccount() {
+        return new ApiException("owner_cannot_delete_account", HttpStatus.CONFLICT,
+                "群主不能注销账号，V1 也不能转让或解散群", null);
+    }
+
     public static ApiException conflict(String message) {
         return new ApiException("conflict", HttpStatus.CONFLICT, message, null);
     }
@@ -73,6 +84,12 @@ public class ApiException extends RuntimeException {
     /** im-facade 没从 Turms 拿到确认；注册建用户与发言两处都会用到。 */
     public static ApiException upstreamUnavailable() {
         return new ApiException("upstream_unavailable", HttpStatus.SERVICE_UNAVAILABLE, "Turms 没有确认这次请求", null);
+    }
+
+    /** 注销的 Turms 清理依赖 outbox；派发关闭时不能先硬删 PG。 */
+    public static ApiException projectionDisabled() {
+        return new ApiException("projection_disabled", HttpStatus.SERVICE_UNAVAILABLE,
+                "账号注销需要投影派发器清理 Turms 数据", null);
     }
 
     /** 只对 `agent` 来源的账号级限流桶（好友申请）；会话级桶随 S4 的写入网关。 */
