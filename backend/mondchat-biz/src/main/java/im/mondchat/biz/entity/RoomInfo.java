@@ -25,6 +25,9 @@ public class RoomInfo {
 
     private String name;
 
+    /** 群简介，可空；只存在 PG，不投影到 Turms（issue #38）。 */
+    private String description;
+
     /** 群主；V1 没有转让与解散，所以它永远指向一个有效成员。 */
     private Long ownerAccountId;
 

@@ -1,8 +1,8 @@
 // MondChat ⇄ OneBot 12 桥：在 agent 账号外面套一层标准协议。
 //
 // 位置由 docs/truth/backend/messaging.md 定死：OneBot 只在 agent 侧桥接，平台不提供 /onebot。
-// 桥不做平台的事：收 Turms 推送（该账号能看到的全部会话），发言走 Biz 唯一写入口。
-// 桥也不发明私有动作：只用 OneBot 12 标准动作与事件；未读/游标留给应用侧自己记。
+// 桥不做平台的事：收 Turms 推送（该账号能看到的全部会话），发言走同账号 Turms /im。
+// 业务动作仍走 Biz；桥也不发明私有动作，未读/游标留给应用侧自己记。
 //
 // 跑法：
 //   cd integrations/onebot && npm install
@@ -23,19 +23,20 @@ import TurmsClient from 'turms-client-js'
 import {
     PLATFORM,
     buildEvent,
+    buildRoomMaps,
+    failureView,
     isAuthorized,
     metaConnectEvent,
     metaHeartbeatEvent,
+    removeRoom,
     segmentsToText,
-    splitText,
+    sendText,
     toWsUrl,
 } from './protocol.mjs'
 
 const IMPL = 'mondchat-onebot'
 const IMPL_VERSION = '0.1.0'
-const DEVICE_TYPE = 'others'
-// Turms 的 DeviceType 是大写枚举；Biz 的 X-Device-Type 是小写，两个都从这里派生。
-const TURMS_DEVICE_TYPE = DEVICE_TYPE.toUpperCase()
+const TURMS_DEVICE_TYPE = 'OTHERS'
 const ROOMS_TTL_MS = 60_000
 const ROOMS_RETRY_MS = 5_000
 
@@ -62,9 +63,8 @@ export function createBridge() {
     let heartbeatTimer = null
     let stopping = false
 
-    /** Turms group id（字符串）→ 业务 room_id。群推送只有前者。 */
-    const roomIdByTurmsGroupId = new Map()
-    const roomTitleById = new Map()
+    /** OneBot group_id 是业务 room_id；群推送只有 Turms group id，保留双向映射。 */
+    let roomMaps = buildRoomMaps([])
     let roomsAt = 0
 
     const clients = new Set()
@@ -106,11 +106,7 @@ export function createBridge() {
         roomsAt = Date.now()
         try {
             const body = await request('/api/rooms')
-            for (const room of body?.items ?? []) {
-                if (room.turms_group_id == null) continue
-                roomIdByTurmsGroupId.set(String(room.turms_group_id), room.room_id)
-                roomTitleById.set(room.room_id, room.name)
-            }
+            roomMaps = buildRoomMaps(body?.items ?? [])
         } catch (error) {
             // 群列表拿不到不影响私聊，下次推送再试。
             log('读群列表失败：', error.message)
@@ -118,10 +114,10 @@ export function createBridge() {
     }
 
     async function roomIdFor(turmsGroupId) {
-        const cached = roomIdByTurmsGroupId.get(turmsGroupId)
+        const cached = roomMaps.roomIdByTurmsGroupId.get(turmsGroupId)
         if (cached !== undefined) return cached
         await refreshRooms(true)
-        return roomIdByTurmsGroupId.get(turmsGroupId) ?? null
+        return roomMaps.roomIdByTurmsGroupId.get(turmsGroupId) ?? null
     }
 
     function broadcast(event) {
@@ -248,33 +244,25 @@ export function createBridge() {
         if (!text.trim()) throw fail(1400, '消息内容为空')
 
         const detailType = params.detail_type
-        let conversationType
-        let conversationId
+        const isGroupMessage = detailType === 'group'
+        let targetId
         if (detailType === 'private') {
-            conversationType = 'dm'
-            conversationId = String(params.user_id ?? '')
-        } else if (detailType === 'group') {
-            conversationType = 'room'
-            conversationId = String(params.group_id ?? '')
+            targetId = String(params.user_id ?? '')
+        } else if (isGroupMessage) {
+            const roomId = String(params.group_id ?? '')
+            targetId = roomMaps.turmsGroupIdByRoomId.get(roomId)
+            if (targetId === undefined) {
+                await refreshRooms(true)
+                targetId = roomMaps.turmsGroupIdByRoomId.get(roomId)
+            }
+            if (targetId === undefined) throw fail(1404, `群 ${roomId} 未映射或已退出`)
         } else {
             throw fail(1400, `不支持的 detail_type：${detailType}`)
         }
-        if (!conversationId) throw fail(1400, '缺少会话 id')
+        if (!targetId) throw fail(1400, '缺少会话 id')
 
-        // 正文上限 500：长回复切段连发，中途失败则前面的已经发出去了（不做重试，避免重复）。
-        let last = null
-        for (const chunk of splitText(text)) {
-            last = await request(`/api/conversations/${conversationType}/${conversationId}/messages`, {
-                method: 'POST',
-                headers: { 'x-device-type': DEVICE_TYPE },
-                body: JSON.stringify({ text: chunk }),
-            })
-        }
-        const sentAt = Date.parse(String(last?.sent_at ?? ''))
-        return {
-            message_id: String(last?.message_id ?? ''),
-            time: (Number.isFinite(sentAt) ? sentAt : Date.now()) / 1000,
-        }
+        // 500 是 Turms max-text-limit 默认值；切段连发不重试，避免中途失败后重复发送。
+        return sendText(turms.messageService, { isGroupMessage, targetId, text })
     }
 
     async function runAction(action, params) {
@@ -313,7 +301,7 @@ export function createBridge() {
 
             case 'get_group_list':
                 await refreshRooms(true)
-                return [...roomTitleById.entries()].map(([roomId, name]) => ({
+                return [...roomMaps.roomTitleById.entries()].map(([roomId, name]) => ({
                     group_id: String(roomId),
                     group_name: String(name ?? ''),
                 }))
@@ -346,6 +334,7 @@ export function createBridge() {
                 const roomId = String(params.group_id ?? '')
                 if (!roomId) throw fail(1400, '缺少 group_id')
                 await request(`/api/rooms/${roomId}/members/me`, { method: 'DELETE' })
+                removeRoom(roomMaps, roomId)
                 return null
             }
 
@@ -409,9 +398,9 @@ export function createBridge() {
                     if (echo !== undefined) response.echo = echo
                     socket.send(JSON.stringify(response))
                 } catch (error) {
-                    const retcode = error?.retcode ?? 1500
-                    if (retcode === 1500) log(`动作 ${action} 失败：`, error.message)
-                    const response = { status: 'failed', retcode, data: null, message: error.message }
+                    const { retcode, message } = failureView(error)
+                    if (retcode === 1500) log(`动作 ${action} 失败：`, message)
+                    const response = { status: 'failed', retcode, data: null, message }
                     if (echo !== undefined) response.echo = echo
                     socket.send(JSON.stringify(response))
                 }

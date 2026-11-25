@@ -15,6 +15,7 @@ import im.mondchat.biz.mapper.friendship.FriendshipReverseMapper;
 import im.mondchat.biz.service.blocklist.BlocklistService;
 import im.mondchat.biz.service.friendship.FriendshipService;
 import im.mondchat.biz.service.limiter.AccountRateLimiter;
+import im.mondchat.biz.service.projection.ProjectionEvents;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +43,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     private final AccountInfoMapper accountInfoMapper;
     private final AccountRateLimiter accountRateLimiter;
     private final BlocklistService blocklistService;
+    private final ProjectionEvents projectionEvents;
 
     @Override
     public FriendshipResponses.ListResponse list(CurrentAccount me, String status) {
@@ -168,6 +170,8 @@ public class FriendshipServiceImpl implements FriendshipService {
     public FriendshipResponses.AcceptResponse accept(CurrentAccount me, long peerAccountId) {
         Friendship row = pendingRowForAnswer(me, peerAccountId);
         markRow(row.getId(), ACCEPTED, OffsetDateTime.now(), false);
+        projectionEvents.friendshipChanged(me.accountId(), peerAccountId, true,
+                blockedEitherWay(me.accountId(), peerAccountId));
         return new FriendshipResponses.AcceptResponse(peerAccountId, ACCEPTED);
     }
 
@@ -189,6 +193,8 @@ public class FriendshipServiceImpl implements FriendshipService {
             throw ApiException.notFound("没有有效的好友关系");
         }
         markRow(row.getId(), ACCEPTED, OffsetDateTime.now(), true);
+        projectionEvents.friendshipChanged(me.accountId(), peerAccountId, false,
+                blockedEitherWay(me.accountId(), peerAccountId));
     }
 
     @Override
@@ -230,6 +236,12 @@ public class FriendshipServiceImpl implements FriendshipService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build());
+        projectionEvents.friendshipChanged(ownerId, agentId, true, false);
+    }
+
+    /** Turms 关系是单向的：删好友时两个方向都算「仍在拉黑」，补回的行才与 PG 一致。 */
+    private boolean blockedEitherWay(long one, long another) {
+        return blocklistService.hasBlocked(one, another) || blocklistService.hasBlocked(another, one);
     }
 
     /** 应答前要过三关：有这条有效申请、不是我发出去的、它还在 `pending`。 */

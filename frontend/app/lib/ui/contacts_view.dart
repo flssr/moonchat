@@ -30,6 +30,12 @@ class _ContactsViewState extends State<ContactsView> {
   String? _lookupError;
   bool _busy = false;
 
+  /// 顶部查找只在好友里找：没找到时右侧显示「未搜索到此好友」。
+  bool _lookupMissing = false;
+
+  /// 每次「查找」都换一个 key：同一账号再查一次也要把「已申请」之类的本地状态复位。
+  int _lookupAttempt = 0;
+
   /// 页签与选中项都在状态层（`docs/truth/frontend/README.md` 的 `friendsTab` / `selectedContact`）。
   String get _tab => widget.state.contactsTab;
   int? get _selectedId => widget.state.selectedContactId;
@@ -49,22 +55,198 @@ class _ContactsViewState extends State<ContactsView> {
       setState(() => _lookupError = '需要短号或完整账号 ID');
       return;
     }
+    final bool isFriend = widget.state.friends.any((Friendship f) => f.peerAccountId == id);
+    if (!isFriend) {
+      setState(() {
+        _lookupError = null;
+        _lookupMissing = true;
+      });
+      widget.state.setSelectedContact(null);
+      return;
+    }
     setState(() {
       _lookupError = null;
+      _lookupMissing = false;
       _busy = true;
     });
     try {
       await widget.state.loadProfile(id);
+      setState(() => _lookupAttempt++);
       widget.state.setSelectedContact(id);
     } on ApiException catch (e) {
       if (mounted) {
-        setState(() => _lookupError = e.displayText);
+        setState(() {
+          _lookupError = e.displayText;
+          _lookupMissing = true;
+        });
+        widget.state.setSelectedContact(null);
       }
     } finally {
       if (mounted) {
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// 选中好友时清掉上一次“没搜到”的空态。
+  void _selectFriend(int accountId) {
+    setState(() => _lookupMissing = false);
+    widget.state.setSelectedContact(accountId);
+  }
+
+  /// 添加好友：按短号/账号 ID 查人；已是好友直接给「发消息」，否则发好友申请。
+  Future<void> _openAddFriend() async {
+    final TextEditingController input = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext context) {
+        Profile? found;
+        String? error;
+        bool busy = false;
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setDialogState) {
+            Future<void> search() async {
+              final int? id = accountIdFromInput(input.text);
+              if (id == null) {
+                setDialogState(() => error = '需要短号或完整账号 ID');
+                return;
+              }
+              setDialogState(() {
+                busy = true;
+                error = null;
+                found = null;
+              });
+              try {
+                final Profile profile = await widget.state.loadProfile(id);
+                setDialogState(() => found = profile);
+              } on ApiException catch (e) {
+                setDialogState(() => error = e.isNotFound ? '未搜索到此好友' : e.displayText);
+              } finally {
+                if (context.mounted) {
+                  setDialogState(() => busy = false);
+                }
+              }
+            }
+
+            Future<void> add() async {
+              final Profile? profile = found;
+              if (profile == null) {
+                return;
+              }
+              setDialogState(() {
+                busy = true;
+                error = null;
+              });
+              try {
+                await widget.state.requestFriend(profile.accountId);
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                }
+              } on ApiException catch (e) {
+                if (context.mounted) {
+                  setDialogState(() => error = e.displayText);
+                }
+              } finally {
+                if (context.mounted) {
+                  setDialogState(() => busy = false);
+                }
+              }
+            }
+
+            final Profile? profile = found;
+            final MoonPalette p = context.moon;
+            final bool isSelf = profile != null && profile.accountId == widget.state.account?.accountId;
+            return AlertDialog(
+              backgroundColor: p.surface,
+              title: Text(context.tr('添加好友'), style: TextStyle(fontSize: 16, color: p.ink)),
+              content: SizedBox(
+                width: 360,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: TextField(
+                            controller: input,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
+                            style: TextStyle(fontSize: 13, color: p.ink),
+                            decoration: InputDecoration(
+                              isDense: true,
+                              labelText: context.tr('短号或账号 ID'),
+                            ),
+                            onSubmitted: (_) => search(),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        MoonButton(label: context.tr('搜索'), small: true, busy: busy, onPressed: search),
+                      ],
+                    ),
+                    if (profile != null) ...<Widget>[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: <Widget>[
+                          MoonAvatar(
+                            name: profile.displayName,
+                            seed: profile.accountId,
+                            avatar: widget.state.avatarOf(profile.accountId),
+                            size: 36,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(profile.displayName, style: TextStyle(fontSize: 14, color: p.ink)),
+                                MonoText('#${shortAccountId(profile.accountId)}'),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (isSelf)
+                        Text(context.tr('这是你自己。'), style: TextStyle(fontSize: 11.5, color: p.ink3))
+                      else if (profile.isFriend)
+                        MoonButton(
+                          label: context.tr('发消息'),
+                          small: true,
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            widget.state.selectConversation('dm:${profile.accountId}');
+                          },
+                        )
+                      else
+                        MoonButton(
+                          label: context.tr('加好友'),
+                          small: true,
+                          busy: busy,
+                          onPressed: add,
+                        ),
+                    ],
+                    if (error != null) ...<Widget>[
+                      const SizedBox(height: 10),
+                      Text(context.tr(error!), style: TextStyle(fontSize: 11, color: p.accent)),
+                    ],
+                  ],
+                ),
+              ),
+              actions: <Widget>[
+                MoonButton(
+                  label: context.tr('取消'),
+                  kind: MoonButtonKind.text,
+                  small: true,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    input.dispose();
   }
 
   /// 同意/拒绝走同一处：置忙、接住异常、复位，别把失败丢成无人接的异步错误。
@@ -88,6 +270,7 @@ class _ContactsViewState extends State<ContactsView> {
 
   Future<void> _openCreateRoom() async {
     final TextEditingController name = TextEditingController();
+    final TextEditingController description = TextEditingController();
     final Set<int> selected = <int>{};
     await showDialog<void>(
       context: context,
@@ -98,8 +281,13 @@ class _ContactsViewState extends State<ContactsView> {
           builder: (BuildContext context, StateSetter setDialogState) {
             Future<void> create() async {
               final String value = name.text.trim();
+              final String intro = description.text.trim();
               if (value.isEmpty || value.length > 20) {
                 setDialogState(() => error = '群名 1–20 字');
+                return;
+              }
+              if (intro.length > 200) {
+                setDialogState(() => error = '群简介最多 200 字');
                 return;
               }
               setDialogState(() {
@@ -107,7 +295,8 @@ class _ContactsViewState extends State<ContactsView> {
                 error = null;
               });
               try {
-                final Room room = await widget.state.createRoom(value);
+                final Room room =
+                    await widget.state.createRoom(value, description: intro);
                 for (final int id in selected) {
                   try {
                     await widget.state.addMember(room.roomId, id);
@@ -146,6 +335,16 @@ class _ContactsViewState extends State<ContactsView> {
                       decoration: InputDecoration(
                         isDense: true,
                         labelText: context.tr('群名 1–20 字'),
+                      ),
+                    ),
+                    TextField(
+                      controller: description,
+                      maxLength: 200,
+                      maxLines: 2,
+                      style: TextStyle(fontSize: 13, color: context.moon.ink),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        labelText: context.tr('群简介 0–200 字（可选）'),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -256,7 +455,7 @@ class _ContactsViewState extends State<ContactsView> {
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
-                                  hintText: context.tr('按短号查找'),
+                                  hintText: context.tr('搜索'),
                                   hintStyle: TextStyle(fontSize: 12.5, color: p.ink3),
                                 ),
                                 onSubmitted: (_) => _find(),
@@ -288,6 +487,13 @@ class _ContactsViewState extends State<ContactsView> {
                       kind: MoonButtonKind.secondary,
                       small: true,
                       onPressed: _openCreateRoom,
+                    ),
+                    const SizedBox(width: 8),
+                    MoonButton(
+                      label: context.tr('添加好友'),
+                      kind: MoonButtonKind.secondary,
+                      small: true,
+                      onPressed: _openAddFriend,
                     ),
                   ],
                 ),
@@ -340,7 +546,7 @@ class _ContactsViewState extends State<ContactsView> {
                             itemBuilder: (BuildContext context, int i) {
                               final Friendship f = friends[i];
                               return InkWell(
-                                onTap: () => widget.state.setSelectedContact(f.peerAccountId),
+                                onTap: () => _selectFriend(f.peerAccountId),
                                 child: Container(
                                   height: 52,
                                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -439,24 +645,27 @@ class _ContactsViewState extends State<ContactsView> {
     return Container(
       color: p.bg,
       padding: narrow ? const EdgeInsets.all(18) : EdgeInsets.zero,
-      child: _selectedId == null
-          ? MoonEmpty(
-              title: context.tr('选一个人'),
-              hint: context.tr('群成员、好友、按短号查找的结果都在这里打开资料页。'),
-            )
-          : SingleChildScrollView(
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: ProfilePanel(
-                    state: widget.state,
-                    accountId: _selectedId!,
-                    onMessage: () => widget.state.selectConversation('dm:$_selectedId'),
+      child: _lookupMissing
+          ? MoonEmpty(title: context.tr('未搜索到此好友'))
+          : _selectedId == null
+              ? MoonEmpty(
+                  title: context.tr('选一个人'),
+                  hint: context.tr('群成员、好友、按短号查找的结果都在这里打开资料页。'),
+                )
+              : SingleChildScrollView(
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      child: ProfilePanel(
+                        key: ValueKey<String>('${_selectedId!}-$_lookupAttempt'),
+                        state: widget.state,
+                        accountId: _selectedId!,
+                        onMessage: () => widget.state.selectConversation('dm:$_selectedId'),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
     );
   }
 }

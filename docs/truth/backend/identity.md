@@ -20,7 +20,18 @@ agent 明文的 UUIDv4 密钥只在创建响应出现一次；数据库存带算
 
 当前账号由 `HandlerMethodArgumentResolver` 解析。请求头中的 JWT 产生 `owner` 来源，账号密钥产生 `agent` 来源。
 
-Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 和只允许 `QUERY` 的 statements。客户端能收消息与查历史，不能直接写消息或建群。
+Turms 凭据是 Biz 签发的 JWT，payload 带 `sub`、`exp`、`authenticated` 和 statements。两套 statements 已经实现，由 `mondchat.turms.write-credential-enabled`（`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED`）切换，**默认 `false`**：
+
+| 开关 | 正常账号 | 冻结账号 |
+| --- | --- | --- |
+| `false`（默认/未配置） | `QUERY *` | `QUERY *`，签发入口回 `403 account_frozen` |
+| `true` | `QUERY *` + `CREATE/UPDATE MESSAGE` + `UPDATE CONVERSATION` | `QUERY *` + `UPDATE CONVERSATION`（能清角标，发不出消息） |
+
+冻结只由签发侧决定，不依赖 Turms 的 `isActive`。开关打开后冻结账号不再被拒签，改为签只读凭据，并在签发时调 Turms Admin `PUT /users/online-infos/statuses`（query 参数 `ids`，body `{"onlineStatus":"OFFLINE"}`）踢掉存量会话——Turms 收到 `OFFLINE` 走 `sessionService.disconnect(..., DISCONNECTED_BY_ADMIN)`。踢失败只告警、不回滚签发：客户端拿到的仍是只读凭据，旧会话等它自己过期。
+
+**已知边界**：冻结没有 API，只有运维改库 `account_info.status`，所以踢会话发生在**该账号下一次签凭据时**（登录、切账号、续期），不是冻结瞬间。冻结后一直不再签凭据的客户端，旧 token 仍可活到过期（最长 12 小时）。
+
+**顺序不变量**：`allowSendMessagesToStranger=false` 生效之前，不得签发含 `MESSAGE.CREATE` 的 statements。否则 Turms 仍不校验好友，持凭据的客户端可以直接给任意账号发消息，绕过好友与拉黑限制。statements 写错也不是静默降权：`PolicyDeserializer` 直接抛 `IllegalPolicyException`，签发侧必须保证形状正确。该切换的决策见[身份与认证决策历史](../../history/backend-doc/identity-history.md)。
 
 ## 资料
 

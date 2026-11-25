@@ -9,19 +9,35 @@ import 'package:mondchat_desktop/realtime.dart';
 import 'package:turms_client_dart/turms_client.dart';
 
 /// 用本地 WebSocket 冒充 Turms 网关，只校验线上契约：一帧一个 protobuf、
-/// 请求/响应按 requestId 配对、登录用 DESKTOP、推送映射成 IncomingMessage。
+/// 请求/响应按 requestId 配对、登录用 DESKTOP、推送映射成 IncomingMessage，
+/// 发送与已读按 Turms 的请求形状直写。
 void main() {
-  test('Turms WebSocket：登录、查历史、收推送', () async {
-    final HttpServer server =
-        await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+  test('Turms WebSocket：登录、查历史、直写消息与已读、收推送', () async {
+    final HttpServer server = await HttpServer.bind(
+      InternetAddress.loopbackIPv4,
+      0,
+    );
     addTearDown(() => server.close(force: true));
 
     final Completer<CreateSessionRequest> sessionRequest =
         Completer<CreateSessionRequest>();
     final Completer<QueryMessagesRequest> queryRequest =
         Completer<QueryMessagesRequest>();
+    final List<CreateMessageRequest> createRequests = <CreateMessageRequest>[];
+    final Completer<UpdateMessageRequest> recallRequest =
+        Completer<UpdateMessageRequest>();
+    final Completer<UpdateConversationRequest> dmReadRequest =
+        Completer<UpdateConversationRequest>();
+    final Completer<UpdateConversationRequest> groupReadRequest =
+        Completer<UpdateConversationRequest>();
+    final List<UpdateTypingStatusRequest> typingRequests =
+        <UpdateTypingStatusRequest>[];
+    final Completer<QueryConversationsRequest> groupConversationsRequest =
+        Completer<QueryConversationsRequest>();
     final Completer<void> ready = Completer<void>();
     final Completer<IncomingMessage> pushed = Completer<IncomingMessage>();
+    final Completer<MessageUpdate> updated = Completer<MessageUpdate>();
+    final Completer<IncomingTyping> typing = Completer<IncomingTyping>();
     WebSocket? gateway;
 
     server.listen((HttpRequest request) async {
@@ -59,6 +75,88 @@ void main() {
             ..code = 1000;
           response.ensureData().messages = messages;
           socket.add(response.writeToBuffer());
+          return;
+        }
+        if (frame.hasCreateMessageRequest()) {
+          createRequests.add(frame.createMessageRequest);
+          if (frame.createMessageRequest.text == '限流') {
+            socket.add(
+              (TurmsNotification.create()
+                    ..requestId = frame.requestId
+                    ..code = 1101
+                    ..reason = 'too frequent')
+                  .writeToBuffer(),
+            );
+            return;
+          }
+          final TurmsNotification response = TurmsNotification.create()
+            ..requestId = frame.requestId
+            ..code = 1000;
+          response.ensureData().long = Int64(99);
+          socket.add(response.writeToBuffer());
+          return;
+        }
+        if (frame.hasUpdateMessageRequest()) {
+          recallRequest.complete(frame.updateMessageRequest);
+          socket.add(
+            (TurmsNotification.create()
+                  ..requestId = frame.requestId
+                  ..code = 1000)
+                .writeToBuffer(),
+          );
+          return;
+        }
+        if (frame.hasUpdateConversationRequest()) {
+          final UpdateConversationRequest update =
+              frame.updateConversationRequest;
+          if (update.hasUserId()) {
+            dmReadRequest.complete(update);
+          } else {
+            groupReadRequest.complete(update);
+          }
+          socket.add(
+            (TurmsNotification.create()
+                  ..requestId = frame.requestId
+                  ..code = 1000)
+                .writeToBuffer(),
+          );
+          return;
+        }
+        if (frame.hasUpdateTypingStatusRequest()) {
+          typingRequests.add(frame.updateTypingStatusRequest);
+          socket.add(
+            (TurmsNotification.create()
+                  ..requestId = frame.requestId
+                  ..code = 1000)
+                .writeToBuffer(),
+          );
+          return;
+        }
+        if (frame.hasQueryConversationsRequest()) {
+          final QueryConversationsRequest query =
+              frame.queryConversationsRequest;
+          final Conversations conversations = Conversations();
+          if (query.groupIds.isNotEmpty) {
+            groupConversationsRequest.complete(query);
+            conversations.groupConversations.add(
+              GroupConversation(
+                groupId: query.groupIds.first,
+                memberIdToReadDate: <Int64, Int64>{
+                  Int64(7): Int64(
+                    DateTime.utc(2026, 11, 16, 7).millisecondsSinceEpoch,
+                  ),
+                  Int64(8): Int64(
+                    DateTime.utc(2026, 11, 16, 6).millisecondsSinceEpoch,
+                  ),
+                },
+              ),
+            );
+          }
+          final TurmsNotification response = TurmsNotification.create()
+            ..requestId = frame.requestId
+            ..code = 1000;
+          response.ensureData().conversations = conversations;
+          socket.add(response.writeToBuffer());
         }
       });
     });
@@ -74,6 +172,8 @@ void main() {
       ),
       myAccountId: 7,
       onMessage: pushed.complete,
+      onMessageUpdated: updated.complete,
+      onTyping: typing.complete,
     );
     await ready.future;
 
@@ -83,8 +183,10 @@ void main() {
     expect(login.password, 'token');
     expect(login.deviceType, DeviceType.DESKTOP);
 
-    final List<IncomingMessage> page =
-        await client.history(conversationType: 'dm', targetId: '9');
+    final List<IncomingMessage> page = await client.history(
+      conversationType: 'dm',
+      targetId: '9',
+    );
     expect(page, hasLength(1));
     expect(page.single.text, '早');
     expect(page.single.senderId, 9);
@@ -92,6 +194,97 @@ void main() {
     final QueryMessagesRequest query = await queryRequest.future;
     expect(query.areGroupMessages, isFalse);
     expect(query.fromIds.single.toInt(), 9);
+
+    final String messageId = await client.send(
+      conversationType: 'dm',
+      targetId: '9',
+      text: '你好',
+    );
+    expect(messageId, '99');
+    final CreateMessageRequest dm = createRequests.last;
+    expect(dm.recipientId.toInt(), 9);
+    expect(dm.hasGroupId(), isFalse);
+    expect(dm.text, '你好');
+    expect(dm.hasMessageId(), isFalse, reason: '消息 id 由服务端生成');
+    expect(dm.hasDeliveryDate(), isFalse, reason: '投递时间由服务端生成');
+
+    await client.send(conversationType: 'room', targetId: '456', text: '群里');
+    final CreateMessageRequest group = createRequests.last;
+    expect(group.groupId.toInt(), 456);
+    expect(group.hasRecipientId(), isFalse);
+
+    final Object? limited = await client
+        .send(conversationType: 'dm', targetId: '9', text: '限流')
+        .then<Object?>((String id) => id, onError: (Object e) => e);
+    expect(limited, isA<TurmsException>());
+    expect(
+      (limited! as TurmsException).turmsCode,
+      1101,
+      reason: '1101 在 1xxx 里但是错误码，不能被当成发送成功',
+    );
+
+    final Map<String, DateTime?> groupDates = await client.groupReadDates(
+      turmsGroupIds: <String>['456'],
+      selfAccountId: 7,
+    );
+    expect(
+      groupDates['456'],
+      DateTime.utc(2026, 11, 16, 7),
+      reason: '只取自己那条读时间，不渲染别人的',
+    );
+    final QueryConversationsRequest groupQuery =
+        await groupConversationsRequest.future;
+    expect(groupQuery.groupIds.single.toInt(), 456);
+    expect(groupQuery.userIds, isEmpty);
+
+    await client.markRead(conversationType: 'dm', targetId: '9');
+    final UpdateConversationRequest dmRead = await dmReadRequest.future;
+    expect(dmRead.userId.toInt(), 9);
+    expect(dmRead.hasReadDate(), isFalse, reason: 'readDate 交给服务端时间');
+
+    await client.markRead(conversationType: 'room', targetId: '456');
+    final UpdateConversationRequest groupRead = await groupReadRequest.future;
+    expect(groupRead.groupId.toInt(), 456);
+    expect(groupRead.hasReadDate(), isFalse);
+
+    final DateTime beforeRecall = DateTime.now().toUtc();
+    await client.recall(messageId: '42');
+    final UpdateMessageRequest recall = await recallRequest.future;
+    expect(recall.messageId.toInt(), 42);
+    expect(recall.hasRecallDate(), isTrue, reason: '服务端要求带 recallDate');
+    expect(
+      DateTime.fromMillisecondsSinceEpoch(
+        recall.recallDate.toInt(),
+        isUtc: true,
+      ).isBefore(beforeRecall.subtract(const Duration(seconds: 1))),
+      isFalse,
+    );
+    expect(recall.hasText(), isFalse, reason: '撤回不改正文');
+
+    // 输入状态：私聊写 userId 对应的 toId，群聊写 groupId 并带 isGroupMessage。
+    await client.sendTyping(conversationType: 'dm', targetId: '9');
+    expect(typingRequests.last.toId.toInt(), 9);
+    expect(typingRequests.last.isGroupMessage, isFalse);
+
+    await client.sendTyping(conversationType: 'room', targetId: '456');
+    expect(typingRequests.last.toId.toInt(), 456);
+    expect(typingRequests.last.isGroupMessage, isTrue);
+
+    final TurmsNotification typingPush = TurmsNotification.create()
+      ..requesterId = Int64(9)
+      ..relayedRequest = (TurmsRequest.create()
+        ..updateTypingStatusRequest = UpdateTypingStatusRequest(
+          toId: Int64(7),
+          isGroupMessage: false,
+        ));
+    gateway!.add(typingPush.writeToBuffer());
+
+    final IncomingTyping incomingTyping = await typing.future.timeout(
+      const Duration(seconds: 5),
+    );
+    expect(incomingTyping.senderId, 9);
+    expect(incomingTyping.toId, '7');
+    expect(incomingTyping.isGroup, isFalse);
 
     final TurmsNotification push = TurmsNotification.create()
       ..requesterId = Int64(9)
@@ -106,10 +299,30 @@ void main() {
         ));
     gateway!.add(push.writeToBuffer());
 
-    final IncomingMessage message =
-        await pushed.future.timeout(const Duration(seconds: 5));
+    final IncomingMessage message = await pushed.future.timeout(
+      const Duration(seconds: 5),
+    );
     expect(message.text, '新消息');
     expect(message.senderId, 9);
     expect(message.conversationKeyFor(7), 'dm:9');
+
+    final TurmsNotification updatePush = TurmsNotification.create()
+      ..requesterId = Int64(9)
+      ..relayedRequest = (TurmsRequest.create()
+        ..updateMessageRequest = UpdateMessageRequest(
+          messageId: Int64(43),
+          recallDate: Int64(
+            DateTime.utc(2026, 11, 16, 10, 1).millisecondsSinceEpoch,
+          ),
+        ));
+    gateway!.add(updatePush.writeToBuffer());
+
+    final MessageUpdate update = await updated.future.timeout(
+      const Duration(seconds: 5),
+    );
+    expect(update.id, '43');
+    expect(update.senderId, 9);
+    expect(update.isRecall, isTrue);
+    expect(update.recallAt, DateTime.utc(2026, 11, 16, 10, 1));
   });
 }

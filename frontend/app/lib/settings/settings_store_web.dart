@@ -15,6 +15,7 @@ extension type _Storage(JSObject _) implements JSObject {
 class _LocalSettingsStore implements SettingsStore {
   static const String _key = 'mondchat.settings.v1';
   static const String _avatarsKey = 'mondchat.avatars.v1';
+  static const String _lastEmailKey = 'mondchat.last_email.v1';
 
   @override
   MoonSettings load() {
@@ -73,6 +74,25 @@ class _LocalSettingsStore implements SettingsStore {
         _avatarsKey,
         jsonEncode(avatars.map((int id, String key) => MapEntry('$id', key))),
       );
+    } catch (_) {
+      // 同 save：存不下就只在本会话生效。
+    }
+  }
+
+  @override
+  String? loadLastEmail() {
+    try {
+      final String? value = _storage.getItem(_lastEmailKey);
+      return value == null || value.isEmpty ? null : value;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  void saveLastEmail(String email) {
+    try {
+      _storage.setItem(_lastEmailKey, email.trim());
     } catch (_) {
       // 同 save：存不下就只在本会话生效。
     }

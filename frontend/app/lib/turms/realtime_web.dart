@@ -13,6 +13,8 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
   external _TurmsClient(JSObject options);
   external _UserService get userService;
   external _MessageService get messageService;
+  external _ConversationService get conversationService;
+  external _NotificationService get notificationService;
   external _Driver get driver;
   external JSPromise<JSAny?> close();
 }
@@ -20,6 +22,7 @@ extension type _TurmsClient._(JSObject _) implements JSObject {
 @JS()
 extension type _Driver._(JSObject _) implements JSObject {
   external void addOnDisconnectedListener(JSFunction listener);
+  external JSPromise<JSObject> send(JSObject request);
 }
 
 @JS()
@@ -31,8 +34,25 @@ extension type _UserService._(JSObject _) implements JSObject {
 extension type _MessageService._(JSObject _) implements JSObject {
   external void addMessageListener(JSFunction listener);
   external JSPromise<JSObject> queryMessages(JSObject options);
+  external JSPromise<JSObject> sendMessage(JSObject options);
+  external JSPromise<JSObject> recallMessage(JSObject options);
 }
 
+@JS()
+extension type _NotificationService._(JSObject _) implements JSObject {
+  external void addNotificationListener(JSFunction listener);
+}
+
+@JS()
+extension type _ConversationService._(JSObject _) implements JSObject {
+  external JSPromise<JSObject> queryPrivateConversations(JSObject options);
+  external JSPromise<JSObject> queryGroupConversations(JSObject options);
+  external JSPromise<JSObject> updateConversationReadDate(JSObject options);
+  external JSPromise<JSObject> updatePrivateConversationTypingStatus(JSObject options);
+  external JSPromise<JSObject> updateGroupConversationTypingStatus(JSObject options);
+}
+
+/// `turms-client-js` 的会话查询：私聊与群分开两个方法（issue #37 读已读时间）。
 @JS('Date')
 extension type _JSDate._(JSObject _) implements JSObject {
   external factory _JSDate(num milliseconds);
@@ -73,14 +93,72 @@ int? _readInt(JSObject o, String key) {
   return null;
 }
 
-/// `deliveryDate` 是 JS `Date`，`dartify` 不会替我们认，直接取毫秒。
-DateTime? _readDate(JSObject o, String key) {
-  final JSAny? v = o.getProperty<JSAny?>(key.toJS);
-  if (v == null || v.isUndefinedOrNull) {
+/// `deliveryDate` / `readDate` 是 JS `Date`，`dartify` 不会替我们认，直接取毫秒。
+DateTime? _dateFrom(JSAny? value) {
+  if (value == null || value.isUndefinedOrNull) {
     return null;
   }
-  final JSNumber ms = (v as JSObject).callMethod<JSNumber>('getTime'.toJS);
-  return DateTime.fromMillisecondsSinceEpoch(ms.toDartInt, isUtc: true);
+  final JSNumber ms = (value as JSObject).callMethod<JSNumber>('getTime'.toJS);
+  final int epoch = ms.toDartInt;
+  return epoch <= 0 ? null : DateTime.fromMillisecondsSinceEpoch(epoch, isUtc: true);
+}
+
+DateTime? _readDate(JSObject o, String key) =>
+    _dateFrom(o.getProperty<JSAny?>(key.toJS));
+
+List<JSObject> _dataItems(JSObject response) {
+  final JSAny? data = response.getProperty<JSAny?>('data'.toJS);
+  if (data == null || data.isUndefinedOrNull) {
+    return const <JSObject>[];
+  }
+  return (data as JSArray<JSAny?>).toDart.whereType<JSObject>().toList(growable: false);
+}
+
+/// Turms 客户端把失败包成 `ResponseError`：`code` 是数值码，`reason` 只给人看。
+/// 不要用 HTTP 状态分流；`fetch` 层甚至可能把非标准状态当异常抛。
+TurmsException _turmsError(Object error) {
+  if (error is TurmsException) {
+    return error;
+  }
+  int? code;
+  String reason = '';
+  if (error is Map) {
+    final Object? rawCode = error['code'];
+    final Object? rawReason = error['reason'];
+    if (rawCode is num) {
+      code = rawCode.toInt();
+    } else if (rawCode is String) {
+      code = int.tryParse(rawCode);
+    }
+    if (rawReason is String) {
+      reason = rawReason;
+    }
+  }
+  try {
+    // 显式 cast 而不是 `is`：Dart 值与 JS 互操作类型的 runtime `is` 在跨平台时不可靠。
+    final JSObject jsError = error as JSObject;
+    final JSAny? rawCode = jsError.getProperty<JSAny?>('code'.toJS);
+    final Object? value =
+        rawCode == null || rawCode.isUndefinedOrNull ? null : rawCode.dartify();
+    if (value is num) {
+      code = value.toInt();
+    } else if (value is String) {
+      code = int.tryParse(value);
+    }
+    final JSAny? rawReason = jsError.getProperty<JSAny?>('reason'.toJS);
+    if (rawReason != null && !rawReason.isUndefinedOrNull) {
+      reason = rawReason.dartify()?.toString() ?? '';
+    }
+  } catch (_) {
+    // 不是 `ResponseError` 形状就退回字符串解析。
+  }
+  code ??= int.tryParse(
+    RegExp(r'(?:^|[^0-9])(\d{4})(?:[^0-9]|$)').firstMatch(error.toString())?.group(1) ?? '',
+  );
+  return TurmsException(
+    turmsCode: code ?? 0,
+    message: reason.isEmpty ? error.toString() : reason,
+  );
 }
 
 IncomingMessage _toMessage(JSObject raw) {
@@ -92,6 +170,54 @@ IncomingMessage _toMessage(JSObject raw) {
     // groupId / senderId 在 turms-client-js 里都是 int64→string；群句柄要保留原串。
     groupId: _readString(raw, 'groupId'),
     recipientId: _readInt(raw, 'recipientId'),
+  );
+}
+
+/// 业务通知里只有 `updateMessageRequest` 需要处理：撤回带 `recallDate`，编辑带 `text`。
+MessageUpdate? _toMessageUpdate(JSObject notification) {
+  final JSAny? rawRequest = notification.getProperty<JSAny?>('relayedRequest'.toJS);
+  if (rawRequest == null || rawRequest.isUndefinedOrNull) {
+    return null;
+  }
+  final JSAny? rawUpdate =
+      (rawRequest as JSObject).getProperty<JSAny?>('updateMessageRequest'.toJS);
+  if (rawUpdate == null || rawUpdate.isUndefinedOrNull) {
+    return null;
+  }
+  final JSObject update = rawUpdate as JSObject;
+  final String? id = _readString(update, 'messageId');
+  if (id == null || id.isEmpty) {
+    return null;
+  }
+  return MessageUpdate(
+    id: id,
+    senderId: _readInt(notification, 'requesterId') ?? 0,
+    text: _readString(update, 'text'),
+    recallAt: _readDate(update, 'recallDate'),
+  );
+}
+
+/// 业务通知里的输入状态：`updateTypingStatusRequest` 带 `toId` 与 `isGroupMessage`。
+IncomingTyping? _toTyping(JSObject notification) {
+  final JSAny? rawRequest = notification.getProperty<JSAny?>('relayedRequest'.toJS);
+  if (rawRequest == null || rawRequest.isUndefinedOrNull) {
+    return null;
+  }
+  final JSAny? rawTyping =
+      (rawRequest as JSObject).getProperty<JSAny?>('updateTypingStatusRequest'.toJS);
+  if (rawTyping == null || rawTyping.isUndefinedOrNull) {
+    return null;
+  }
+  final JSObject typing = rawTyping as JSObject;
+  final int senderId = _readInt(notification, 'requesterId') ?? 0;
+  final String? toId = _readString(typing, 'toId');
+  if (senderId == 0 || toId == null || toId.isEmpty) {
+    return null;
+  }
+  return IncomingTyping(
+    senderId: senderId,
+    toId: toId,
+    isGroup: _read(typing, 'isGroupMessage') == true,
   );
 }
 
@@ -112,14 +238,29 @@ String _wsUrl(String gatewayUrl) {
 class WebRealtime implements RealtimeClient {
   _TurmsClient? _client;
 
+  /// Web 端没有内置重连：状态层在断开事件后按退避换凭据重连。
+  @override
+  bool get reconnectsByItself => false;
+
   /// 连接代次：disconnect 或新 connect 会自增；旧连接晚到的回调按代次丢弃。
   int _generation = 0;
+
+  _TurmsClient _requireClient() {
+    final _TurmsClient? client = _client;
+    if (client == null) {
+      // 抛 ApiException 的子类：界面能把「还没连上」显示成可读文案，而不是未捕获异常。
+      throw TurmsException(turmsCode: 1105, message: 'Turms 会话尚未连接');
+    }
+    return client;
+  }
 
   @override
   Future<void> connect({
     required TurmsCredential credential,
     required int myAccountId,
     required void Function(IncomingMessage message) onMessage,
+    void Function(MessageUpdate update)? onMessageUpdated,
+    void Function(IncomingTyping typing)? onTyping,
     void Function(bool connected)? onConnected,
     void Function(Object error)? onError,
   }) async {
@@ -146,6 +287,27 @@ class WebRealtime implements RealtimeClient {
       }
 
       client.messageService.addMessageListener(handler.toJS);
+      if (onMessageUpdated != null || onTyping != null) {
+        // `notificationService` 只回调非创建类业务通知：撤回/编辑与输入状态都在这里。
+        client.notificationService.addNotificationListener(((JSObject notification) {
+          try {
+            final MessageUpdate? update = _toMessageUpdate(notification);
+            if (update != null) {
+              onMessageUpdated?.call(update);
+            }
+          } catch (e) {
+            debugPrint('解析 Turms 消息更新失败：$e');
+          }
+          try {
+            final IncomingTyping? typing = _toTyping(notification);
+            if (typing != null) {
+              onTyping?.call(typing);
+            }
+          } catch (e) {
+            debugPrint('解析 Turms 输入状态失败：$e');
+          }
+        }).toJS);
+      }
       // 连接断了要让状态层知道：否则 UI 一直显示「实时」，推送静悄悄停掉。
       // 旧连接（切号/重连）的断开回调不能把新连接一起拆掉。
       client.driver.addOnDisconnectedListener(((JSObject info) {
@@ -197,11 +359,7 @@ class WebRealtime implements RealtimeClient {
     DateTime? before,
     int maxCount = 50,
   }) async {
-    final _TurmsClient? client = _client;
-    if (client == null) {
-      // 抛而不是返回空数组：空数组会被 `AppState` 当成「这个会话到底了」，从此拉不到历史。
-      throw StateError('Turms 会话尚未连接');
-    }
+    final _TurmsClient client = _requireClient();
     final JSObject params = _object(<String, JSAny?>{
       'areGroupMessages': (conversationType == 'room').toJS,
       'areSystemMessages': false.toJS,
@@ -225,6 +383,117 @@ class WebRealtime implements RealtimeClient {
       out.add(_toMessage(item as JSObject));
     }
     return out;
+  }
+
+  @override
+  Future<String> send({
+    required String conversationType,
+    required String targetId,
+    required String text,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject response = await client.messageService
+          .sendMessage(_object(<String, JSAny?>{
+            'isGroupMessage': (conversationType == 'room').toJS,
+            'targetId': targetId.toJS,
+            'text': text.toJS,
+          }))
+          .toDart;
+      return _readString(response, 'data') ?? '';
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> recall({required String messageId}) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      // 不传 recallDate：`turms-client-js` 会补当前时间；服务端要求 pastOrPresent。
+      await client.messageService
+          .recallMessage(_object(<String, JSAny?>{'messageId': messageId.toJS}))
+          .toDart;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> sendTyping({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject params = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'userId'): targetId.toJS,
+      });
+      final JSPromise<JSObject> call = conversationType == 'room'
+          ? client.conversationService.updateGroupConversationTypingStatus(params)
+          : client.conversationService.updatePrivateConversationTypingStatus(params);
+      await call.toDart;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<Map<String, DateTime?>> groupReadDates({
+    required List<String> turmsGroupIds,
+    required int selfAccountId,
+  }) async {
+    if (turmsGroupIds.isEmpty) {
+      return const <String, DateTime?>{};
+    }
+    try {
+      final _TurmsClient client = _requireClient();
+      final JSObject response = await client.conversationService
+          .queryGroupConversations(_object(<String, JSAny?>{
+            'groupIds': turmsGroupIds.map((String id) => id.toJS).toList().toJS,
+          }))
+          .toDart;
+      final Map<String, DateTime?> out = <String, DateTime?>{};
+      for (final JSObject raw in _dataItems(response)) {
+        final String? groupId = _readString(raw, 'groupId');
+        if (groupId == null) {
+          continue;
+        }
+        final JSAny? rawDates = raw.getProperty<JSAny?>('memberIdToReadDate'.toJS);
+        final DateTime? readDate = rawDates == null || rawDates.isUndefinedOrNull
+            ? null
+            : _dateFrom((rawDates as JSObject).getProperty<JSAny?>('$selfAccountId'.toJS));
+        out[groupId] = readDate;
+      }
+      return out;
+    } catch (e) {
+      throw _turmsError(e);
+    }
+  }
+
+  @override
+  Future<void> markRead({
+    required String conversationType,
+    required String targetId,
+  }) async {
+    try {
+      final _TurmsClient client = _requireClient();
+      // `turms-client-js` 的生成模型把 UpdateConversationRequest 私聊字段叫 `targetId`
+      // （proto 的 target_id），而会话服务的封装还在写 `userId`——那个字段名会被编码器
+      // 忽略，服务端只会回 `1102 userId/groupId both null`。所以这里直接按模型字段发，
+      // 群聊一并走 driver，避免两个封装层再分叉。
+      final JSObject update = _object(<String, JSAny?>{
+        (conversationType == 'room' ? 'groupId' : 'targetId'): targetId.toJS,
+        'readDate': '${DateTime.now().millisecondsSinceEpoch}'.toJS,
+      });
+      final JSObject request = _object(<String, JSAny?>{
+        'updateConversationRequest': update,
+        'customAttributes': (<JSAny?>[]).toJS,
+      });
+      await client.driver.send(request).toDart;
+    } catch (e) {
+      throw _turmsError(e);
+    }
   }
 
   @override

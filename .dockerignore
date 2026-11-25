@@ -11,4 +11,6 @@ old_docs
 frontend
 desktop
 vendor
+# 例外：限流插件镜像要编 vendor/turms（infra/turms/Dockerfile）；其他 vendor 子模块仍排除。
+!vendor/turms
 **/target

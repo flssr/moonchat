@@ -18,7 +18,9 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "src",
+    "selftest.mjs"
   ],
   "scripts": {
     "test": "node selftest.mjs"

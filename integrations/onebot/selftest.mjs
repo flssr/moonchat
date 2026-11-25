@@ -1,19 +1,98 @@
-// 桥里唯一有分支的那几块：切段、网关地址、消息段、事件形状。跑法：node selftest.mjs
+// 桥里有分支的那几块：直发、群映射、错误码、切段、网关地址、消息段、事件形状。
+// 跑法：node selftest.mjs
 import assert from 'node:assert/strict'
-import { buildEvent, isAuthorized, metaConnectEvent, metaHeartbeatEvent, segmentsToText, splitText, toWsUrl } from './protocol.mjs'
+import {
+    buildEvent,
+    buildRoomMaps,
+    failureView,
+    isAuthorized,
+    metaConnectEvent,
+    metaHeartbeatEvent,
+    removeRoom,
+    segmentsToText,
+    sendText,
+    splitText,
+    toWsUrl,
+} from './protocol.mjs'
 
-// 500 字上限：超了要切，且不能切出空段
+// 500 是 Turms max-text-limit 默认值：超了要切，且不能切出空段
 assert.deepEqual(splitText('a'.repeat(1001)).map((s) => s.length), [500, 500, 1])
 assert.deepEqual(splitText('   '), [], '全空白不产出消息')
 assert.deepEqual(splitText('hi'), ['hi'])
 
-// 按 UTF-16 码元切（和 Biz 的 @Size 同一口径），但不劈开代理对
+// 按 UTF-16 码元切（和 Java String.length 同一口径），但不劈开代理对
 const emoji = '🐟'.repeat(600) // 1200 个码元
 const parts = splitText(emoji)
 assert.equal(parts.length, 3, '1200 码元按 500 切 = 500/500/200')
 assert.equal(parts.every((p) => p.length <= 500), true, '每段不超过 500 个 UTF-16 码元')
 assert.equal(parts.join(''), emoji, '拼回去必须一字不差，说明没劈开代理对')
 assert.equal(parts.every((p) => Array.from(p).every((c) => c === '🐟')), true)
+
+// 群映射双向使用业务 room_id 与 Turms group id，刷新和退群都不留旧映射
+const roomMaps = buildRoomMaps([
+    { room_id: 7, turms_group_id: '42', name: '测试群' },
+    { room_id: 8, turms_group_id: null, name: '未投影' },
+])
+assert.equal(roomMaps.roomIdByTurmsGroupId.get('42'), '7')
+assert.equal(roomMaps.turmsGroupIdByRoomId.get('7'), '42')
+assert.equal(roomMaps.roomTitleById.get('7'), '测试群')
+assert.equal(roomMaps.roomTitleById.has('8'), false)
+const refreshedRooms = buildRoomMaps([{ room_id: 9, turms_group_id: '43', name: '新群' }])
+assert.equal(refreshedRooms.roomIdByTurmsGroupId.has('42'), false, '整体重建后不留旧群')
+assert.equal(refreshedRooms.turmsGroupIdByRoomId.has('7'), false)
+removeRoom(roomMaps, 7)
+assert.equal(roomMaps.roomIdByTurmsGroupId.has('42'), false, '退群后反查映射也删掉')
+assert.equal(roomMaps.turmsGroupIdByRoomId.has('7'), false)
+assert.equal(roomMaps.roomTitleById.has('7'), false)
+
+// 直发只调用已登录账号的 messageService；私聊 targetId 是对端账号 id
+const requests = []
+let sequence = 0
+const messageService = {
+    async sendMessage(request) {
+        requests.push(request)
+        sequence += 1
+        return {
+            data: String(18_824_821_687_755_735_000n + BigInt(sequence)),
+            timestamp: new Date(Date.UTC(2026, 10, 25, 15, 30, sequence)),
+        }
+    },
+}
+const privateResult = await sendText(messageService, {
+    isGroupMessage: false,
+    targetId: '100000004',
+    text: '在吗',
+})
+assert.deepEqual(requests[0], { isGroupMessage: false, targetId: '100000004', text: '在吗' })
+assert.equal(privateResult.message_id, '18824821687755735001')
+assert.equal(typeof privateResult.message_id, 'string', '超过 2^53 的 Turms 消息 id 不丢精度')
+assert.equal(privateResult.time, Date.UTC(2026, 10, 25, 15, 30, 1) / 1000, 'time 取 Response.timestamp')
+
+// 群聊把 OneBot 的 room_id 反查成 turms_group_id；长文切段并取最后一段响应
+requests.length = 0
+const groupResult = await sendText(messageService, {
+    isGroupMessage: true,
+    targetId: refreshedRooms.turmsGroupIdByRoomId.get('9'),
+    text: 'a'.repeat(1001),
+})
+assert.equal(requests.length, 3)
+assert.deepEqual(requests.map((request) => request.text.length), [500, 500, 1])
+assert.ok(requests.every((request) => request.isGroupMessage && request.targetId === '43'))
+assert.equal(groupResult.message_id, '18824821687755735004')
+assert.equal(groupResult.time, Date.UTC(2026, 10, 25, 15, 30, 4) / 1000)
+
+// Turms ResponseError 的 code/reason 不塌成 1500
+for (const code of [1101, 5001, 1106]) {
+    assert.deepEqual(failureView({ code, reason: `turms-${code}` }), {
+        retcode: code,
+        message: `turms-${code}`,
+    })
+}
+assert.deepEqual(failureView(Object.assign(new Error('只支持 text'), { retcode: 1400 })), {
+    retcode: 1400,
+    message: '只支持 text',
+})
+assert.deepEqual(failureView(new Error('unknown')), { retcode: 1500, message: 'unknown' })
 
 // 网关地址三种写法都归一成 ws(s)://
 assert.equal(toWsUrl('wss://api.mondchat.com/im'), 'wss://api.mondchat.com/im')

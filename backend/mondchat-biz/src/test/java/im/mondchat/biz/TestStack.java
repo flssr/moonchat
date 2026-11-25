@@ -54,6 +54,11 @@ final class TestStack {
                 () -> Integer.toString(CONVERSATION_RATE_PER_MINUTE));
         // 重放器在测试里手动调，定时器拉长到一小时，避免它在断言中间插一脚
         registry.add("mondchat.turms.replay-interval", () -> "1h");
+        // 投影派发/对账同样手动调：开着也行，但定时器每次都跑到假 Admin 上会干扰 lastPath 断言
+        // 生产默认是 false（P1 只累积事件），测试里显式打开再由用例手动调用
+        registry.add("mondchat.projection.enabled", () -> "true");
+        registry.add("mondchat.projection.dispatch-interval-ms", () -> "3600000");
+        registry.add("mondchat.projection.reconcile-cron", () -> "0 0 3 * * *");
     }
 
     /** 与 turms-gateway 共享的那份密钥：32 字节，HS256 的最小长度。 */

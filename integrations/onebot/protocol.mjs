@@ -1,4 +1,4 @@
-// 纯协议层：不 import 任何依赖，selftest 可以直接跑。
+// 纯桥逻辑：协议形状与直发辅助，不 import 任何依赖，selftest 可以直接跑。
 import { randomUUID } from 'node:crypto'
 
 export const PLATFORM = 'mondchat'
@@ -14,8 +14,8 @@ export function toWsUrl(gatewayUrl) {
 }
 
 /**
- * 按 UTF-16 码元切段：Biz 的 `@Size(max = 500)` 数的是 Java 的 `String.length()`，
- * 一个 emoji 算 2。这里按同样的口径切，只是在码元边界上避开代理对，别切出半个字符。
+ * 500 是 Turms `max-text-limit` 的默认值。按 UTF-16 码元切，与 Java 的
+ * `String.length()` 同口径（一个 emoji 算 2），并在边界避开代理对。
  */
 export function splitText(text, limit = TEXT_LIMIT) {
     const source = String(text ?? '')
@@ -34,6 +34,55 @@ export function splitText(text, limit = TEXT_LIMIT) {
 
 function isLowSurrogate(code) {
     return code >= 0xdc00 && code <= 0xdfff
+}
+
+/** 群列表整体替换，避免已退群或已删除的旧映射一直留着。 */
+export function buildRoomMaps(rooms) {
+    const roomIdByTurmsGroupId = new Map()
+    const turmsGroupIdByRoomId = new Map()
+    const roomTitleById = new Map()
+    for (const room of rooms) {
+        if (room.turms_group_id == null) continue
+        const turmsGroupId = String(room.turms_group_id)
+        const roomId = String(room.room_id)
+        roomIdByTurmsGroupId.set(turmsGroupId, roomId)
+        turmsGroupIdByRoomId.set(roomId, turmsGroupId)
+        roomTitleById.set(roomId, String(room.name ?? ''))
+    }
+    return { roomIdByTurmsGroupId, turmsGroupIdByRoomId, roomTitleById }
+}
+
+export function removeRoom(roomMaps, roomId) {
+    const id = String(roomId)
+    const turmsGroupId = roomMaps.turmsGroupIdByRoomId.get(id)
+    roomMaps.turmsGroupIdByRoomId.delete(id)
+    roomMaps.roomTitleById.delete(id)
+    if (turmsGroupId !== undefined) roomMaps.roomIdByTurmsGroupId.delete(turmsGroupId)
+}
+
+/** 只经当前账号已登录的 Turms 连接发送；返回 OneBot 12 的字符串 id 与秒级时间。 */
+export async function sendText(messageService, { isGroupMessage, targetId, text }) {
+    let last = null
+    for (const chunk of splitText(text)) {
+        last = await messageService.sendMessage({
+            isGroupMessage,
+            targetId: String(targetId),
+            text: chunk,
+        })
+    }
+    return {
+        message_id: String(last.data),
+        time: last.timestamp.getTime() / 1000,
+    }
+}
+
+/** Turms ResponseError 的 code/reason 原样落到 OneBot 的 retcode/message。 */
+export function failureView(error) {
+    const retcode = error?.retcode ?? error?.code ?? 1500
+    const message = error?.retcode !== undefined
+        ? error.message
+        : error?.reason ?? error?.message ?? String(error)
+    return { retcode, message: String(message) }
 }
 
 /**

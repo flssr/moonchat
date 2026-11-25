@@ -101,6 +101,8 @@ Future<void> _pumpShell(WidgetTester tester, AppState state) async {
         onToggleTheme: (_) {},
         brightness: Brightness.light,
         textScale: 1.0,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: (_) {},
         onLanguageChanged: (_) {},
         onTextScaleChanged: (_) {},
       ),

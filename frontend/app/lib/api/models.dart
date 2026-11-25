@@ -268,6 +268,7 @@ class RoomDetail {
     required this.ownerAccountId,
     required this.memberCount,
     required this.createdAt,
+    this.description,
   });
 
   factory RoomDetail.fromJson(Map<String, dynamic> j) => RoomDetail(
@@ -275,12 +276,16 @@ class RoomDetail {
         ownerAccountId: _int(j['owner_account_id']),
         memberCount: _intOrNull(j['member_count']) ?? 0,
         createdAt: _date(j['created_at']),
+        description: _strOrNull(j['description']),
       );
 
   final String name;
   final int ownerAccountId;
   final int memberCount;
   final DateTime? createdAt;
+
+  /// 群简介：建群时可填，空就是没写（issue #38）。
+  final String? description;
 }
 
 class RoomMember {
@@ -351,28 +356,4 @@ class BlocklistPage {
 
   final List<BlocklistItem> items;
   final int total;
-}
-
-class SentMessage {
-  const SentMessage({
-    required this.messageId,
-    required this.conversationType,
-    required this.conversationId,
-    required this.sentAt,
-  });
-
-  factory SentMessage.fromJson(Map<String, dynamic> j) {
-    final Map<String, dynamic> conv = (j['conversation'] as Map<String, dynamic>?) ?? const <String, dynamic>{};
-    return SentMessage(
-      messageId: _int(j['message_id']),
-      conversationType: _str(conv['type']),
-      conversationId: _intOrNull(conv['id']) ?? 0,
-      sentAt: _date(j['sent_at']),
-    );
-  }
-
-  final int messageId;
-  final String conversationType;
-  final int conversationId;
-  final DateTime? sentAt;
 }

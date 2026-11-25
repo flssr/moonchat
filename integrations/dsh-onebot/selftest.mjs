@@ -447,6 +447,7 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
         wakeDebounceMs: 0,
         retryDelayMs: 0,
         accountKey: 'test-key',
+        accessToken: 'bridge-secret',
         bridge: 'ws://127.0.0.1:7788',
     }, { callBridge: host.callBridge })
     rt.ingest(message())
@@ -481,6 +482,13 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.match(host.state.processes[0].spec.argv.join(' '), /bridge\.mjs/)
     assert.equal(host.state.processes[0].spec.env.ONEBOT_WS_PORT, '7788', '自选端口要传给子进程')
     assert.equal(host.state.processes[0].spec.env.ONEBOT_WS_HOST, '127.0.0.1')
+    assert.equal(host.state.processes[0].spec.env.ONEBOT_ACCESS_TOKEN, 'bridge-secret', 'accessToken 要传给桥子进程')
+    assert.equal(rt.status().bridge.process, 'running')
+
+    await bridgeRoute.fetch({ json: async () => ({ action: 'restart' }) })
+    assert.equal(host.state.processes.length, 2, '托管桥重启只换自己的子进程')
+    assert.equal(host.state.processes[0].terminated, true)
+    assert.equal(host.state.processes[1].terminated, false)
     assert.equal(rt.status().bridge.process, 'running')
 
     const badBridge = await settingsRoute.fetch({
@@ -495,8 +503,34 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.equal(host.state.edits.at(-1).config.bridge, 'ws://127.0.0.1:7789')
 
     await bridgeRoute.fetch({ json: async () => ({ action: 'stop' }) })
-    assert.equal(host.state.processes[0].terminated, true, '停止桥要 terminate')
+    assert.equal(host.state.processes[1].terminated, true, '停止桥要 terminate')
     assert.equal(rt.status().bridge.process, 'stopped')
+    rt.service.dispose()
+}
+
+// ---- 外部桥：服务层和路由都拒绝启停/重启，不能误起第二个进程 ----
+
+{
+    const host = makeHost()
+    const rt = createRuntime(host.ctx, {
+        home: join(process.env.DSH_HOME, 'external-bridge'),
+        accountKey: 'test-key',
+    }, { callBridge: host.callBridge })
+    rt.service.bridgeStatus.connection = 'connected'
+
+    await assert.rejects(() => rt.service.startBridge(), /外部桥/)
+    await assert.rejects(() => rt.service.stopBridge(), /外部桥/)
+    await assert.rejects(() => rt.service.restartBridge(), /托管/)
+    assert.equal(rt.status().bridge.process, 'external', '拒绝操作不能把外部桥改成 stopped')
+
+    rt.start()
+    const bridgeRoute = host.state.routes.get('/api/mondchat/bridge')
+    for (const action of ['start', 'stop', 'restart']) {
+        const response = await bridgeRoute.fetch({ json: async () => ({ action }) })
+        assert.equal(response.status, 400, `${action} 外部桥要被路由拒绝`)
+    }
+    assert.equal(host.state.processes.length, 0, '外部桥不能被插件再 spawn 一次')
+    rt.service.dispose()
 }
 
 // ---- 真 apply()：假 WebSocket 冒充桥，走一遍真实接线 ----

@@ -34,6 +34,7 @@ Future<void> _pumpShell(
   AppState state, {
   required ValueChanged<double> onTextScale,
   required ValueChanged<String> onLanguage,
+  ValueChanged<ThemeMode>? onThemeMode,
   Locale locale = const Locale('zh', 'CN'),
 }) async {
   await tester.pumpWidget(
@@ -52,6 +53,8 @@ Future<void> _pumpShell(
         onToggleTheme: (_) {},
         brightness: Brightness.light,
         textScale: 1.0,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: onThemeMode ?? (_) {},
         onTextScaleChanged: onTextScale,
         onLanguageChanged: onLanguage,
       ),
@@ -66,12 +69,14 @@ void main() {
     addTearDown(state.dispose);
     final List<double> scales = <double>[];
     final List<String> languages = <String>[];
+    final List<ThemeMode> themes = <ThemeMode>[];
 
     await _pumpShell(
       tester,
       state,
       onTextScale: scales.add,
       onLanguage: languages.add,
+      onThemeMode: themes.add,
     );
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
@@ -83,11 +88,27 @@ void main() {
     expect(find.text('黑名单管理'), findsOneWidget);
     expect(find.text('我的友情关系'), findsOneWidget);
     expect(find.text('敬请期待'), findsOneWidget);
-    expect(find.text('待接入'), findsOneWidget);
+    // 黑名单入口已接上：点开是一个列表弹窗，不再是「待接入」占位。
+    expect(find.text('待接入'), findsNothing);
+    await tester.tap(find.text('黑名单管理'));
+    await tester.pumpAndSettle();
+    expect(find.text('黑名单管理'), findsNWidgets(2));
+    // 这个用例的 API 客户端拒绝一切请求：弹窗应落到错误态而不是崩掉。
+    expect(find.text('连不上服务器'), findsOneWidget);
+    await tester.tap(find.byTooltip('关闭').last);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('小'));
     await tester.pump();
     expect(scales, <double>[0.9]);
+
+    // 主题三档都在，且「跟随系统」真的能选回来（之前只有导航栏二态切换）。
+    expect(find.text('主题'), findsOneWidget);
+    expect(find.text('浅色'), findsOneWidget);
+    expect(find.text('深色'), findsOneWidget);
+    await tester.tap(find.text('跟随系统'));
+    await tester.pump();
+    expect(themes, <ThemeMode>[ThemeMode.system]);
 
     await tester.tap(find.text('English'));
     await tester.pumpAndSettle();

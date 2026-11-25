@@ -1,15 +1,20 @@
 package im.mondchat.biz.client.turms;
 
 import im.mondchat.biz.common.ApiException;
+import im.mondchat.biz.config.TurmsAdminHttpProperties;
 import im.mondchat.biz.config.TurmsProperties;
+import java.net.http.HttpClient;
 import java.security.SecureRandom;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -34,8 +39,15 @@ public class TurmsAdminClient {
     private final RestClient restClient;
 
     public TurmsAdminClient(TurmsProperties properties) {
+        TurmsAdminHttpProperties http = properties.http();
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(http.connectTimeout())
+                .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(http.readTimeout());
         this.restClient = RestClient.builder()
                 .baseUrl(properties.adminUrl())
+                .requestFactory(requestFactory)
                 .defaultHeaders(headers -> headers.setBasicAuth(properties.adminUsername(), properties.adminPassword()))
                 .build();
     }
@@ -180,6 +192,126 @@ public class TurmsAdminClient {
     }
 
     /**
+     * 关系投影的读回：`GET /users/relationships?ownerIds=&relatedUserIds=` 找一条 `(owner, related)` 行。
+     * 返回 null 表示 Turms 还没有这一行；派发器据此决定 POST 还是 PUT（避免「PUT 未命中静默成功」）。
+     */
+    public Relationship queryRelationship(long ownerId, long relatedUserId) {
+        try {
+            JsonNode body = restClient.get()
+                    .uri(uri -> uri.path("/users/relationships")
+                            .queryParam("ownerIds", ownerId)
+                            .queryParam("relatedUserIds", relatedUserId)
+                            .queryParam("size", 1)
+                            .build())
+                    .retrieve()
+                    .body(JsonNode.class);
+            JsonNode data = body == null ? null : body.path("data");
+            if (data == null || !data.isArray() || data.isEmpty()) {
+                return null;
+            }
+            JsonNode row = data.get(0);
+            return new Relationship(row.path("key").path("ownerId").asLong(),
+                    row.path("key").path("relatedUserId").asLong(),
+                    dateOrNull(row.path("blockDate")),
+                    dateOrNull(row.path("establishmentDate")));
+        } catch (RestClientException e) {
+            log.warn("读 Turms 关系失败：ownerId={} relatedUserId={}", ownerId, relatedUserId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /** 关系投影：建一行。`establishmentDate` 用 epoch-0 表示「只拉黑、不是好友」。 */
+    public void createRelationship(long ownerId, long relatedUserId, Long blockDate, Long establishmentDate) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("ownerId", ownerId);
+        body.put("relatedUserId", relatedUserId);
+        body.put("blockDate", isoTimestamp(blockDate));
+        body.put("establishmentDate", isoTimestamp(establishmentDate));
+        try {
+            restClient.post()
+                    .uri("/users/relationships")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("建 Turms 关系失败：ownerId={} relatedUserId={}", ownerId, relatedUserId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /**
+     * 关系投影：改一行。**清空拉黑必须传 epoch-0**：Turms 的 `setOrUnsetDate` 对 null 是 no-op，
+     * 且「全是 null」会被服务层短路（docs/truth/backend/projection.md）。
+     */
+    public void updateRelationship(long ownerId, long relatedUserId, Long blockDate, Long establishmentDate) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("blockDate", isoTimestamp(blockDate));
+        body.put("establishmentDate", isoTimestamp(establishmentDate));
+        try {
+            restClient.put()
+                    .uri(uri -> uri.path("/users/relationships")
+                            .queryParam("keys[0].ownerId", ownerId)
+                            .queryParam("keys[0].relatedUserId", relatedUserId)
+                            .build())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("改 Turms 关系失败：ownerId={} relatedUserId={}", ownerId, relatedUserId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /** 关系投影：批量删行（`DELETE /relationships` 收 `List<Key>`）。 */
+    public void deleteRelationships(List<long[]> keys) {
+        try {
+            restClient.delete()
+                    .uri(uri -> {
+                        uri.path("/users/relationships");
+                        for (int i = 0; i < keys.size(); i++) {
+                            uri.queryParam("keys[" + i + "].ownerId", keys.get(i)[0])
+                                    .queryParam("keys[" + i + "].relatedUserId", keys.get(i)[1]);
+                        }
+                        return uri.build();
+                    })
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("删 Turms 关系失败：keys={}", keys.size(), e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /** 账号投影：Turms 里有没有这个用户（`GET /users?ids=`）；查不到时 Admin 回 204 空 body。 */
+    public boolean userExists(long accountId) {
+        try {
+            JsonNode body = restClient.get()
+                    .uri(uri -> uri.path("/users").queryParam("ids", accountId).build())
+                    .retrieve()
+                    .body(JsonNode.class);
+            JsonNode data = body == null ? null : body.path("data");
+            return data != null && data.isArray() && !data.isEmpty();
+        } catch (RestClientException e) {
+            log.warn("查 Turms 用户失败：accountId={}", accountId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /** Turms 关系行：`blockDate` 非空表示拉黑，`establishmentDate` 是成为好友的时间。 */
+    public record Relationship(long ownerId, long relatedUserId, String blockDate, String establishmentDate) {
+    }
+
+    private static String dateOrNull(JsonNode node) {
+        return node == null || node.isNull() || node.isMissingNode() ? null : node.asString();
+    }
+
+    private static String isoTimestamp(Long epochMillis) {
+        return epochMillis == null ? null : Instant.ofEpochMilli(epochMillis).toString();
+    }
+
+    /**
      * 代写「本人该会话的已读时间」：Admin `PUT /conversations`，`readDate` 传 null 让 Turms 取服务端当前时间。
      * 私聊键的 owner 必须是调用者本人（写反会把已读写到对端）；群侧 groupId 必须是 Turms 的 group id。
      * 复合主键入参形状 `keys[0].*` 与 `removeGroupMember` 同一套，冒烟已实测。
@@ -241,6 +373,27 @@ public class TurmsAdminClient {
         } catch (RestClientException e) {
             // 没拿到确认就回 503：Turms 可能已经落库，重试可能重复（不做幂等，已写的行为）
             log.warn("代发消息失败：messageId={} senderId={} targetId={}", messageId, senderId, targetId, e);
+            throw ApiException.upstreamUnavailable();
+        }
+    }
+
+    /**
+     * 踢掉该账号的在线会话（冻结时用）：旧 token 最长还活 12 小时，不踢等于冻结没生效。
+     * Admin 的真实挂载点是 `PUT /users/online-infos/statuses`（body `{"onlineStatus":"OFFLINE"}`）；
+     * 文档里写的 `/users/online-statuses` 是 400（2026-11-23 实测）。
+     */
+    public void disconnectSessions(long accountId) {
+        try {
+            restClient.put()
+                    .uri(uri -> uri.path("/users/online-infos/statuses")
+                            .queryParam("ids", accountId)
+                            .build())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("onlineStatus", "OFFLINE"))
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException e) {
+            log.warn("踢会话失败：accountId={}", accountId, e);
             throw ApiException.upstreamUnavailable();
         }
     }

@@ -16,6 +16,7 @@ import 'package:mondchat/ui/home_shell.dart';
 class _MemoryStore implements SettingsStore {
   MoonSettings settings = MoonSettings.defaults;
   Map<int, String> avatars = <int, String>{};
+  String? lastEmail;
 
   @override
   MoonSettings load() => settings;
@@ -28,6 +29,12 @@ class _MemoryStore implements SettingsStore {
 
   @override
   void saveAvatars(Map<int, String> next) => avatars = next;
+
+  @override
+  String? loadLastEmail() => lastEmail;
+
+  @override
+  void saveLastEmail(String email) => lastEmail = email;
 }
 
 http.Response _ok(String body) => http.Response(
@@ -89,6 +96,8 @@ Future<void> _pumpShell(WidgetTester tester, AppState state) async {
         onToggleTheme: (_) {},
         brightness: Brightness.light,
         textScale: 1.0,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: (_) {},
         onLanguageChanged: (_) {},
         onTextScaleChanged: (_) {},
       ),
@@ -144,6 +153,52 @@ void main() {
     expect(state.avatarOf(created.accountId), 'agent_pink');
     expect(store.avatars[created.accountId], 'agent_pink');
     expect(kAgentAvatars, contains(state.avatarOf(created.accountId)));
+  });
+
+  test('新建 agent 后立刻出现在好友与会话列表', () async {
+    final AppState state = AppState(
+      api: ApiClient(
+        baseUrl: 'http://mock.local',
+        client: MockClient((http.Request req) async {
+          final String path = req.url.path;
+          if (req.method == 'POST' && path == '/api/agent-accounts') {
+            return _ok('{"account_id":100000003,"display_name":"小帮手","account_key":"key-1"}');
+          }
+          if (req.method == 'GET' && path == '/api/accounts/mine') {
+            return _ok('{"items":[{"account_id":100000001,"display_name":"阿月","type":"human"},'
+                '{"account_id":100000003,"display_name":"小帮手","type":"agent"}]}');
+          }
+          if (req.method == 'GET' && path == '/api/friendships') {
+            if (req.url.queryParameters['status'] == 'pending') {
+              return _ok('{"items":[]}');
+            }
+            return _ok('{"items":[{"peer_account_id":100000003,"display_name":"小帮手",'
+                '"status":"accepted","incoming":false,"requested_at":"2026-11-23T20:00:00Z"}]}');
+          }
+          if (req.method == 'GET' && path == '/api/rooms') {
+            return _ok('{"items":[]}');
+          }
+          return http.Response('{}', 404);
+        }),
+      ),
+      store: _MemoryStore(),
+    )
+      ..loginToken = 'login-jwt'
+      ..identityToken = 'login-jwt'
+      ..phase = AuthPhase.ready;
+    addTearDown(state.dispose);
+
+    final CreatedAgent created = await state.createAgent('小帮手');
+
+    expect(
+      state.friends.map((Friendship f) => f.peerAccountId),
+      contains(created.accountId),
+      reason: '后端建 agent 时已建立归属者好友关系，客户端应立刻重拉',
+    );
+    expect(
+      state.conversations.map((Conversation c) => c.key),
+      contains('dm:${created.accountId}'),
+    );
   });
 
   test('选头像走服务端，回显写回本机缓存；清空也走服务端', () async {

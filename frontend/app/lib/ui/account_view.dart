@@ -36,7 +36,7 @@ class _AccountViewState extends State<AccountView> {
 
   Future<void> _createAgent() async {
     final String name = _name.text.trim();
-    if (name.isEmpty || name.characters.length > 20) {
+    if (name.isEmpty || name.length > 20) {
       setState(() => _error = '名字 1–20 字');
       return;
     }
@@ -237,7 +237,7 @@ class _AccountViewState extends State<AccountView> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        context.tr('新 agent 是孤立账号：不入群、不加好友，要聊天得先建立关系。'),
+                        context.tr('新建 agent 会自动和你的真人账号成为好友；它不入群，要进群需手动拉入。'),
                         style: TextStyle(fontSize: 11.5, height: 1.6, color: p.ink3),
                       ),
                     ],
@@ -293,13 +293,6 @@ class _AccountViewState extends State<AccountView> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 28),
-                    Text(context.tr('凭据'), style: TextStyle(fontSize: 11, letterSpacing: 1, color: p.ink3)),
-                    const SizedBox(height: 8),
-                    Text(
-                      context.tr('登录 JWT 7 天，滑动续期；Turms 凭据 12 小时，到期前重调 /api/sessions 换新的。两者都由客户端自己续，不靠碰运气刚好没过期。'),
-                      style: TextStyle(fontSize: 12, height: 1.7, color: p.ink2),
-                    ),
                   ],
                 ),
                 ),

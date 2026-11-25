@@ -310,7 +310,7 @@ window.__ModuleLoader__.load({
         h('button', {
           type: 'button',
           style: S.button,
-          disabled: !controls.bridge || busy !== '',
+          disabled: !controls.bridge || busy !== '' || !controls.inProcess || !running,
           onClick: () => run('restart', () => post(BRIDGE, { action: 'restart' })),
         }, busy === 'restart' ? t('busy') : t('restart')))
 

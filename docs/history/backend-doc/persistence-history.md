@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### 投影事件表
+
+2026-11-22 19:55 CST   [2026-11-22 11:55 UTC]
+
+决策：新增 `V7__biz_domain_event.sql` 建 `domain_event`：`id` 自增主键、`aggregate_type` / `aggregate_id` / `event_type`、`payload jsonb`、`created_at` / `processed_at` / `attempt_count` / `next_attempt_at` / `last_error`；三个索引分别是未处理部分索引 `(next_attempt_at, id)`、聚合索引 `(aggregate_type, aggregate_id, id)`、清理部分索引 `(processed_at)`。
+
+原因：投影需要「业务提交事件必达」的通道，同事务写 outbox 是这里最省的做法；`payload` 存目标状态让重放幂等。派发单 worker 扫部分索引、不加 `SKIP LOCKED`（当前只有一个业务进程）；已处理行保留 7 天后按批清理，事件量与关系变更同频。
+
 ### 资料字段迁移
 
 2026-11-14 20:41 CST   [2026-11-14 12:41 UTC]

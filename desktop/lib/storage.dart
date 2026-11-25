@@ -82,11 +82,13 @@ class DesktopSettingsStore implements SettingsStore {
     if (root != null) {
       _settings = _JsonFile(File('${root.path}\\settings.json'));
       _avatars = _JsonFile(File('${root.path}\\avatars.json'));
+      _lastEmail = _JsonFile(File('${root.path}\\last_email.json'));
     }
   }
 
   _JsonFile? _settings;
   _JsonFile? _avatars;
+  _JsonFile? _lastEmail;
   MoonSettings _settingsValue = MoonSettings.defaults;
   bool _settingsLoaded = false;
   final Map<int, String> _avatarValues = <int, String>{};
@@ -140,6 +142,17 @@ class DesktopSettingsStore implements SettingsStore {
     _avatars?.write(
       avatars.map((int id, String key) => MapEntry<String, String>('$id', key)),
     );
+  }
+
+  @override
+  String? loadLastEmail() {
+    final Object? raw = _lastEmail?.read();
+    return raw is String && raw.isNotEmpty ? raw : null;
+  }
+
+  @override
+  void saveLastEmail(String email) {
+    _lastEmail?.write(email.trim());
   }
 }
 

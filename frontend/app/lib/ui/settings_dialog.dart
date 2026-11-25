@@ -5,23 +5,29 @@ import '../settings/settings.dart';
 import '../theme.dart';
 import 'widgets.dart';
 
-/// 设置：字体、界面语言、隐私入口。字体与语言立即生效，隐私项等后端接口。
+/// 设置：字体、界面语言、隐私入口。字体与语言立即生效。
 Future<void> showSettingsDialog(
   BuildContext context, {
   required double textScale,
+  required ThemeMode themeMode,
+  required ValueChanged<ThemeMode> onThemeModeChanged,
   required ValueChanged<double> onTextScaleChanged,
   required ValueChanged<String> onLanguageChanged,
   bool notifyOnMessage = true,
   ValueChanged<bool>? onNotifyChanged,
+  Future<void> Function()? onOpenBlocklist,
 }) async {
   await showDialog<void>(
     context: context,
     builder: (BuildContext context) => _SettingsDialog(
       textScale: textScale,
+      themeMode: themeMode,
+      onThemeModeChanged: onThemeModeChanged,
       onTextScaleChanged: onTextScaleChanged,
       onLanguageChanged: onLanguageChanged,
       notifyOnMessage: notifyOnMessage,
       onNotifyChanged: onNotifyChanged,
+      onOpenBlocklist: onOpenBlocklist,
     ),
   );
 }
@@ -29,17 +35,23 @@ Future<void> showSettingsDialog(
 class _SettingsDialog extends StatefulWidget {
   const _SettingsDialog({
     required this.textScale,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     required this.onTextScaleChanged,
     required this.onLanguageChanged,
     required this.notifyOnMessage,
     required this.onNotifyChanged,
+    this.onOpenBlocklist,
   });
 
   final double textScale;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
   final ValueChanged<double> onTextScaleChanged;
   final ValueChanged<String> onLanguageChanged;
   final bool notifyOnMessage;
   final ValueChanged<bool>? onNotifyChanged;
+  final Future<void> Function()? onOpenBlocklist;
 
   @override
   State<_SettingsDialog> createState() => _SettingsDialogState();
@@ -48,6 +60,7 @@ class _SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<_SettingsDialog> {
   late double _textScale = widget.textScale;
   late bool _notify = widget.notifyOnMessage;
+  late ThemeMode _themeMode = widget.themeMode;
   String? _language;
 
   @override
@@ -71,6 +84,11 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   void _setLanguage(String value) {
     setState(() => _language = value);
     widget.onLanguageChanged(value);
+  }
+
+  void _setThemeMode(ThemeMode mode) {
+    setState(() => _themeMode = mode);
+    widget.onThemeModeChanged(mode);
   }
 
   void _setNotify(bool value) {
@@ -147,6 +165,25 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                 ],
               ),
               const SizedBox(height: 22),
+              Text(_t('主题'), style: _labelStyle(p)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final (ThemeMode mode, String label) in <(ThemeMode, String)>[
+                    (ThemeMode.light, '浅色'),
+                    (ThemeMode.dark, '深色'),
+                    (ThemeMode.system, '跟随系统'),
+                  ])
+                    MoonChoicePill(
+                      label: _t(label),
+                      selected: _themeMode == mode,
+                      onTap: () => _setThemeMode(mode),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 22),
               Text(_t('消息通知'), style: _labelStyle(p)),
               const SizedBox(height: 6),
               Wrap(
@@ -170,7 +207,8 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               const SizedBox(height: 4),
               _PrivacyRow(
                 label: _t('黑名单管理'),
-                trailing: MoonTag(text: _t('待接入')),
+                onTap: widget.onOpenBlocklist,
+                trailing: Icon(Icons.chevron_right, size: 16, color: p.ink3),
               ),
               Divider(color: p.line, height: 1),
               _PrivacyRow(
@@ -193,24 +231,28 @@ class _SettingsDialogState extends State<_SettingsDialog> {
 }
 
 class _PrivacyRow extends StatelessWidget {
-  const _PrivacyRow({required this.label, required this.trailing});
+  const _PrivacyRow({required this.label, required this.trailing, this.onTap});
 
   final String label;
   final Widget trailing;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final MoonPalette p = context.moon;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 48),
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: <Widget>[
-          Expanded(
-            child: Text(label, style: TextStyle(fontSize: 13, color: p.ink)),
-          ),
-          trailing,
-        ],
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(label, style: TextStyle(fontSize: 13, color: p.ink)),
+            ),
+            trailing,
+          ],
+        ),
       ),
     );
   }

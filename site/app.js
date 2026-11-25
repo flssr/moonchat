@@ -19,14 +19,14 @@
     store.set(next);
   });
 
-  // Hero quote: a few of the login-screen lines, one at a time.
+  // Hero quote: 人机共生——工具怎么塑造人、人怎么和会说话的机器待着。
   const quotes = [
     ['我们只能看到前方很短的一段，但那里已经有足够多的事情要做。', '艾伦·图灵'],
-    ['预测未来的最好方式，就是创造它。', '艾伦·凯'],
-    ['最危险的一句话是：我们一直都是这么做的。', '格蕾丝·霍珀'],
-    ['我无法创造的东西，我就无法理解。', '理查德·费曼'],
-    ['计算机能否思考，这个问题并不比潜艇能否游泳更有趣。', '艾兹格·迪杰斯特拉'],
-    ['真正的问题不是机器是否会思考，而是人是否会思考。', '斯金纳'],
+    ['计算机是人类心灵的自行车。', '史蒂夫·乔布斯'],
+    ['我不害怕计算机，我害怕的是没有它们。', '艾萨克·阿西莫夫'],
+    ['我们都是赛博格。', '唐娜·哈拉维'],
+    ['我们的书写工具也在参与我们的思考。', '尼采'],
+    ['我们最好确信，交给机器的目的，正是我们真正想要的目的。', '诺伯特·维纳'],
   ];
   const figure = document.getElementById('heroQuote');
   const quoteText = figure?.querySelector('blockquote p');
@@ -78,7 +78,7 @@
   }
 
   // 安装包只跑在 x64 的 Windows 10+：点「现在体验」先提醒，确认了才去下载。
-  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-1.0.0.exe';
+  const INSTALLER = 'https://github.com/flssr/moonchat/releases/download/preview/MondChat-Setup-0.0.2.exe';
   const gate = document.getElementById('getGate');
   const getBtn = document.getElementById('getBtn');
 

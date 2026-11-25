@@ -1,0 +1,8 @@
+id: im.mondchat.turms.plugin.ratelimit
+class: im.mondchat.turms.plugin.ratelimit.MondChatRateLimitPlugin
+compatible-servers:
+  - type: turms-service
+version: 0.1.0
+provider: im.mondchat
+license: MIT
+description: '统一发送限流：账号级 60/分钟、会话级 20/分钟（进程内令牌桶）'

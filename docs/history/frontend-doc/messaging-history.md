@@ -16,6 +16,38 @@
 <原因>：...
 ```
 
+### 会话两页签、群 @ 与正在输入（测试改进3）
+
+2026-11-24 23:42 CET   [2026-11-24 22:42 UTC]
+
+决策：会话列表从「全部/私聊/群聊」改成「私聊/群聊」两页签，默认私聊，页签右上角挂该类未读合计；右侧空态换成按本地时间分档的「问候语，昵称」。群消息按正文 `@我的显示名` 文本匹配（要求后面不是字母/数字/汉字）给会话挂「有人@我」，打开即清，桌面缓存落盘；输入非空文本时每会话 2 秒最多发一次 `updateTypingStatusRequest`，收到后显示 3 秒自动消失。Web 直接调 `turms-client-js` 的 `updatePrivate/GroupConversationTypingStatus`，桌面端直发 protobuf；接收端在已有 notification 监听/通知帧里解析，不改 vendor。
+
+原因：`数据库/测试改进3.md` 第 2、3、10 条；Turms 不回传 `customAttributes`，结构化 mentions 做不了，先用文本匹配；输入状态需要 `TYPING_STATUS.UPDATE`，当前 Biz 没签，先实现客户端并静默降级，后端补权限后生效（issue #82）。
+
+### Web 私聊已读直写修复与断线重连
+
+2026-11-24 23:20 CET   [2026-11-24 22:20 UTC]
+
+决策：Web 的已读上报不再走 `turms-client-js` 的 `updatePrivateConversationReadDate`（生成模型已把私聊字段改成 `targetId`，会话服务封装仍写 `userId`，编码器丢字段、服务端回 `1102`），改为按模型字段经 `driver.send` 直发 `updateConversationRequest`；Web 断线后由状态层按 1/2/4/8/16/30 秒换凭据重连，重连成功补拉当前会话；首登静默上报遇到补拉期间刚到的实时消息时保留角标；补拉未读与通知跳过已撤回消息，通知正文按界面语言渲染；同意好友后的欢迎语撞 Turms 投影延迟时 2 秒后自动补发一次。
+
+原因：2026-11-24 真机验收发现打开会话后未读角标不消失、服务端读游标不前进；同时确认自动欢迎语在新好友投影完成前会失败、Web 断线后不会自愈。
+
+### 客户端接撤回
+
+2026-11-23 21:29 CET   [2026-11-23 20:29 UTC]
+
+决策：本人 5 分钟内的已发送消息从组尾「撤回」或右键/长按气泡发起 `updateMessageRequest`。Web 用 `turms-client-js` 的 `recallMessage`（客户端补当前时间），桌面端显式带本地当前时间 `recallDate`；成功后本地立即标记「已撤回」，其他端靠 `notificationService` / WebSocket 的更新通知标记，编辑通知则替换正文。撤回失败按 `5200/5202/5204` 分流，撤回状态进本机缓存；历史重拉后服务端默认不返回已撤回消息。
+
+原因：issue #63 的客户端接入把撤回列进 Turms 数据面；`recallDate` 省略会被服务端当成「没有更新」，传 0 又早于投递时间，所以必须带当前时间。
+
+### 客户端消息与已读改直写 Turms
+
+2026-11-23 20:48 CET   [2026-11-23 19:48 UTC]
+
+决策：Web 与桌面端都改为在已有的 Turms `/im` 会话上直写。发送用 `createMessageRequest`（私聊 `recipientId`、群 `groupId`，正文 `text`，不传 `messageId` / `deliveryDate`），返回的 `messageId` 直接落定本地气泡；错误按 Turms `code` 分流，`1105` / `1300` 换凭据重连。已读用 `updateConversationRequest`，基线取服务端 `readDate` / `memberIdToReadDate[自己]`；没有基线的会话首登静默上报一次，之后只在打开且未读 > 0（或正看着会话收到新消息）时 1 秒 debounce 上报。删掉 `ApiClient.sendMessage` 与 `SentMessage`，不再经 Biz 发送。
+
+原因：issue #73 / #72 的 P3 前置：客户端先切、服务端开关后开；Biz 写路径在 P4 删除，保留旧客户端会直接坏。错误码与已读基线都以 Turms 为唯一事实，避免两套写路径和本地缓存时间造成的跨端未读偏差。
+
 ### 建群弹窗与群内好友邀请
 
 2026-11-17 01:15 CET   [2026-11-17 00:15 UTC]

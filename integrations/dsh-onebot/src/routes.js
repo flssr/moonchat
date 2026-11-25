@@ -51,8 +51,7 @@ export function registerRoutes(ctx, service, { log = () => {} } = {}) {
             } else if (body.action !== 'restart') {
                 return json({ error: 'action 只能是 start / stop / restart' }, 400)
             } else {
-                await service.stopBridge()
-                await service.startBridge()
+                await service.restartBridge()
             }
             return json({ bridge: service.status().bridge })
         } catch (error) {

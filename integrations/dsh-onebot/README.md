@@ -2,11 +2,13 @@
 
 把 MondChat 的私聊和群接成 DSH 会话：MondChat 里有人说话 → 唤醒对应会话 → agent 自己决定看不看、回不回。
 
-它是 [OneBot 桥](../onebot) 的应用端，不直接连 Turms，也不碰 MondChat 的数据库。
+它是 [OneBot 桥](../onebot) 的应用端，不直接连 Turms，也不碰 MondChat 的数据库。桥与插件都在 agent 侧：消息经该 agent 同账号的 Turms `/im` 直写，好友申请、群成员等业务动作仍走 Biz。
 
 ```
 MondChat ── 桥（integrations/onebot）── OneBot 12/WS ── 本插件 ── DSH 会话
 ```
+
+启用直写的前提是写凭据开关已开、投影已回填并对账通过、`allowSendMessagesToStranger=false` 已生效；限流由 Turms 插件执行，不在插件或桥里写死阈值。
 
 ## 结构
 
@@ -102,7 +104,7 @@ cd integrations/dsh-onebot && npm test
 
 可操作的：
 
-- **启动 / 停止 / 重启桥**：`POST /api/mondchat/bridge`，插件用 `subprocess.spawn` 托管桥进程，卸载时一起停；端口上已有外部桥在应答时禁用启动，避免撞端口；
+- **启动 / 停止 / 重启桥**：`POST /api/mondchat/bridge`，插件用 `subprocess.spawn` 托管桥进程，卸载时一起停；只允许操作自己托管的桥。端口上已有外部桥在应答时，面板禁用启动与重启，服务层和路由也会拒绝外部桥的启动、停止与重启，避免重复进程和撞端口；
 - **桥地址（含端口）**：同一个 `global` 里的 `bridge`，只认 `ws://` / `wss://`；托管桥时子进程绑的就是这个地址的 host 与 port；
 - **时区与回复语言**：`POST /api/mondchat/settings` 的 `global`，写回 profile patch（会触发一次插件重装，桥跟着重连）；
 - **每个会话的主动话题闸门**：同一路由的 `gate`（安静分钟、每小时上限、免打扰时段、开关），写 `state.json`，立刻生效不重装；提交空 gate 表示回到全局。
@@ -117,7 +119,7 @@ cd integrations/dsh-onebot && npm test
 | agent 发言 | 调 `mondchat_send`；不调就是不想说，没有哨兵文本、没有自动转发 |
 | 权限 | 会话建好后按 `permissionPresets` 里 `sandbox === 'read-only'` 的档位压成只读 |
 | 主动话题 | 每个会话各自的闸门：安静满 `idleMinutes`、不在免打扰时段、每小时不超过 `maxPerHour` |
-| 桥进程 | 可由面板托管（`subprocess.spawn`），也可自己在外面跑；插件只负责连 |
+| 桥进程 | 可由面板托管（`subprocess.spawn`），也可自己在外面跑；插件只负责连，不接管外部桥的启停 |
 | 断线 | 桥不可达时指数退避重连（最长 30 秒），期间消息不补（桥本身也不回填历史） |
 | 唤醒失败 | 排队被拒（比如 agent 正忙）时留着手里的消息，15 秒后补一次重试 |
 
@@ -144,7 +146,7 @@ pnpm install    # profile 目录
 - id: mondchat-onebot
   config:
     bridge: ws://127.0.0.1:6700    # 桥地址即端口来源；托管桥时子进程绑这里的 host/port
-    # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要
+    # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要；托管时原样传给子进程
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
     # groups: true
     # timezone: Asia/Shanghai     # 空 = 跟随宿主；提示词里的时间与免打扰都按它算
@@ -161,7 +163,7 @@ pnpm install    # profile 目录
     #   quietHours: '23:00-08:00'
 ```
 
-自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/卸载回收，不连 DSH 也不连桥）。
+自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收，不连 DSH 也不连桥）。
 
 ## 不做什么
 

@@ -150,6 +150,7 @@ export class MondChatService {
     async startBridge() {
         if (!this.canManageBridge()) throw new Error('宿主没有 subprocess 服务，不能启停桥')
         if (this.subprocessHandle) return this.bridgeStatus
+        if (this.bridgeStatus.connection === 'connected') throw new Error('已有外部桥在应答，不能重复启动')
         const key = this.accountKey()
         if (!key) throw new Error(`没有账号密钥：填 config.accountKey 或写 ${this.accountKeyFile}`)
 
@@ -169,6 +170,7 @@ export class MondChatService {
                     ...process.env,
                     MONDCHAT_ACCOUNT_KEY: key,
                     MONDCHAT_API_BASE: this.apiBase,
+                    ONEBOT_ACCESS_TOKEN: this.accessToken,
                     // 自选端口：子进程绑定的就是配置里那个地址。
                     ONEBOT_WS_HOST: this.bridgeHost,
                     ONEBOT_WS_PORT: String(this.bridgePort),
@@ -199,6 +201,7 @@ export class MondChatService {
     async stopBridge() {
         const handle = this.subprocessHandle
         if (!handle) {
+            if (this.bridgeStatus.process === 'external') throw new Error('外部桥不由插件托管，不能停止或重启')
             this.bridgeStatus = withProcess(this.bridgeStatus, 'stopped')
             return this.bridgeStatus
         }
@@ -207,6 +210,12 @@ export class MondChatService {
         await handle.waitForExit().catch(() => {})
         this.bridgeStatus = withProcess(this.bridgeStatus, 'stopped')
         return this.bridgeStatus
+    }
+
+    async restartBridge() {
+        if (!this.subprocessHandle) throw new Error('只能重启插件托管的桥')
+        await this.stopBridge()
+        return this.startBridge()
     }
 
     // ---- 设置 ----
