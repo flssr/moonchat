@@ -4,6 +4,9 @@
 abstract interface class MessageCacheStore {
   Map<String, dynamic>? load(int accountId);
   void save(int accountId, Map<String, dynamic> data);
+
+  /// 注销账号后清掉该账号的本机消息缓存；普通退出登录仍然保留，方便重登恢复。
+  void clear(int accountId);
 }
 
 class NoopMessageCacheStore implements MessageCacheStore {
@@ -14,4 +17,7 @@ class NoopMessageCacheStore implements MessageCacheStore {
 
   @override
   void save(int accountId, Map<String, dynamic> data) {}
+
+  @override
+  void clear(int accountId) {}
 }

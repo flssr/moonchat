@@ -1352,6 +1352,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 注销真人账号：密码确认成功后清掉本机会话、消息缓存与该账号头像，再统一回登录页。
+  /// 服务端消息历史保留；本机不留下已注销账号的缓存。
+  Future<void> deleteAccount({required String password}) async {
+    final Account? current = account;
+    final String? token = loginToken;
+    if (current == null || token == null) {
+      throw ApiException(code: 'unauthenticated', message: 'signed out');
+    }
+    if (current.isAgent) {
+      throw ApiException(code: 'forbidden', message: 'agent 账号不能注销');
+    }
+    await api.deleteAccount(token: token, password: password);
+    // logout 会先把当前缓存落一次盘，所以清缓存必须放在它之后。
+    logout();
+    _cache.clear(current.accountId);
+    _syncAvatars(<(int, String?)>[(current.accountId, null)]);
+  }
+
   void _scheduleLoginRenewal() {
     _renewTimer?.cancel();
     final DateTime? expires = loginExpiresAt;

@@ -51,6 +51,9 @@ void main() {
     final Map<String, dynamic>? data = reopened.load(1);
     expect(data?['active'], 'dm:2');
     expect((data?['messages'] as Map<String, dynamic>)['dm:2'], hasLength(1));
+
+    reopened.clear(1);
+    expect(DesktopMessageCacheStore(dir: dir).load(1), isNull);
   });
 
   test('本机文件里的未知头像 key 当作没选过', () {

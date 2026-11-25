@@ -7,6 +7,7 @@ import '../theme.dart';
 import 'account_view.dart';
 import 'blocklist_dialog.dart';
 import 'contacts_view.dart';
+import 'delete_account_dialog.dart';
 import 'messages_view.dart';
 import 'profile_editor.dart';
 import 'profile_panel.dart';
@@ -123,6 +124,9 @@ class _HomeShellState extends State<HomeShell> {
                         notifyOnMessage: widget.notifyOnMessage,
                         onNotifyChanged: widget.onNotifyChanged,
                         onOpenBlocklist: () => showBlocklistDialog(context, state),
+                        onDeleteAccount: state.account?.isAgent == true
+                            ? null
+                            : () => showDeleteAccountDialog(context, state),
                       ),
                       onSelect: state.showView,
                       pendingCount: state.pending.length,

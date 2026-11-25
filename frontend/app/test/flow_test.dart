@@ -268,6 +268,9 @@ class _FakeCache implements MessageCacheStore {
 
   @override
   void save(int accountId, Map<String, dynamic> data) => saved[accountId] = data;
+
+  @override
+  void clear(int accountId) => saved.remove(accountId);
 }
 
 AppState _newState({

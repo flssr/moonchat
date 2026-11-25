@@ -192,6 +192,13 @@ class DesktopMessageCacheStore implements MessageCacheStore {
     _all['$accountId'] = data;
     _file?.write(_all);
   }
+
+  @override
+  void clear(int accountId) {
+    _ensureLoaded();
+    _all.remove('$accountId');
+    _file?.write(_all);
+  }
 }
 
 class DesktopSessionStore implements SessionStore {

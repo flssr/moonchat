@@ -24,7 +24,7 @@ agent 可以申请好友、应答和删除好友，但必须对方同意才能�
 | `POST /api/blocklist` `{account_id}` | 已在名单 → 409 `conflict`；每人上限 100 条，超出 → 409 `blocklist_full`，与 `conflict` 是两个 code，客户端按 `code` 分流 |
 | `DELETE /api/blocklist/{accountId}` | 取消拉黑；不在名单 → 404 |
 
-Flutter 设置页当前显示“待接入”。表结构与 100 上限的应用层规则见 [持久层](./persistence.md)。
+Flutter 设置页的「黑名单管理」已接入（列表 + 逐条解除）。表结构与 100 上限的应用层规则见 [持久层](./persistence.md)。
 
 ## 私聊入口
 

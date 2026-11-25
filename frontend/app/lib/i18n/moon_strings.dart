@@ -178,6 +178,19 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         'A new agent automatically becomes your friend; it joins no groups, so add it manually when needed.',
     '账号密钥（只显示一次）': 'Account key (shown once)',
     '真人': 'Human',
+    // 注销账号
+    '注销账号': 'Delete account',
+    '是否要注销账号，注销账号数据将不再保留':
+        'Delete this account? Its data will no longer be kept.',
+    '账号资料、好友关系、群成员与名下 agent 会一并删除，消息历史保留。群主暂时不能注销。':
+        'Your profile, friendships, group memberships and owned agents will be deleted; message history is kept. Group owners cannot delete their account yet.',
+    '密码不能为空': 'Password is required',
+    '输入当前密码确认': 'Enter your current password to confirm',
+    '确认注销': 'Delete account',
+    '请稍候 {n} 秒': 'Please wait {n}s',
+    '密码不正确': 'Incorrect password',
+    '群主不能注销账号（V1 没有转让或解散）':
+        'The group owner cannot delete the account (V1 has no transfer or disband)',
     // 资料卡 / 资料编辑
     '确认删除 {name}？会话会保留，历史只读。':
         'Delete {name}? The conversation remains, history is read-only.',
@@ -464,6 +477,19 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         '新しいエージェントは自動的にあなたの友人になります。グループには入っていないので、必要なら手動で追加してください。',
     '账号密钥（只显示一次）': 'アカウントキー（一度のみ表示）',
     '真人': '人間',
+    // アカウント削除
+    '注销账号': 'アカウントを削除',
+    '是否要注销账号，注销账号数据将不再保留':
+        'アカウントを削除しますか？削除したデータは保持されません。',
+    '账号资料、好友关系、群成员与名下 agent 会一并删除，消息历史保留。群主暂时不能注销。':
+        'プロフィール、友達関係、グループメンバー、所有するエージェントも削除されます。メッセージ履歴は保持されます。グループオーナーは現在削除できません。',
+    '密码不能为空': 'パスワードを入力してください',
+    '输入当前密码确认': '現在のパスワードを入力して確認',
+    '确认注销': '削除する',
+    '请稍候 {n} 秒': '{n}秒お待ちください',
+    '密码不正确': 'パスワードが正しくありません',
+    '群主不能注销账号（V1 没有转让或解散）':
+        'グループオーナーはアカウントを削除できません（V1には譲渡・解散がありません）',
     // プロフィール
     '确认删除 {name}？会话会保留，历史只读。':
         '{name}を削除しますか？会話は残り、履歴は読み取り専用です。',
@@ -748,6 +774,19 @@ const Map<String, Map<String, String>> _tables = <String, Map<String, String>>{
         'Ein neuer Agent wird automatisch dein Freund; er ist in keiner Gruppe, füge ihn bei Bedarf manuell hinzu.',
     '账号密钥（只显示一次）': 'Konto-Schlüssel (einmalig)',
     '真人': 'Mensch',
+    // Konto löschen
+    '注销账号': 'Konto löschen',
+    '是否要注销账号，注销账号数据将不再保留':
+        'Konto wirklich löschen? Die Daten werden nicht aufbewahrt.',
+    '账号资料、好友关系、群成员与名下 agent 会一并删除，消息历史保留。群主暂时不能注销。':
+        'Profil, Freundschaften, Gruppenmitgliedschaften und eigene Agenten werden gelöscht; der Nachrichtenverlauf bleibt erhalten. Gruppeninhaber können ihr Konto noch nicht löschen.',
+    '密码不能为空': 'Passwort erforderlich',
+    '输入当前密码确认': 'Aktuelles Passwort zur Bestätigung eingeben',
+    '确认注销': 'Konto löschen',
+    '请稍候 {n} 秒': 'Bitte {n}s warten',
+    '密码不正确': 'Passwort falsch',
+    '群主不能注销账号（V1 没有转让或解散）':
+        'Der Gruppeninhaber kann das Konto nicht löschen (V1 hat weder Übertragung noch Auflösung)',
     // Profil
     '确认删除 {name}？会话会保留，历史只读。':
         '{name} löschen? Unterhaltung bleibt, Verlauf schreibgeschützt.',
