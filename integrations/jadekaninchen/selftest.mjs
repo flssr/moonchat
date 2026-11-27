@@ -298,6 +298,10 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     const coffee = core.search('咖啡', { conversation: 'private:100000004' })
     assert.equal(coffee[0].fact.text, '张三不喜欢喝咖啡', '只召回仍有效的新事实')
     assert.deepEqual(core.search('咖啡', { conversation: 'group:1' }), [], '长期事实不跨到群')
+    core.add({
+        text: '张三的另一个秘密', conversation: 'private:100000005', subject: '100000004', at: 4_000,
+    })
+    assert.deepEqual(core.search('秘密', { conversation: 'private:100000004' }), [], '事实不跨私聊')
     const parsed = parseCompression('前言 {"summary":"摘要","facts":[{"text":"喜欢咖啡","importance":2}]} 后记')
     assert.equal(parsed.summary, '摘要')
     assert.equal(parsed.facts[0].importance, 1, '重要度夹到 0..1')

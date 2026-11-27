@@ -73,13 +73,9 @@ function normalizeFact(fact) {
     }
 }
 
-/** 会话隔离；关于某个人的事实只在该人的私聊里可见，不进群。 */
+/** 会话隔离：事实只在被提炼出来的那个会话可见，不跨私聊、也不进群。 */
 function visible(fact, conversation) {
-    if (fact.status !== 'active') return false
-    if (fact.conversation === conversation) return true
-    const privatePeer = String(conversation).startsWith('private:') ? String(conversation).slice(8) : ''
-    return Boolean(fact.subject && privatePeer && fact.subject === privatePeer
-        && String(fact.conversation).startsWith('private:'))
+    return fact.status === 'active' && fact.conversation === conversation
 }
 
 function buildIndex(facts) {
