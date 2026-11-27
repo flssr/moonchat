@@ -88,6 +88,7 @@ export class MondChatService {
             retainDays: Math.max(1, Number(memory.retainDays) || 30),
         }
         this.compressing = new Set()
+        this.lastPruneAt = Date.now()
         try {
             this.memory.prune(this.memoryPolicy.retainDays)
         } catch (error) {
@@ -698,6 +699,14 @@ export class MondChatService {
         for (const conversation of this.conversations.values()) {
             this.maybeCompress(conversation.key, { idleOnly: true })
                 .catch((error) => this.log(`空闲整理 ${conversation.key} 记忆失败：`, error.message))
+        }
+        if (now - this.lastPruneAt > 3_600_000) {
+            this.lastPruneAt = now
+            try {
+                this.memory.prune(this.memoryPolicy.retainDays)
+            } catch (error) {
+                this.log('定时清理旧原话失败：', error.message)
+            }
         }
     }
 
