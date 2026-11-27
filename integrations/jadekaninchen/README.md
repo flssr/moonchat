@@ -23,7 +23,12 @@ src/
     send.js           mondchat_send：在当前会话发言
     recall.js         mondchat_recall：读本地长期记忆
     present.js        ContentBlock 与 OneBot 消息段的呈现辅助
-  memory/store.js     会话记忆：JSONL 追加、recent/search
+  memory/
+    store.js          原话层：JSONL 追加、按会话读、30 天保留期
+    short.js          短期层：每会话滚动摘要
+    core.js           长期层：结构化事实 + BM25
+    compress.js       压缩提示词、模型输出解析与夹紧
+    model.js          后台记忆任务的最小宿主模型调用
   bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
   model/              纯数据与纯函数，能脱离宿主单测
     conversation.js   ConversationId、Conversation、describe/titleOf
@@ -69,7 +74,8 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 
 - 声明式配置（桥地址、时区、语言、闸门默认值）进 profile patch，经 `configEditor` 写；
 - 运行时数据（每会话覆盖、会话映射）进 `state.json`；两者互不覆盖；
-- 记忆进 `$DSH_HOME/mondchat/memory.jsonl`，可用 `memoryFile` 覆盖；只追加、不参与 `state.json` 的整体重写；
+- 记忆分三层：原话进 `$DSH_HOME/mondchat/memory.jsonl`，短期摘要进 `memory-short.json`，长期事实进 `memory-core.json`；可用 `memoryFile` / `shortMemoryFile` / `coreMemoryFile` 覆盖；
+- 原话只追加，不参与 `state.json` 的整体重写；摘要和事实单独原子替换；
 - 密钥只从 `accountKey` 或 `accountKeyFile` 读，不进日志、不进 `state.json`、不写进 patch。
 
 **测试**
@@ -133,13 +139,30 @@ mock 起来后按提示在终端输入：`p <文本>` 发私聊，`g <文本>` �
 | 一个 MondChat 私聊/群 | 一个 DSH 会话，映射存在 `$DSH_HOME/mondchat/state.json`，重启后接着用 |
 | 来消息 | 进内存队列，3 秒去抖后给会话发一句唤醒语 |
 | agent 看消息 | 调 `mondchat_unread`；读走即清空，不重复出现 |
-| agent 回忆 | 调 `mondchat_recall`；读本地记忆，取走队列或重启后仍在，可按关键词检索 |
+| agent 回忆 | 调 `mondchat_recall`；短期摘要 + 长期事实 + 原话兜底，取走队列或重启后仍在，可按关键词检索 |
+| 记忆整理 | 原话攒到阈值或会话空闲时，后台调一次宿主模型：更早的段落压成短期摘要，重要事实进核心记忆；永远保留最后 `tailMessages` 条原话 |
 | agent 发言 | 调 `mondchat_send`；不调就是不想说，没有哨兵文本、没有自动转发 |
 | 权限 | 会话建好后按 `permissionPresets` 里 `sandbox === 'read-only'` 的档位压成只读 |
 | 主动话题 | 每个会话各自的闸门：安静满 `idleMinutes`、不在免打扰时段、每小时不超过 `maxPerHour` |
 | 桥进程 | 可由面板托管（`subprocess.spawn`），也可自己在外面跑；插件只负责连，不接管外部桥的启停 |
 | 断线 | 桥不可达时指数退避重连（最长 30 秒），期间消息不补（桥本身也不回填历史） |
 | 唤醒失败 | 排队被拒（比如 agent 正忙）时留着手里的消息，15 秒后补一次重试 |
+
+## 记忆
+
+三层，互不替代：
+
+| 层 | 存什么 | 在哪 |
+| --- | --- | --- |
+| 原话 | 每条入站/出站消息，保留 30 天 | `memory.jsonl` |
+| 短期 | 每个会话一段滚动摘要，覆盖更早的段落 | `memory-short.json` |
+| 长期 | 结构化事实（文本、主体、重要度、是否过时） | `memory-core.json` |
+
+- 触发：原话攒到 `compressMessages` 条或 `compressChars` 字符，或会话空闲 `idleMinutes` 分钟后，后台调一次宿主模型；永远保留最后 `tailMessages` 条原话，压缩边界附近不会只剩摘要。
+- 长期事实先和同会话、同主体的旧事实比对：能合并就合并，冲突（否定词/数字不同）把旧的标 `stale`，不直接删。检索用中文二元切词 + BM25，再乘重要度和新近程度。
+- 作用域：事实默认只在原会话可见；关于某个人的事实只在该人的私聊里可见，不进群。短期摘要也按会话隔离。
+- 失败：模型不可用、输出不是合法 JSON 或调用失败时，原话和旧摘要都不动，下次再试；摘要先落盘成功，原话仍按保留期管理。
+- 成本：一次整理最多一次模型调用，只有在阈值/空闲触发时才发生；不做向量检索，不引 embedding。
 
 ## 挂载
 
@@ -167,6 +190,15 @@ pnpm install    # profile 目录
     # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要；托管时原样传给子进程
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
     # memoryFile: /path/to/memory.jsonl   # 默认 $DSH_HOME/mondchat/memory.jsonl
+    # shortMemoryFile: /path/to/memory-short.json
+    # coreMemoryFile: /path/to/memory-core.json
+    # memory:
+    #   auto: true                 # false = 只手动 compressNow
+    #   compressMessages: 40      # 攒够多少条原话触发
+    #   compressChars: 24000      # 或攒够多少字符触发
+    #   tailMessages: 12          # 压缩时永远留多少条原话
+    #   idleMinutes: 10           # 空闲多久后整理
+    #   retainDays: 30            # 原话保留天数
     # groups: true
     # timezone: Asia/Shanghai     # 空 = 跟随宿主；提示词里的时间与免打扰都按它算
     # language: zh                # 回复语言，写进提示词的 <language>
@@ -182,7 +214,7 @@ pnpm install    # profile 目录
     #   quietHours: '23:00-08:00'
 ```
 
-自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/记忆写入与检索，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
+自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/三层记忆写入、合并、检索、压缩解析与提示词注入，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
 
 ## 不做什么
 
@@ -190,4 +222,4 @@ pnpm install    # profile 目录
 - 不转发图片/文件（平台没有附件）；
 - 不做白名单：能不能私聊由 MondChat 的好友关系决定，能不能在群里说话由群成员关系决定；
 - 不把工具注册成全局：只在它自己建出来的会话里可见，你自己的 DSH 会话不会多出 `mondchat_*`；
-- 记忆只做本地消息事实（JSONL 追加 + 子串检索），不做摘要、向量库或模型调用；需要时再在 `src/memory/` 上扩。
+- 记忆只在本机：原话 + 短期摘要 + 结构化事实，不做向量检索、不做平台托管记忆；需要语义召回时再在 `src/memory/` 上扩。

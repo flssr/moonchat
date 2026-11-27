@@ -1,6 +1,7 @@
-// 会话记忆：一个 JSONL 文件，追加写、按会话读。
-// 只存消息事实（谁、什么时候、说了什么、方向），不做摘要也不调模型；检索是大小写不敏感的子串。
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
+// 原话层：一个 JSONL 文件，追加写、按会话读。
+// 不在这里做摘要或模型调用；短期摘要和长期事实分别在 short.js / core.js。
+import { randomUUID } from 'node:crypto'
+import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 const TEXT_LIMIT = 2_000
@@ -18,6 +19,7 @@ function normalize(record) {
     if (!conversation || !text.trim()) return null
     const at = Number(record?.at)
     return {
+        id: String(record?.id ?? ''),
         at: Number.isFinite(at) && at > 0 ? at : Date.now(),
         conversation,
         direction: record?.direction === 'out' ? 'out' : 'in',
@@ -31,9 +33,9 @@ export function createMemoryStore({ file }) {
     if (!file) throw new Error('记忆文件路径不能为空')
     mkdirSync(dirname(file), { recursive: true })
 
-    // ponytail: 单文件只追加、不压缩；记录量上来后按大小轮转或换成 SQLite。
+    // ponytail: 单文件只追加，按保留期轮转；记录量再大就换 SQLite。
     function append(record) {
-        const entry = normalize(record)
+        const entry = normalize({ ...record, id: record?.id || randomUUID() })
         if (!entry) return null
         appendFileSync(file, `${JSON.stringify(entry)}\n`)
         return entry
@@ -59,12 +61,13 @@ export function createMemoryStore({ file }) {
         return entries
     }
 
-    function recent(conversation, limit = 20) {
+    function list(conversation) {
         const key = String(conversation ?? '')
-        if (!key) return []
-        return readAll()
-            .filter((entry) => entry.conversation === key)
-            .slice(-normalizeLimit(limit))
+        return key ? readAll().filter((entry) => entry.conversation === key) : []
+    }
+
+    function recent(conversation, limit = 20) {
+        return list(conversation).slice(-normalizeLimit(limit))
     }
 
     function search(query, { conversation = '', limit = 20 } = {}) {
@@ -77,6 +80,18 @@ export function createMemoryStore({ file }) {
             .slice(-normalizeLimit(limit))
     }
 
+    /** 按保留期清理原话；摘要不依赖原话还在，所以删旧记录是安全的。 */
+    function prune(days = 30, now = Date.now()) {
+        const cutoff = now - Math.max(1, Number(days) || 30) * 86400_000
+        const entries = readAll()
+        const kept = entries.filter((entry) => entry.at >= cutoff)
+        if (kept.length === entries.length) return 0
+        const temp = `${file}.tmp`
+        writeFileSync(temp, kept.map((entry) => `${JSON.stringify(entry)}\n`).join(''))
+        renameSync(temp, file)
+        return entries.length - kept.length
+    }
+
     function stats() {
         const entries = readAll()
         return {
@@ -85,5 +100,5 @@ export function createMemoryStore({ file }) {
         }
     }
 
-    return { file, append, recent, search, stats }
+    return { file, append, list, recent, search, prune, stats }
 }
