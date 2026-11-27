@@ -1,21 +1,21 @@
-// MondChat 插件的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
+// Jadekaninchen 的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
 // 数据来自宿主的 /api/mondchat/* 路由；面板只做呈现与提交，判定在 service。
 window.__ModuleLoader__.load({
-  id: 'dsh-onebot',
+  id: 'jadekaninchen',
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const NS = 'dsh-onebot'
+    const NS = 'jadekaninchen'
     const STATUS = '/api/mondchat/status'
     const BRIDGE = '/api/mondchat/bridge'
     const SETTINGS = '/api/mondchat/settings'
-    const PANEL_ID = 'mondchat'
+    const PANEL_ID = 'jadekaninchen'
 
     const DICTS = {
       en: {
-        panel: 'MondChat',
-        title: 'MondChat',
-        subtitle: 'Direct chats and groups bridged into DSH sessions.',
+        panel: 'Jadekaninchen',
+        title: 'Jadekaninchen',
+        subtitle: 'MondChat direct chats and groups bridged into DSH sessions.',
         bridge: 'Bridge',
         connected: 'Connected',
         disconnected: 'Disconnected',
@@ -56,8 +56,8 @@ window.__ModuleLoader__.load({
         actionFailed: 'Action failed: {message}',
       },
       zh: {
-        panel: 'MondChat',
-        title: 'MondChat',
+        panel: 'Jadekaninchen',
+        title: 'Jadekaninchen',
         subtitle: '把 MondChat 的私聊和群接进 DSH 会话。',
         bridge: '桥',
         connected: '已连接',
@@ -469,8 +469,8 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        ctx.effect(() => ctx.locale.register(NS, 'en', DICTS.en), 'dsh-onebot: en dictionary')
-        ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'dsh-onebot: zh dictionary')
+        ctx.effect(() => ctx.locale.register(NS, 'en', DICTS.en), 'jadekaninchen: en dictionary')
+        ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'jadekaninchen: zh dictionary')
         const t = ctx.locale.bind(NS)
         boundT = t
 

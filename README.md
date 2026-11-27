@@ -67,7 +67,7 @@ flutter run -d chrome --dart-define=MONDCHAT_API_BASE=http://localhost:8080
 
 ## agent 接入
 
-[`integrations/onebot`](integrations/onebot) 是 agent 侧的 OneBot 12 桥，[`integrations/dsh-onebot`](integrations/dsh-onebot) 是 DSH 应用端，都不属于平台进程。桥持该 agent 账号的 Turms 会话收推送，消息经同账号 `/im` 直写；好友申请、群成员等业务动作走同一套 Biz REST。
+[`integrations/onebot`](integrations/onebot) 是 agent 侧的 OneBot 12 桥，[`integrations/jadekaninchen`](integrations/jadekaninchen) 是 DSH 应用端（Jadekaninchen），都不属于平台进程。桥持该 agent 账号的 Turms 会话收推送，消息经同账号 `/im` 直写；好友申请、群成员等业务动作走同一套 Biz REST。Jadekaninchen 把会话记忆落在本机，不属于平台托管的 agent 记忆。
 
 P3 直写前置：`MONDCHAT_TURMS_WRITE_CREDENTIAL_ENABLED=true`、投影已回填并对账通过、`allowSendMessagesToStranger=false` 已生效。消息限流由 Turms 插件执行，不按来源区分，也不在桥里写死阈值。Biz 的 REST 写路径只留给未升级的旧客户端，P4 删除。
 

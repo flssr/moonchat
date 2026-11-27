@@ -2,7 +2,7 @@
 // （用假 WebSocket 模拟桥，覆盖真实 WS 客户端那条路径）。不需要 DSH，也不需要桥。
 // 跑法：node selftest.mjs
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { appendFileSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,7 +13,7 @@ const { createRuntime, inQuietHours } = plugin
 
 // ---- 插件契约：DSH 靠这三个导出挂载 ----
 
-assert.equal(plugin.name, 'mondchat-onebot')
+assert.equal(plugin.name, 'jadekaninchen')
 assert.deepEqual(plugin.inject, ['tools', 'sessions', 'sessionController'])
 assert.equal(typeof plugin.apply, 'function')
 
@@ -52,7 +52,7 @@ function makeHost(options = {}) {
         },
     }
     state.configEditor = {
-        entries: () => [{ id: 'mondchat-onebot', name: 'dsh-onebot' }],
+        entries: () => [{ id: 'jadekaninchen', name: 'jadekaninchen' }],
         async edit(entry, change) {
             state.edits.push({ entry: entry.id, config: change({ bridge: 'ws://127.0.0.1:6700' }, {}) })
         },
@@ -233,6 +233,28 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(withProcess(state, 'running').lastError, '')
 }
 
+// ---- 记忆：按会话隔离、可跨实例读回、坏行跳过 ----
+
+{
+    const { createMemoryStore } = await import('./src/memory/store.js')
+    const file = join(process.env.DSH_HOME, 'memory-store-test.jsonl')
+    const store = createMemoryStore({ file })
+    assert.ok(store.append({
+        conversation: 'private:1', direction: 'in', userId: '2', text: 'Hello', at: 1_000,
+    }))
+    assert.ok(store.append({
+        conversation: 'private:1', direction: 'out', text: 'World', at: 2_000,
+    }))
+    assert.equal(store.append({ conversation: 'private:1', text: '   ' }), null, '空文本不进记忆')
+    appendFileSync(file, 'not a json line\n')
+
+    const reopened = createMemoryStore({ file })
+    assert.deepEqual(reopened.recent('private:1').map((entry) => entry.text), ['Hello', 'World'])
+    assert.deepEqual(reopened.recent('private:2'), [], '会话之间不串')
+    assert.deepEqual(reopened.search('hello', { conversation: 'private:1' }).map((entry) => entry.text), ['Hello'])
+    assert.deepEqual(reopened.stats(), { records: 2, conversations: 1 })
+}
+
 // ---- 安静时段 ----
 
 assert.equal(inQuietHours(new Date('2026-11-21T23:30:00').getTime(), '23:00-08:00'), true)
@@ -257,6 +279,10 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.match(first, /张三\(100000004\): 在吗/, '消息行要带名字 + id')
     assert.equal(await unread.execute({}, {}), '没有未读消息。', '读走就清空')
 
+    const recall = state.tools.get('mondchat_recall')
+    assert.ok(recall, '要挂记忆工具')
+    assert.match(await recall.execute({}), /张三\(100000004\): 在吗/, '读走队列后记忆仍在')
+
     const send = state.tools.get('mondchat_send')
     const sent = await send.execute({ text: '在的' }, {})
     assert.equal(sent.message_id, '1882482168775573500')
@@ -264,6 +290,9 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.equal(state.sends[0].params.user_id, '100000004')
     assert.equal(state.sends[0].params.message[0].data.text, '在的')
     await assert.rejects(() => send.execute({ text: '   ' }, {}), /不能为空/)
+
+    assert.match(await recall.execute({ query: '在的' }), /我: 在的/, '自己发的也要进记忆')
+    assert.equal(await recall.execute({ query: '不存在' }), '没有找到匹配的记忆。')
 
     assert.deepEqual(state.presetSets.map((x) => x.name), ['ro'], '会话要设成只读预设')
     assert.equal(state.renames.length, 1, '新建会话要起个认得出的标题')
@@ -366,12 +395,13 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     const { rt, state } = fakeHost()
     await rt.ensureSession('private:100000004')
     const first = state.registrations
-    assert.equal(first, 2, '两个工具各注册一次')
+    assert.equal(first, 3, '三个工具各注册一次')
 
     state.live.clear() // 模拟会话被归档/销毁，会话 id 不变
     await rt.ensureSession('private:100000004')
     assert.ok(state.registrations > first, '旧 agent 没了要重新挂工具，不能按会话 id 去重')
     assert.ok(state.tools.has('mondchat_send'))
+    assert.ok(state.tools.has('mondchat_recall'))
 }
 
 // ---- 唤醒失败要补一次重试，别把消息永远留在队列里 ----
@@ -609,4 +639,4 @@ class FakeSocket {
     assert.equal(socket.readyState, 3, '卸载后连接要关掉')
 }
 
-console.log('[dsh-onebot] selftest ok')
+console.log('[jadekaninchen] selftest ok')

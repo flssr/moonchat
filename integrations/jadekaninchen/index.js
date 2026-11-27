@@ -1,4 +1,4 @@
-// MondChat ⇄ DSH 的装配层：只做三件事——建服务、把它提供给别的插件、挂路由。
+// Jadekaninchen：MondChat ⇄ DSH 的装配层，只做三件事——建服务、提供给别的插件、挂路由。
 // 业务在 src/service.js，协议在 src/bridge/，视图在 client.js。
 //
 // 设计前提（与本仓库 docs 一致）：
@@ -12,7 +12,7 @@ import { MondChatService } from './src/service.js'
 
 export { inQuietHours } from './src/model/settings.js'
 
-export const name = 'mondchat-onebot'
+export const name = 'jadekaninchen'
 export const inject = ['tools', 'sessions', 'sessionController']
 
 export function apply(ctx, config = {}) {
@@ -27,7 +27,7 @@ export function apply(ctx, config = {}) {
 }
 
 export function createRuntime(ctx, config = {}, deps = {}) {
-  const log = (...args) => console.log('[mondchat]', ...args)
+  const log = (...args) => console.log('[jadekaninchen]', ...args)
   const service = new MondChatService({ ctx, config, deps, log })
 
   return {
@@ -36,7 +36,7 @@ export function createRuntime(ctx, config = {}, deps = {}) {
       ctx.effect(() => {
         service.start()
         return () => service.dispose()
-      }, 'mondchat: service')
+      }, 'jadekaninchen: service')
       registerRoutes(ctx, service, { log })
     },
     ingest: (event) => service.ingest(event),

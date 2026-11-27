@@ -1,9 +1,9 @@
 {
-  "name": "dsh-onebot",
-  "version": "0.1.0",
+  "name": "jadekaninchen",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "把 MondChat 的私聊/群接成 DSH 会话的 OneBot 12 应用端",
+  "description": "Jadekaninchen：把 MondChat 的私聊/群接成 DSH 会话的 OneBot 12 应用端",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
@@ -20,10 +20,13 @@
     "icon.svg",
     "README.md",
     "src",
-    "selftest.mjs"
+    "selftest.mjs",
+    "mock-onebot.mjs",
+    "mock-onebot.test.mjs"
   ],
   "scripts": {
-    "test": "node selftest.mjs"
+    "test": "node selftest.mjs && node mock-onebot.test.mjs",
+    "mock": "node mock-onebot.mjs"
   },
   "dsh": {
     "bundle": {

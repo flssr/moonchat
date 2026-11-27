@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### Jadekaninchen：DSH 应用端改名与本地记忆 MVP
+
+2026-11-27 19:10 CET   [2026-11-27 18:10 UTC]
+
+决策：`integrations/dsh-onebot` 改名为 `integrations/jadekaninchen`，插件标识改为 `jadekaninchen`，面板与本地化标题统一为 Jadekaninchen；新增 `src/memory/store.js`，按会话把入站/出站消息追加到 `$DSH_HOME/mondchat/memory.jsonl`，提供最近 N 条与大小写不敏感子串检索；新增只读工具 `mondchat_recall`。同时新增 `mock-onebot.mjs`（无依赖的最小 OneBot 12 WebSocket 服务端），在 IM 维护期间冒充桥，供插件联调。
+
+原因：记忆属于 agent 侧，放在 DSH 应用端而不是平台或桥里，保持「平台不托管 agent 记忆」的边界。先用消息事实落盘 + 子串检索，不引入摘要、向量库或模型；JSONL 只追加，记录量上来后再做轮转。IM 的网关→服务通道未恢复前，单测与联调不能依赖真桥，mock 只实现插件用到的动作与事件。
+
 ### Turms 插件限流默认值
 
 2026-11-26 01:44 CST   [2026-11-25 17:44 UTC]

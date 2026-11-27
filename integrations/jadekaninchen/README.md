@@ -1,8 +1,8 @@
-# dsh-onebot
+# Jadekaninchen
 
-把 MondChat 的私聊和群接成 DSH 会话：MondChat 里有人说话 → 唤醒对应会话 → agent 自己决定看不看、回不回。
+Jadekaninchen 是 [OneBot 桥](../onebot) 的 DSH 应用端：把 MondChat 的私聊和群接成 DSH 会话，MondChat 里有人说话 → 唤醒对应会话 → agent 自己决定看不看、回不回。
 
-它是 [OneBot 桥](../onebot) 的应用端，不直接连 Turms，也不碰 MondChat 的数据库。桥与插件都在 agent 侧：消息经该 agent 同账号的 Turms `/im` 直写，好友申请、群成员等业务动作仍走 Biz。
+它不直接连 Turms，也不碰 MondChat 的数据库。桥与插件都在 agent 侧：消息经该 agent 同账号的 Turms `/im` 直写，好友申请、群成员等业务动作仍走 Biz。
 
 ```
 MondChat ── 桥（integrations/onebot）── OneBot 12/WS ── 本插件 ── DSH 会话
@@ -21,7 +21,9 @@ src/
   tools/              每个工具一个文件
     unread.js         mondchat_unread：取走积压消息
     send.js           mondchat_send：在当前会话发言
+    recall.js         mondchat_recall：读本地长期记忆
     present.js        ContentBlock 与 OneBot 消息段的呈现辅助
+  memory/store.js     会话记忆：JSONL 追加、recent/search
   bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
   model/              纯数据与纯函数，能脱离宿主单测
     conversation.js   ConversationId、Conversation、describe/titleOf
@@ -30,7 +32,9 @@ src/
     prompt.js         结构化提示词（context/language/task/rules/example）
     wake.js           唤醒原因
     bridge.js         BridgeState（进程态 / 连接态分开）
-selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/面板数据
+mock-onebot.mjs       简易 OneBot 12 mock 服务端：没有 IM 时冒充桥
+mock-onebot.test.mjs  mock 服务的真实 WS 冒烟
+selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/记忆
 ```
 
 分层只有两条：**`model/` 不碰宿主**（可以单独 assert）；**`routes.js` 不写业务**（校验 + 调 service）。其余按 DSH 的插件习惯，`service.js` 之外没有框架。
@@ -65,6 +69,7 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 
 - 声明式配置（桥地址、时区、语言、闸门默认值）进 profile patch，经 `configEditor` 写；
 - 运行时数据（每会话覆盖、会话映射）进 `state.json`；两者互不覆盖；
+- 记忆进 `$DSH_HOME/mondchat/memory.jsonl`，可用 `memoryFile` 覆盖；只追加、不参与 `state.json` 的整体重写；
 - 密钥只从 `accountKey` 或 `accountKeyFile` 读，不进日志、不进 `state.json`、不写进 patch。
 
 **测试**
@@ -82,10 +87,22 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 **改完怎么验**
 
 ```powershell
-cd integrations/dsh-onebot && npm test
-# 真宿主里重载：plugin_manager set_bundle dsh-onebot(false) → 再 true
+cd integrations/jadekaninchen && npm test
+# 真宿主里重载：plugin_manager set_bundle jadekaninchen(false) → 再 true
 # 然后看 6700 上有没有连接（插件 ↔ 桥）
 ```
+
+## 没有 IM 时怎么测
+
+Turms/IM 在维护时，不需要等真桥：用仓库里的 `mock-onebot.mjs` 冒充 `integrations/onebot` 的 6700 端口，发私聊/群消息给插件，插件的记忆、唤醒和工具都照常跑。
+
+```powershell
+cd integrations/jadekaninchen
+node mock-onebot.mjs --port 6700
+# 另一个窗口：把插件配置的 bridge 指到 ws://127.0.0.1:6700
+```
+
+mock 起来后按提示在终端输入：`p <文本>` 发私聊，`g <文本>` 发群聊，`q` 退出。`--interval 5000` 可以每 5 秒自动发一条；`--text` 起来后先发一条。它只实现插件用到的动作和事件，不连 Turms，也不写数据库。
 
 **不做**
 
@@ -116,6 +133,7 @@ cd integrations/dsh-onebot && npm test
 | 一个 MondChat 私聊/群 | 一个 DSH 会话，映射存在 `$DSH_HOME/mondchat/state.json`，重启后接着用 |
 | 来消息 | 进内存队列，3 秒去抖后给会话发一句唤醒语 |
 | agent 看消息 | 调 `mondchat_unread`；读走即清空，不重复出现 |
+| agent 回忆 | 调 `mondchat_recall`；读本地记忆，取走队列或重启后仍在，可按关键词检索 |
 | agent 发言 | 调 `mondchat_send`；不调就是不想说，没有哨兵文本、没有自动转发 |
 | 权限 | 会话建好后按 `permissionPresets` 里 `sandbox === 'read-only'` 的档位压成只读 |
 | 主动话题 | 每个会话各自的闸门：安静满 `idleMinutes`、不在免打扰时段、每小时不超过 `maxPerHour` |
@@ -130,8 +148,8 @@ cd integrations/dsh-onebot && npm test
 ```jsonc
 // package.json
 {
-  "dependencies": { "dsh-onebot": "link:D:/CODE_SPACE/MoonChat/integrations/dsh-onebot" },
-  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-onebot"] } }
+  "dependencies": { "jadekaninchen": "link:D:/CODE_SPACE/MoonChat/integrations/jadekaninchen" },
+  "dsh": { "profile": { "bundles": ["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "jadekaninchen"] } }
 }
 ```
 
@@ -143,11 +161,12 @@ pnpm install    # profile 目录
 配置写在 profile 的 `cordis.patch.yml`：
 
 ```yaml
-- id: mondchat-onebot
+- id: jadekaninchen
   config:
     bridge: ws://127.0.0.1:6700    # 桥地址即端口来源；托管桥时子进程绑这里的 host/port
     # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要；托管时原样传给子进程
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
+    # memoryFile: /path/to/memory.jsonl   # 默认 $DSH_HOME/mondchat/memory.jsonl
     # groups: true
     # timezone: Asia/Shanghai     # 空 = 跟随宿主；提示词里的时间与免打扰都按它算
     # language: zh                # 回复语言，写进提示词的 <language>
@@ -163,11 +182,12 @@ pnpm install    # profile 目录
     #   quietHours: '23:00-08:00'
 ```
 
-自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收，不连 DSH 也不连桥）。
+自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/记忆写入与检索，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
 
 ## 不做什么
 
 - 不读 MondChat 的未读角标、也不替 agent 上报已读——桥不暴露那条路径，agent 的“未读”就是它队列里没取走的；
 - 不转发图片/文件（平台没有附件）；
 - 不做白名单：能不能私聊由 MondChat 的好友关系决定，能不能在群里说话由群成员关系决定；
-- 不把工具注册成全局：只在它自己建出来的会话里可见，你自己的 DSH 会话不会多出 `mondchat_*`。
+- 不把工具注册成全局：只在它自己建出来的会话里可见，你自己的 DSH 会话不会多出 `mondchat_*`；
+- 记忆只做本地消息事实（JSONL 追加 + 子串检索），不做摘要、向量库或模型调用；需要时再在 `src/memory/` 上扩。

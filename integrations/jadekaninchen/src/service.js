@@ -15,7 +15,8 @@ import {
     takeMessages,
     titleOf as sessionTitleOf,
 } from './model/conversation.js'
-import { parseInbound } from './model/message.js'
+import { parseInbound, textOfSegments } from './model/message.js'
+import { createMemoryStore } from './memory/store.js'
 import { buildWakePrompt } from './model/prompt.js'
 import {
     LANGUAGES,
@@ -33,7 +34,7 @@ const TICK_MS = 60_000
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
 export class MondChatService {
-    constructor({ ctx, config = {}, deps = {}, log = (...args) => console.log('[mondchat]', ...args) }) {
+    constructor({ ctx, config = {}, deps = {}, log = (...args) => console.log('[jadekaninchen]', ...args) }) {
         this.ctx = ctx
         this.config = config
         this.log = log
@@ -63,6 +64,10 @@ export class MondChatService {
         mkdirSync(this.home, { recursive: true })
 
         this.statePath = join(this.home, 'state.json')
+        // 记忆是本地事实，不进 state.json：一个会话一长串，和可整体重写的状态分开存。
+        this.memory = createMemoryStore({
+            file: config.memoryFile ?? join(this.home, 'memory.jsonl'),
+        })
         this.state = this.loadState()
         this.global = normalizeGlobal(config)
         this.overrides = normalizeOverrides(this.state.settings)
@@ -227,8 +232,8 @@ export class MondChatService {
             throw new Error('宿主没有 configEditor，不能改全局设置')
         }
         const entries = editor.entries()
-        const entry = entries.find((item) => item.id === 'mondchat-onebot')
-            ?? entries.find((item) => item.name === 'dsh-onebot')
+        const entry = entries.find((item) => item.id === 'jadekaninchen')
+            ?? entries.find((item) => item.name === 'jadekaninchen')
         if (!entry) throw new Error('找不到插件在 profile 里的配置项')
 
         const next = {}
@@ -302,6 +307,14 @@ export class MondChatService {
     ingest(event) {
         const parsed = parseInbound(event, { groupsEnabled: this.global.groups })
         if (!parsed) return
+        this.memory.append({
+            conversation: parsed.conversation,
+            direction: 'in',
+            userId: parsed.message.userId,
+            text: parsed.message.text,
+            messageId: parsed.message.messageId,
+            at: parsed.message.at > 0 ? parsed.message.at * 1000 : Date.now(),
+        })
         const next = this.put(recordMessage(this.conversationFor(parsed.conversation), parsed.message))
         this.scheduleWake(next.key, inboundReason(next.queue.length))
     }
@@ -504,7 +517,25 @@ export class MondChatService {
             ...(conversation.kind === 'group' ? { group_id: conversation.id } : { user_id: conversation.id }),
             message: segments,
         })
-        return { message_id: String(result?.message_id ?? '') }
+        const messageId = String(result?.message_id ?? '')
+        const text = textOfSegments(segments)
+        if (text.trim()) {
+            this.memory.append({
+                conversation: key,
+                direction: 'out',
+                text,
+                messageId,
+                at: Date.now(),
+            })
+        }
+        return { message_id: messageId }
+    }
+
+    /** 记忆只读：按会话取最近 N 条；有 query 就做大小写不敏感的子串检索。 */
+    recall(key, { query = '', limit = 20 } = {}) {
+        return query
+            ? this.memory.search(query, { conversation: key, limit })
+            : this.memory.recent(key, limit)
     }
 
     // ---- 主动话题 ----
