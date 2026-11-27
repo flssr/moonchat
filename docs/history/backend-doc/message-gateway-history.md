@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### Jadekaninchen：核心事实迁 SQLite + FTS5
+
+2026-11-27 22:05 CET   [2026-11-27 21:05 UTC]
+
+决策：长期事实从 `memory-core.json` 迁到 `memory-core.sqlite`，用 `node:sqlite` + FTS5 做中文二元切词的 BM25；写一套 `search_text`，FTS5 只索引它，查询也走同一套切词。事实仍按会话隔离，合并/过时/容量规则不变；旧 JSON 在空库首次启动时自动导入，成功后改名 `.migrated`。`node:sqlite` 或 FTS5 不可用时回退原 JSON 后端。原话 JSONL 与短期摘要文件不动。
+
+原因：手写 JSON 全量扫描和自建 BM25 在事实量上来后既慢又难维护；SQLite 自带事务、索引和 FTS5，仍是本地单文件，不需要新增服务。暂不引 `sqlite-vec`：向量还需要 embedding 来源和原生扩展分发，当前先把 BM25 主检索做稳。
+
 ### Jadekaninchen：三层记忆（原话 / 短期摘要 / 长期事实）
 
 2026-11-27 21:30 CET   [2026-11-27 20:30 UTC]

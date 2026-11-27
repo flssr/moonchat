@@ -2,7 +2,7 @@
 // （用假 WebSocket 模拟桥，覆盖真实 WS 客户端那条路径）。不需要 DSH，也不需要桥。
 // 跑法：node selftest.mjs
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -279,8 +279,10 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     short.set('private:1', { summary: '在聊咖啡', throughId: 'm2', throughAt: 2_000 })
     assert.equal(createShortStore({ file: shortFile }).get('private:1').summary, '在聊咖啡')
 
-    const coreFile = join(process.env.DSH_HOME, 'core-test.json')
+    const coreFile = join(process.env.DSH_HOME, 'core-test.sqlite')
     const core = createCoreStore({ file: coreFile })
+    assert.equal(existsSync(coreFile), true, '默认走 SQLite 后端')
+    assert.equal(existsSync(`${coreFile}.json`), false, 'SQLite 可用时不落 JSON 回退')
     core.add({
         text: '张三喜欢喝咖啡', conversation: 'private:100000004', subject: '100000004',
         subjectName: '张三', importance: 0.8, at: 1_000,
@@ -306,6 +308,28 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(parsed.summary, '摘要')
     assert.equal(parsed.facts[0].importance, 1, '重要度夹到 0..1')
     assert.equal(parseCompression('不是 JSON'), null)
+    core.close?.()
+
+    const legacyFile = join(process.env.DSH_HOME, 'legacy-core.json')
+    writeFileSync(legacyFile, JSON.stringify({
+        facts: [{
+            text: '旧 JSON 里的事实',
+            conversation: 'private:9',
+            importance: 0.6,
+            at: Date.now(),
+        }],
+    }))
+    const migrated = createCoreStore({
+        file: join(process.env.DSH_HOME, 'legacy-core.sqlite'),
+        legacyFile,
+    })
+    assert.equal(migrated.recent('private:9')[0].fact.text, '旧 JSON 里的事实')
+    assert.equal(existsSync(`${legacyFile}.migrated`), true, '迁移成功后旧 JSON 留档')
+    migrated.close?.()
+
+    const fallback = createCoreStore({ file: join(process.env.DSH_HOME, 'core-fallback.json') })
+    fallback.add({ text: 'JSON 回退也能用', conversation: 'private:8', at: Date.now() })
+    assert.equal(fallback.search('回退', { conversation: 'private:8' })[0].fact.text, 'JSON 回退也能用')
 }
 
 // ---- 原话保留期 ----

@@ -26,7 +26,9 @@ src/
   memory/
     store.js          原话层：JSONL 追加、按会话读、30 天保留期
     short.js          短期层：每会话滚动摘要
-    core.js           长期层：结构化事实 + BM25
+    core.js           长期层入口：SQLite 优先，JSON 回退
+    core-sqlite.js    SQLite + FTS5 BM25
+    core-json.js      JSON 回退与旧事实迁移
     compress.js       压缩提示词、模型输出解析与夹紧
     model.js          后台记忆任务的最小宿主模型调用
   bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
@@ -74,7 +76,7 @@ selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提�
 
 - 声明式配置（桥地址、时区、语言、闸门默认值）进 profile patch，经 `configEditor` 写；
 - 运行时数据（每会话覆盖、会话映射）进 `state.json`；两者互不覆盖；
-- 记忆分三层：原话进 `$DSH_HOME/mondchat/memory.jsonl`，短期摘要进 `memory-short.json`，长期事实进 `memory-core.json`；可用 `memoryFile` / `shortMemoryFile` / `coreMemoryFile` 覆盖；
+- 记忆分三层：原话进 `$DSH_HOME/mondchat/memory.jsonl`，短期摘要进 `memory-short.json`，长期事实进 `memory-core.sqlite`（FTS5）；可用 `memoryFile` / `shortMemoryFile` / `coreDatabaseFile` 覆盖；旧的 `memory-core.json` 首次启动自动导入并改名留档；
 - 原话只追加，不参与 `state.json` 的整体重写；摘要和事实单独原子替换；
 - 密钥只从 `accountKey` 或 `accountKeyFile` 读，不进日志、不进 `state.json`、不写进 patch。
 
@@ -156,10 +158,10 @@ mock 起来后按提示在终端输入：`p <文本>` 发私聊，`g <文本>` �
 | --- | --- | --- |
 | 原话 | 每条入站/出站消息，保留 30 天 | `memory.jsonl` |
 | 短期 | 每个会话一段滚动摘要，覆盖更早的段落 | `memory-short.json` |
-| 长期 | 结构化事实（文本、主体、重要度、是否过时） | `memory-core.json` |
+| 长期 | 结构化事实（文本、主体、重要度、是否过时） | `memory-core.sqlite` |
 
 - 触发：原话攒到 `compressMessages` 条或 `compressChars` 字符，或会话空闲 `idleMinutes` 分钟后，后台调一次宿主模型；永远保留最后 `tailMessages` 条原话，压缩边界附近不会只剩摘要。
-- 长期事实先和同会话、同主体的旧事实比对：能合并就合并，冲突（否定词/数字不同）把旧的标 `stale`，不直接删。检索用中文二元切词 + BM25，再乘重要度和新近程度。
+- 长期事实先和同会话、同主体的旧事实比对：能合并就合并，冲突（否定词/数字不同）把旧的标 `stale`，不直接删。检索用 SQLite FTS5 的中文二元切词 + BM25，再乘重要度和新近程度；`node:sqlite` 不可用时自动回退 JSON 后端。
 - 作用域：事实只在原会话可见，不跨私聊也不进群；人物档案按账号持久化，但不会把别处的私聊内容带进来。短期摘要也按会话隔离。
 - 失败：模型不可用、输出不是合法 JSON 或调用失败时，原话和旧摘要都不动，下次再试；摘要先落盘成功，原话仍按保留期管理。
 - 成本：一次整理最多一次模型调用，只有在阈值/空闲触发时才发生；不做向量检索，不引 embedding。
@@ -191,7 +193,8 @@ pnpm install    # profile 目录
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
     # memoryFile: /path/to/memory.jsonl   # 默认 $DSH_HOME/mondchat/memory.jsonl
     # shortMemoryFile: /path/to/memory-short.json
-    # coreMemoryFile: /path/to/memory-core.json
+    # coreDatabaseFile: /path/to/memory-core.sqlite
+    # coreMemoryFile: /path/to/memory-core.json   # 旧 JSON 首次启动自动导入
     # memory:
     #   auto: true                 # false = 只手动 compressNow
     #   compressMessages: 40      # 攒够多少条原话触发

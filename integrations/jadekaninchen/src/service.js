@@ -76,7 +76,8 @@ export class MondChatService {
             file: config.shortMemoryFile ?? join(this.home, 'memory-short.json'),
         })
         this.core = createCoreStore({
-            file: config.coreMemoryFile ?? join(this.home, 'memory-core.json'),
+            file: config.coreDatabaseFile ?? join(this.home, 'memory-core.sqlite'),
+            legacyFile: config.coreMemoryFile ?? join(this.home, 'memory-core.json'),
         })
         const memory = config.memory ?? {}
         this.memoryPolicy = {
@@ -158,6 +159,7 @@ export class MondChatService {
         this.subprocessHandle?.terminate()
         this.subprocessHandle = null
         this.bridge.close?.()
+        this.core.close?.()
     }
 
     // ---- 桥进程 ----
