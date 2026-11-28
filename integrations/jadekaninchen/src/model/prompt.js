@@ -34,6 +34,7 @@ const escapeText = (value) => String(value ?? '')
  * @param {string} [input.language] 回复语言代码，原样进 <language>
  * @param {string} [input.timeZone]
  * @param {{summary?: string, facts?: string[]}} [input.memory]
+ * @param {string} [input.persona] 人格卡正文；放在最前面，作为角色设定
  * @param {number|Date} [input.now]
  */
 export function buildWakePrompt({
@@ -43,6 +44,7 @@ export function buildWakePrompt({
     language = 'zh',
     timeZone,
     memory = null,
+    persona = '',
     now = Date.now(),
 }) {
     const parsed = parseConversation(conversation)
@@ -75,7 +77,13 @@ export function buildWakePrompt({
         ].filter(Boolean)
         : []
 
+    const personaText = String(persona ?? '').trim()
+    const personaBlock = personaText
+        ? ['<persona>', escapeText(personaText), '</persona>']
+        : []
+
     return [
+        ...personaBlock,
         '<context>',
         `  ${channel}`,
         `  <time now="${isoInZone(now, timeZone)}" zone="${escapeAttr(timeZone || 'system')}" />`,

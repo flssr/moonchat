@@ -16,6 +16,7 @@ import {
     titleOf as sessionTitleOf,
 } from './model/conversation.js'
 import { parseInbound, textOfSegments } from './model/message.js'
+import { createPersonaStore, safePersonaId } from './persona/personas.js'
 import { createMemoryStore } from './memory/store.js'
 import { createShortStore } from './memory/short.js'
 import { createCoreStore } from './memory/core.js'
@@ -67,6 +68,7 @@ export class MondChatService {
         mkdirSync(this.workspace, { recursive: true })
         mkdirSync(this.home, { recursive: true })
 
+        this.personas = createPersonaStore({ home: this.home })
         this.statePath = join(this.home, 'state.json')
         // 记忆分三层：原话 JSONL、每会话短期摘要、结构化长期事实。
         this.memory = createMemoryStore({
@@ -271,6 +273,11 @@ export class MondChatService {
             next.language = LANGUAGES.includes(patch.language) ? patch.language : this.global.language
         }
         if (patch.groups !== undefined) next.groups = Boolean(patch.groups)
+        if (patch.persona !== undefined) {
+            const id = safePersonaId(patch.persona)
+            if (!id || !this.personas.read(id)) throw new Error('人格不存在')
+            next.persona = id
+        }
         if (Object.keys(next).length === 0) throw new Error('没有可改的全局设置')
 
         await editor.edit(entry, (current) => ({ ...current, ...next }))
@@ -370,6 +377,7 @@ export class MondChatService {
             language: this.global.language,
             timeZone: zoneOf(this.global),
             memory: this.memoryContext(key),
+            persona: this.personaText(),
         })
         try {
             await this.ctx.sessionController.prompt({
@@ -569,6 +577,10 @@ export class MondChatService {
             : this.memory.recent(key, limit)
     }
 
+    personaText() {
+        return this.personas.text(this.global.persona)
+    }
+
     memorySummary(key) {
         return this.short.get(key)?.summary ?? ''
     }
@@ -739,6 +751,7 @@ export class MondChatService {
                 port: this.bridgePort,
             },
             config: {
+                persona: this.global.persona,
                 groups: this.global.groups,
                 workspace: this.workspace,
                 language: this.global.language,
@@ -746,6 +759,7 @@ export class MondChatService {
                 model: this.global.model,
                 proactive: this.global.proactive,
             },
+            personas: this.personas.list(),
             conversations: list,
         }
     }

@@ -31,6 +31,8 @@ src/
     core-json.js      JSON 回退与旧事实迁移
     compress.js       压缩提示词、模型输出解析与夹紧
     model.js          后台记忆任务的最小宿主模型调用
+  persona/
+    personas.js       人格卡：seed、frontmatter、当前正文
   bridge/client.js    OneBot 12 WS 客户端：连接、echo、退避
   model/              纯数据与纯函数，能脱离宿主单测
     conversation.js   ConversationId、Conversation、describe/titleOf
@@ -39,6 +41,7 @@ src/
     prompt.js         结构化提示词（context/language/task/rules/example）
     wake.js           唤醒原因
     bridge.js         BridgeState（进程态 / 连接态分开）
+personas/             自带人格卡，首次启动复制到数据目录
 mock-onebot.mjs       简易 OneBot 12 mock 服务端：没有 IM 时冒充桥
 mock-onebot.test.mjs  mock 服务的真实 WS 冒烟
 selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/记忆
@@ -166,6 +169,25 @@ mock 起来后按提示在终端输入：`p <文本>` 发私聊，`g <文本>` �
 - 失败：模型不可用、输出不是合法 JSON 或调用失败时，原话和旧摘要都不动，下次再试；摘要先落盘成功，原话仍按保留期管理。
 - 成本：一次整理最多一次模型调用，只有在阈值/空闲触发时才发生；不做向量检索，不引 embedding。
 
+## 人格
+
+人格卡是 Markdown 文件，放在 `$DSH_HOME/mondchat/personas/`：
+
+```markdown
+---
+name: Jadekaninchen
+tags: [默认, 简洁]
+---
+
+你是 Jadekaninchen（玉兔）……
+```
+
+- 插件自带 `personas/jadekaninchen.md`；首次启动复制到数据目录，不覆盖用户已改的版本。
+- 当前人格由配置 `persona` 指定，面板的「人格」下拉可以切换；切换写回 profile patch，插件重装一次。
+- 人格正文放在每轮唤醒提示词最前面（`<persona>`），然后才是时间、会话、记忆和任务。
+- 人格 id 只认英文字母、数字、`-`、`_`；文件坏了跳过，找不到就退回列表第一个/兜底文本。
+- 现在记忆按会话存，不按人格隔离：换人格不会清空记忆，也不会自动复制一份新记忆。需要“一人格一记忆”时再按人格分目录。
+
 ## 挂载
 
 **本地链接安装**（在 profile 目录，通常是 `%USERPROFILE%\.dsh\profiles\<名字>\`）：
@@ -191,6 +213,7 @@ pnpm install    # profile 目录
     bridge: ws://127.0.0.1:6700    # 桥地址即端口来源；托管桥时子进程绑这里的 host/port
     # accessToken: ''            # 桥设了 ONEBOT_ACCESS_TOKEN 时才要；托管时原样传给子进程
     # workspace: /path/to/dir     # 默认 $DSH_HOME/mondchat/workspace
+    # persona: jadekaninchen     # 数据目录 personas/<id>.md
     # memoryFile: /path/to/memory.jsonl   # 默认 $DSH_HOME/mondchat/memory.jsonl
     # shortMemoryFile: /path/to/memory-short.json
     # coreDatabaseFile: /path/to/memory-core.sqlite
@@ -217,7 +240,7 @@ pnpm install    # profile 目录
     #   quietHours: '23:00-08:00'
 ```
 
-自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/三层记忆写入、合并、检索、压缩解析与提示词注入，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
+自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/人格 seed 与提示词、三层记忆写入、合并、检索、压缩解析与提示词注入，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
 
 ## 不做什么
 

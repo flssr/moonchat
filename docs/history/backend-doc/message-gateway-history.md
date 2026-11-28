@@ -16,6 +16,14 @@
 <原因>：...
 ```
 
+### Jadekaninchen：人格卡模块
+
+2026-11-28 12:55 CET   [2026-11-28 11:55 UTC]
+
+决策：参考 Aurabot，人格卡用 Markdown 文件（可带 `---` frontmatter 的 `name` / `tags`），放在 `$DSH_HOME/mondchat/personas/`；插件自带 `personas/jadekaninchen.md`，首次启动复制到数据目录，不覆盖用户改动。配置 `persona` 选择当前人格，面板下拉切换并写回 profile patch；人格正文注入每轮唤醒提示词最前面（`<persona>`），找不到就退回列表第一个或兜底文本。
+
+原因：Jadekaninchen 的说话方式和边界应该可编辑、可替换，而不是散在 `buildWakePrompt` 的规则里。人格卡是可信配置，不是聊天数据；聊天里的注入话术仍按原规则当内容处理。当前记忆按会话存，不按人格隔离，换人格不会清空或复制记忆；需要“一人格一记忆”时再按人格分目录。
+
 ### Jadekaninchen：核心事实迁 SQLite + FTS5
 
 2026-11-27 22:05 CET   [2026-11-27 21:05 UTC]

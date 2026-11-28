@@ -30,6 +30,8 @@ window.__ModuleLoader__.load({
         unmanaged: 'This host cannot start processes; run the bridge yourself.',
         external: 'A bridge is already answering on this port (started outside the plugin), so starting another is disabled.',
         settings: 'Settings',
+        persona: 'Persona',
+        personaHint: 'Markdown cards live in the plugin data folder under personas/.',
         timezone: 'Time zone',
         timezoneHint: 'IANA zone such as Asia/Shanghai; empty follows the host.',
         bridgeUrl: 'Bridge address',
@@ -73,6 +75,8 @@ window.__ModuleLoader__.load({
         unmanaged: '这个宿主不能启动进程，桥需要你自己跑。',
         external: '这个端口上已经有桥在应答（插件之外启动的），所以不再允许重复启动。',
         settings: '设置',
+        persona: '人格',
+        personaHint: '人格卡是 personas/ 下的 Markdown 文件，改完点保存。',
         timezone: '时区',
         timezoneHint: 'IANA 名称，如 Asia/Shanghai；留空跟随宿主。',
         bridgeUrl: '桥地址',
@@ -245,6 +249,7 @@ window.__ModuleLoader__.load({
             setError('')
             setDraft((current) => current ?? {
               bridge: next.bridge?.url ?? '',
+              persona: next.config?.persona ?? 'jadekaninchen',
               timezone: next.config?.timezone ?? '',
               language: next.config?.language ?? 'zh',
               groups: next.config?.groups !== false,
@@ -334,6 +339,16 @@ window.__ModuleLoader__.load({
             onChange: (event) => setDraft({ ...draft, bridge: event.target.value }),
           })),
         h('div', { style: S.caption }, `${t('bridgeHint')} ${controls.host}:${controls.port}`),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('persona')),
+          h('select', {
+            style: S.input,
+            value: draft?.persona ?? '',
+            onChange: (event) => setDraft({ ...draft, persona: event.target.value }),
+          },
+          ...(Array.isArray(data.personas) && data.personas.length > 0
+            ? data.personas.map((persona) => h('option', { key: persona.id, value: persona.id }, persona.name || persona.id))
+            : [h('option', { key: 'current', value: draft?.persona ?? '' }, draft?.persona ?? '')]))),
+        h('div', { style: S.caption }, t('personaHint')),
         h('div', { style: S.row }, h('div', { style: S.label }, t('timezone')),
           h('input', {
             style: S.input,
@@ -363,7 +378,7 @@ window.__ModuleLoader__.load({
             disabled: busy !== '' || !draft,
             onClick: () => run('save', () => post(SETTINGS, { global: draft })),
           }, busy === 'save' ? t('busy') : t('save')),
-          h('span', { style: S.caption }, `${t('process')}: ${config.timezone || 'system'} / ${config.language}`)))
+          h('span', { style: S.caption }, `${t('process')}: ${config.persona || '—'} / ${config.timezone || 'system'} / ${config.language}`)))
 
       const items = conversations.length === 0
         ? [h('div', { style: S.caption }, t('empty'))]

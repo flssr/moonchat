@@ -217,6 +217,16 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.match(english, /<event reason="inbound" pending="2" \/>/)
     assert.match(english, /Call mondchat_unread/)
 
+    const withPersona = buildWakePrompt({
+        conversation: 'private:1',
+        reason: inboundReason(1),
+        persona: '<角色>',
+    })
+    assert.match(withPersona, /^<persona>\n&lt;角色&gt;\n<\/persona>/)
+
+    assert.equal(normalizeGlobal({}).persona, 'jadekaninchen')
+    assert.equal(normalizeGlobal({ persona: '../bad id' }).persona, 'badid')
+
     const settings = normalizeGlobal({ proactive: { idleMinutes: 30 } })
     const overrides = normalizeOverrides({ 'group:2': { idleMinutes: 5, quietHours: '' }, 'group:bad': 'x' })
     assert.equal(gateFor(settings, overrides, 'group:2').idleMinutes, 5, '会话覆盖优先')
@@ -243,6 +253,22 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.equal(withProcess(state, 'running').process, 'running')
     assert.equal(withProcess(state, 'failed', 'boom').lastError, 'boom')
     assert.equal(withProcess(state, 'running').lastError, '')
+}
+
+// ---- 人格：自带卡 seed、frontmatter、当前正文 ----
+
+{
+    const { createPersonaStore, parsePersona, safePersonaId } = await import('./src/persona/personas.js')
+    const store = createPersonaStore({ home: join(process.env.DSH_HOME, 'persona-test') })
+    const list = store.list()
+    assert.ok(list.some((item) => item.id === 'jadekaninchen'), '默认人格要 seed 到数据目录')
+    assert.match(store.text('jadekaninchen'), /Jadekaninchen/)
+    assert.equal(store.read('nope'), null)
+    assert.equal(safePersonaId('../坏 id'), 'id')
+    const parsed = parsePersona('x', '---\nname: 测试\ntags: [a, b]\n---\n\n正文')
+    assert.deepEqual({ name: parsed.name, tags: parsed.tags, body: parsed.body }, {
+        name: '测试', tags: ['a', 'b'], body: '正文',
+    })
 }
 
 // ---- 记忆：按会话隔离、可跨实例读回、坏行跳过 ----
@@ -359,7 +385,10 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     rt.ingest(message())
     await settle()
     assert.equal(state.prompts.length, 1, '一条消息唤醒一次')
-    assert.match(state.prompts[0].content[0].text, /^<context>/, '唤醒语走结构化模板')
+    assert.match(state.prompts[0].content[0].text, /^<persona>/, '人格放在唤醒语最前面')
+    assert.match(state.prompts[0].content[0].text, /<context>/, '唤醒语走结构化模板')
+    assert.equal(rt.status().config.persona, 'jadekaninchen')
+    assert.ok(rt.status().personas.some((item) => item.id === 'jadekaninchen'))
     assert.match(state.prompts[0].content[0].text, /mondchat_unread/)
     assert.match(state.prompts[0].content[0].text, /张三/, '唤醒语里要有人名')
 
@@ -635,12 +664,14 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.equal(rt.status().conversations[0].gate.idleMinutes, 7, '每会话闸门立刻生效')
 
     const globalResponse = await settingsRoute.fetch({
-        json: async () => ({ global: { timezone: 'Asia/Shanghai', language: 'en' } }),
+        json: async () => ({ global: { persona: 'jadekaninchen', timezone: 'Asia/Shanghai', language: 'en' } }),
     })
     assert.equal((await globalResponse.json()).reload, true, '全局设置写回 patch 会重装')
+    assert.equal(host.state.edits.at(-1).config.persona, 'jadekaninchen')
     assert.equal(host.state.edits.at(-1).config.timezone, 'Asia/Shanghai')
     assert.equal(host.state.edits.at(-1).config.language, 'en')
     assert.equal(host.state.edits.at(-1).config.bridge, 'ws://127.0.0.1:6700', '没改的字段保持原样')
+    await assert.rejects(() => rt.service.setGlobal({ persona: 'nope' }), /人格不存在/)
 
     const bridgeRoute = host.state.routes.get('/api/mondchat/bridge')
     await bridgeRoute.fetch({ json: async () => ({ action: 'start' }) })
