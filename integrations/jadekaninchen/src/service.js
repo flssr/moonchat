@@ -581,6 +581,23 @@ export class MondChatService {
         return this.personas.text(this.global.persona)
     }
 
+    personaDetails(id) {
+        return this.personas.read(id)
+    }
+
+    savePersona(input) {
+        const persona = this.personas.save(input)
+        return { persona, personas: this.personas.list() }
+    }
+
+    deletePersona(id) {
+        const safe = safePersonaId(id)
+        if (!safe) throw new Error('人格 id 不合法')
+        if (safe === this.global.persona) throw new Error('不能删除当前使用的人格，先切换到别的人格')
+        if (!this.personas.remove(safe)) throw new Error('人格不存在')
+        return { personas: this.personas.list() }
+    }
+
     memorySummary(key) {
         return this.short.get(key)?.summary ?? ''
     }

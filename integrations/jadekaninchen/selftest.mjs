@@ -265,10 +265,28 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
     assert.match(store.text('jadekaninchen'), /Jadekaninchen/)
     assert.equal(store.read('nope'), null)
     assert.equal(safePersonaId('../坏 id'), 'id')
-    const parsed = parsePersona('x', '---\nname: 测试\ntags: [a, b]\n---\n\n正文')
-    assert.deepEqual({ name: parsed.name, tags: parsed.tags, body: parsed.body }, {
-        name: '测试', tags: ['a', 'b'], body: '正文',
+    const parsed = parsePersona('x', '---\nname: 测试\ndescription: 简介\ntags: [a, b]\n---\n\n正文')
+    assert.deepEqual({
+        name: parsed.name, description: parsed.description, tags: parsed.tags, body: parsed.body,
+    }, {
+        name: '测试', description: '简介', tags: ['a', 'b'], body: '正文',
     })
+    const saved = store.save({
+        id: 'custom_1',
+        name: '自定义',
+        description: '测试简介',
+        tags: ['测试', '自定义'],
+        body: '## 身份\n测试',
+    })
+    assert.equal(saved.name, '自定义')
+    assert.deepEqual(saved.tags, ['测试', '自定义'])
+    assert.equal(store.read('custom_1').description, '测试简介')
+    assert.throws(() => store.save({ id: '!!!', name: 'x', body: 'x' }), /id/)
+    assert.throws(() => store.save({ id: 'x', name: '', body: 'x' }), /名称/)
+    assert.equal(store.remove('custom_1'), true)
+    assert.equal(store.read('custom_1'), null)
+    assert.equal(store.remove('jadekaninchen'), true)
+    assert.equal(store.list().some((item) => item.id === 'jadekaninchen'), false, '删掉自带人格后不会被 seed 复活')
 }
 
 // ---- 记忆：按会话隔离、可跨实例读回、坏行跳过 ----
@@ -672,6 +690,37 @@ assert.equal(inQuietHours(Date.now(), '乱写'), false, '配错就当没有安�
     assert.equal(host.state.edits.at(-1).config.language, 'en')
     assert.equal(host.state.edits.at(-1).config.bridge, 'ws://127.0.0.1:6700', '没改的字段保持原样')
     await assert.rejects(() => rt.service.setGlobal({ persona: 'nope' }), /人格不存在/)
+
+    const personasRoute = host.state.routes.get('/api/mondchat/personas')
+    const readPersona = await (await personasRoute.fetch({
+        json: async () => ({ action: 'read', id: 'jadekaninchen' }),
+    })).json()
+    assert.match(readPersona.persona.body, /Jadekaninchen/)
+    assert.match(readPersona.template, /## 身份/)
+
+    const savedPersona = await (await personasRoute.fetch({
+        json: async () => ({
+            action: 'save',
+            id: 'panel-persona',
+            name: '面板人格',
+            description: '测试',
+            tags: ['a'],
+            body: '## 身份\n面板',
+        }),
+    })).json()
+    assert.equal(savedPersona.persona.id, 'panel-persona')
+    assert.ok(rt.status().personas.some((item) => item.id === 'panel-persona'))
+
+    const deleteCurrent = await personasRoute.fetch({
+        json: async () => ({ action: 'delete', id: 'jadekaninchen' }),
+    })
+    assert.equal(deleteCurrent.status, 400, '不能删当前使用的人格')
+
+    const deleteSaved = await personasRoute.fetch({
+        json: async () => ({ action: 'delete', id: 'panel-persona' }),
+    })
+    assert.equal(deleteSaved.status, 200)
+    assert.ok(!rt.status().personas.some((item) => item.id === 'panel-persona'))
 
     const bridgeRoute = host.state.routes.get('/api/mondchat/bridge')
     await bridgeRoute.fetch({ json: async () => ({ action: 'start' }) })
