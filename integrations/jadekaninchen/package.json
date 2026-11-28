@@ -23,10 +23,11 @@
     "src",
     "selftest.mjs",
     "mock-onebot.mjs",
-    "mock-onebot.test.mjs"
+    "mock-onebot.test.mjs",
+    "ws-integration.test.mjs"
   ],
   "scripts": {
-    "test": "node selftest.mjs && node mock-onebot.test.mjs",
+    "test": "node selftest.mjs && node mock-onebot.test.mjs && node ws-integration.test.mjs",
     "mock": "node mock-onebot.mjs"
   },
   "dsh": {

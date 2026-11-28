@@ -44,6 +44,7 @@ src/
 personas/             自带人格卡，首次启动复制到数据目录
 mock-onebot.mjs       简易 OneBot 12 mock 服务端：没有 IM 时冒充桥
 mock-onebot.test.mjs  mock 服务的真实 WS 冒烟
+ws-integration.test.mjs  mock WS + 插件 bridge/记忆/人格路由的端到端联调
 selftest.mjs          假 ctx + 假 WebSocket，覆盖收/发/会话/设置/提示词/记忆
 ```
 
@@ -114,6 +115,8 @@ node mock-onebot.mjs --port 6700
 ```
 
 mock 起来后按提示在终端输入：`p <文本>` 发私聊，`g <文本>` 发群聊，`q` 退出。`--interval 5000` 可以每 5 秒自动发一条；`--text` 起来后先发一条。它只实现插件用到的动作和事件，不连 Turms，也不写数据库。
+
+自动化联调：`node ws-integration.test.mjs` 会起 mock 桥、真实连上插件的 bridge 客户端，走一遍消息入队、人格注入、短期/长期记忆、压缩、`mondchat_recall`、发言和人格编辑路由；不需要 DSH 或 IM。
 
 **不做**
 
@@ -254,7 +257,7 @@ pnpm install    # profile 目录
     #   quietHours: '23:00-08:00'
 ```
 
-自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/人格 seed 与提示词、三层记忆写入、合并、检索、压缩解析与提示词注入，外加 mock-onebot 的真实 WS 冒烟；不连 DSH 也不连真桥）。
+自检：`npm test`（假 ctx + 假 WebSocket，覆盖收/发/会话复用/只读预设/主动话题闸门/token 传递/托管桥重启/外部桥启停防护/卸载回收/人格 seed 与提示词、三层记忆写入、合并、检索、压缩解析与提示词注入；外加 mock-onebot 的真实 WS 冒烟和 mock WS + 插件 bridge/记忆/人格路由的端到端联调；不连 DSH 也不连真桥）。
 
 ## 不做什么
 

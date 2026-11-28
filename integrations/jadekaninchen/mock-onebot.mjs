@@ -69,7 +69,7 @@ function metaHeartbeat(selfId, intervalMs) {
     }
 }
 
-function messageEvent({ selfId, detailType, text, userId, groupId }) {
+function messageEvent({ selfId, detailType, text, userId, groupId, messageId }) {
     const event = {
         id: randomUUID(),
         self: { platform: PLATFORM, user_id: selfId },
@@ -77,7 +77,7 @@ function messageEvent({ selfId, detailType, text, userId, groupId }) {
         type: 'message',
         detail_type: detailType,
         sub_type: '',
-        message_id: String(Date.now()),
+        message_id: String(messageId ?? Date.now()),
         message: [{ type: 'text', data: { text } }],
         alt_message: text,
         user_id: String(userId),
@@ -145,8 +145,8 @@ export async function createMockServer({
         for (const client of clients) sendJson(client, event)
     }
 
-    function emitMessage({ text = '测试消息', detailType = 'private', userId = peerId, group = groupId } = {}) {
-        const event = messageEvent({ selfId, detailType, text, userId, groupId: group })
+    function emitMessage({ text = '测试消息', detailType = 'private', userId = peerId, group = groupId, messageId } = {}) {
+        const event = messageEvent({ selfId, detailType, text, userId, groupId: group, messageId })
         broadcast(event)
         log(`→ ${detailType} ${text}`)
         return event
@@ -296,6 +296,7 @@ export async function createMockServer({
         host,
         port: actualPort,
         emitMessage,
+        clientCount: () => clients.size,
         close: async () => {
             clearInterval(heartbeat)
             if (auto) clearInterval(auto)
