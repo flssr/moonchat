@@ -1,0 +1,7 @@
+# 挂载 Jadekaninchen；配置默认值在 index.js 里，要改就在 profile 的 cordis.patch.yml 覆盖：
+#   - id: jadekaninchen
+#     config:
+#       bridge: ws://127.0.0.1:6700
+- insert:
+    - id: jadekaninchen
+      name: jadekaninchen

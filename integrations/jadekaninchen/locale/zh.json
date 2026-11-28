@@ -1,9 +1,9 @@
 {
   "meta": {
-    "title": "MondChat 连接",
+    "title": "Jadekaninchen",
     "description": "把 MondChat 的私聊和群接成 DSH 会话：看桥有没有连上、有哪些会话、各自还积压多少条消息。"
   },
-  "tab": "MondChat",
+  "tab": "Jadekaninchen",
   "bridge": "桥",
   "connected": "已连接",
   "disconnected": "未连接",

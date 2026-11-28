@@ -1,9 +1,9 @@
 {
   "meta": {
-    "title": "MondChat link",
+    "title": "Jadekaninchen",
     "description": "Bridges MondChat direct chats and groups into DSH sessions: see whether the bridge is connected, which conversations exist, and how many messages each still holds."
   },
-  "tab": "MondChat",
+  "tab": "Jadekaninchen",
   "bridge": "Bridge",
   "connected": "Connected",
   "disconnected": "Disconnected",

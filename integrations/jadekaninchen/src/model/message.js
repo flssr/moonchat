@@ -32,6 +32,15 @@ export function parseInbound(event, { groupsEnabled = true } = {}) {
     }
 }
 
+/** 出站消息段 → 纯文本；记忆只存文字，非文本段不参与。 */
+export function textOfSegments(segments) {
+    if (typeof segments === 'string') return segments
+    return (Array.isArray(segments) ? segments : [])
+        .filter((segment) => segment?.type === 'text')
+        .map((segment) => String(segment.data?.text ?? ''))
+        .join('')
+}
+
 /** 队列丢掉的条数要写进工具结果，别让 agent 以为拿到的就是全部。 */
 export function lossNote(count) {
     return count > 0 ? `（另有 ${count} 条更早的消息因积压被丢弃）` : ''

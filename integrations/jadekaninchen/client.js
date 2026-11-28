@@ -1,21 +1,22 @@
-// MondChat 插件的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
+// Jadekaninchen 的侧栏面板：和「便签」「自动化任务」并排，点图标在主栏打开。
 // 数据来自宿主的 /api/mondchat/* 路由；面板只做呈现与提交，判定在 service。
 window.__ModuleLoader__.load({
-  id: 'dsh-onebot',
+  id: 'jadekaninchen',
   factory(require) {
     const React = require('react')
     const h = React.createElement
-    const NS = 'dsh-onebot'
+    const NS = 'jadekaninchen'
     const STATUS = '/api/mondchat/status'
     const BRIDGE = '/api/mondchat/bridge'
     const SETTINGS = '/api/mondchat/settings'
-    const PANEL_ID = 'mondchat'
+    const PERSONAS = '/api/mondchat/personas'
+    const PANEL_ID = 'jadekaninchen'
 
     const DICTS = {
       en: {
-        panel: 'MondChat',
-        title: 'MondChat',
-        subtitle: 'Direct chats and groups bridged into DSH sessions.',
+        panel: 'Jadekaninchen',
+        title: 'Jadekaninchen',
+        subtitle: 'MondChat direct chats and groups bridged into DSH sessions.',
         bridge: 'Bridge',
         connected: 'Connected',
         disconnected: 'Disconnected',
@@ -30,6 +31,23 @@ window.__ModuleLoader__.load({
         unmanaged: 'This host cannot start processes; run the bridge yourself.',
         external: 'A bridge is already answering on this port (started outside the plugin), so starting another is disabled.',
         settings: 'Settings',
+        persona: 'Persona',
+        personaHint: 'Markdown cards live in the plugin data folder under personas/.',
+        personaEditor: 'Persona editor',
+        personaId: 'ID',
+        personaName: 'Name',
+        personaDescription: 'Description',
+        personaTags: 'Tags',
+        personaBody: 'Body',
+        personaNew: 'New',
+        personaSave: 'Save persona',
+        personaDelete: 'Delete',
+        personaTemplate: 'Fill template',
+        personaFormat: 'Format: name / description / tags in frontmatter, then body sections 身份 / 说话方式 / 性格与偏好 / 边界.',
+        personaSaved: 'Persona saved.',
+        personaDeleted: 'Persona deleted.',
+        personaRequired: 'ID, name and body are required.',
+        personaConfirmDelete: 'Delete this persona file?',
         timezone: 'Time zone',
         timezoneHint: 'IANA zone such as Asia/Shanghai; empty follows the host.',
         bridgeUrl: 'Bridge address',
@@ -56,8 +74,8 @@ window.__ModuleLoader__.load({
         actionFailed: 'Action failed: {message}',
       },
       zh: {
-        panel: 'MondChat',
-        title: 'MondChat',
+        panel: 'Jadekaninchen',
+        title: 'Jadekaninchen',
         subtitle: '把 MondChat 的私聊和群接进 DSH 会话。',
         bridge: '桥',
         connected: '已连接',
@@ -73,6 +91,23 @@ window.__ModuleLoader__.load({
         unmanaged: '这个宿主不能启动进程，桥需要你自己跑。',
         external: '这个端口上已经有桥在应答（插件之外启动的），所以不再允许重复启动。',
         settings: '设置',
+        persona: '人格',
+        personaHint: '人格卡是 personas/ 下的 Markdown 文件，改完点保存。',
+        personaEditor: '人格编辑器',
+        personaId: 'ID',
+        personaName: '名称',
+        personaDescription: '简介',
+        personaTags: '标签',
+        personaBody: '正文',
+        personaNew: '新建',
+        personaSave: '保存人格',
+        personaDelete: '删除',
+        personaTemplate: '填入模板',
+        personaFormat: '格式：frontmatter 写 name / description / tags，正文建议按 身份 / 说话方式 / 性格与偏好 / 边界 四段写。',
+        personaSaved: '人格已保存。',
+        personaDeleted: '人格已删除。',
+        personaRequired: 'ID、名称和正文不能为空。',
+        personaConfirmDelete: '确定删除这个人格文件？',
         timezone: '时区',
         timezoneHint: 'IANA 名称，如 Asia/Shanghai；留空跟随宿主。',
         bridgeUrl: '桥地址',
@@ -165,6 +200,19 @@ window.__ModuleLoader__.load({
         fontSize: 12,
         width: 140,
       },
+      textarea: {
+        border: '1px solid var(--dsw-alias-border-l1)',
+        background: 'var(--dsw-alias-bg-base)',
+        color: 'var(--dsw-alias-label-primary)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        fontSize: 12,
+        width: '100%',
+        minHeight: 240,
+        resize: 'vertical',
+        lineHeight: 1.6,
+        fontFamily: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+      },
       list: { display: 'grid', gap: 8, maxWidth: 820 },
       item: {
         display: 'grid',
@@ -181,6 +229,19 @@ window.__ModuleLoader__.load({
     }
 
     const fill = (text, values) => String(text).replace(/\{(\w+)\}/g, (_, key) => (values[key] ?? ''))
+    const BODY_TEMPLATE = [
+      '## 身份',
+      '你是谁、在什么场景里聊天。',
+      '',
+      '## 说话方式',
+      '句子长短、语气、常用词、要不要用 Markdown、要不要用表情。',
+      '',
+      '## 性格与偏好',
+      '在意什么、不喜欢什么、遇到不同意见怎么处理。',
+      '',
+      '## 边界',
+      '不能做什么、不能假装拥有什么、隐私和群聊里的规矩。',
+    ].join('\n')
 
     // 这些插槽只声明了 id/order/key；翻译走模块内绑定。
     let boundT = (key) => key
@@ -232,6 +293,12 @@ window.__ModuleLoader__.load({
       const [draft, setDraft] = React.useState(null)
       const [editing, setEditing] = React.useState('')
       const [gateDraft, setGateDraft] = React.useState({})
+      const [personaDraft, setPersonaDraft] = React.useState(null)
+      const [personaBusy, setPersonaBusy] = React.useState('')
+      const [personaNotice, setPersonaNotice] = React.useState('')
+      const [personaError, setPersonaError] = React.useState('')
+      const [personaCreating, setPersonaCreating] = React.useState(false)
+      const loadedPersona = React.useRef('')
 
       React.useEffect(() => {
         let alive = true
@@ -245,6 +312,7 @@ window.__ModuleLoader__.load({
             setError('')
             setDraft((current) => current ?? {
               bridge: next.bridge?.url ?? '',
+              persona: next.config?.persona ?? 'jadekaninchen',
               timezone: next.config?.timezone ?? '',
               language: next.config?.language ?? 'zh',
               groups: next.config?.groups !== false,
@@ -261,6 +329,26 @@ window.__ModuleLoader__.load({
         }
       }, [])
 
+      React.useEffect(() => {
+        const id = data?.config?.persona
+        if (!id || loadedPersona.current === id) return undefined
+        loadedPersona.current = id
+        let alive = true
+        post(PERSONAS, { action: 'read', id })
+          .then((result) => {
+            if (!alive) return
+            setPersonaDraft({
+              ...result.persona,
+              tags: (result.persona.tags || []).join(', '),
+            })
+            setPersonaError('')
+          })
+          .catch((failure) => {
+            if (alive) setPersonaError(String((failure && failure.message) || failure))
+          })
+        return () => { alive = false }
+      }, [data?.config?.persona])
+
       const run = async (label, task) => {
         setBusy(label)
         setNotice('')
@@ -272,6 +360,89 @@ window.__ModuleLoader__.load({
           setError(fill(t('actionFailed'), { message: String((failure && failure.message) || failure) }))
         } finally {
           setBusy('')
+        }
+      }
+
+      const openPersona = async (id) => {
+        if (!id) return
+        setPersonaBusy('read')
+        setPersonaError('')
+        setPersonaNotice('')
+        try {
+          const result = await post(PERSONAS, { action: 'read', id })
+          setPersonaDraft({ ...result.persona, tags: (result.persona.tags || []).join(', ') })
+          setPersonaCreating(false)
+        } catch (failure) {
+          setPersonaError(String((failure && failure.message) || failure))
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
+      const newPersona = () => {
+        setPersonaCreating(true)
+        setPersonaError('')
+        setPersonaNotice('')
+        setPersonaDraft({
+          id: '',
+          name: '',
+          description: '',
+          tags: '',
+          body: BODY_TEMPLATE,
+        })
+      }
+
+      const savePersona = async () => {
+        if (!personaDraft) return
+        const id = String(personaDraft.id || '').trim()
+        const name = String(personaDraft.name || '').trim()
+        const body = String(personaDraft.body || '').trim()
+        if (!id || !name || !body) {
+          setPersonaError(t('personaRequired'))
+          return
+        }
+        setPersonaBusy('save')
+        setPersonaError('')
+        setPersonaNotice('')
+        try {
+          const result = await post(PERSONAS, {
+            action: 'save',
+            id,
+            name,
+            description: personaDraft.description || '',
+            tags: personaDraft.tags || '',
+            body,
+          })
+          setPersonaDraft({ ...result.persona, tags: (result.persona.tags || []).join(', ') })
+          setPersonaCreating(false)
+          loadedPersona.current = result.persona.id
+          setData((current) => (current ? { ...current, personas: result.personas || current.personas } : current))
+          setDraft((current) => (current ? { ...current, persona: result.persona.id } : current))
+          setPersonaNotice(t('personaSaved'))
+        } catch (failure) {
+          setPersonaError(String((failure && failure.message) || failure))
+        } finally {
+          setPersonaBusy('')
+        }
+      }
+
+      const deletePersona = async () => {
+        if (!personaDraft?.id) return
+        if (typeof window !== 'undefined' && !window.confirm(t('personaConfirmDelete'))) return
+        setPersonaBusy('delete')
+        setPersonaError('')
+        setPersonaNotice('')
+        try {
+          const result = await post(PERSONAS, { action: 'delete', id: personaDraft.id })
+          setData((current) => (current ? { ...current, personas: result.personas || current.personas } : current))
+          setPersonaNotice(t('personaDeleted'))
+          setPersonaDraft(null)
+          loadedPersona.current = ''
+          await openPersona(data?.config?.persona)
+        } catch (failure) {
+          setPersonaError(String((failure && failure.message) || failure))
+        } finally {
+          setPersonaBusy('')
         }
       }
 
@@ -334,6 +505,16 @@ window.__ModuleLoader__.load({
             onChange: (event) => setDraft({ ...draft, bridge: event.target.value }),
           })),
         h('div', { style: S.caption }, `${t('bridgeHint')} ${controls.host}:${controls.port}`),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('persona')),
+          h('select', {
+            style: S.input,
+            value: draft?.persona ?? '',
+            onChange: (event) => setDraft({ ...draft, persona: event.target.value }),
+          },
+          ...(Array.isArray(data.personas) && data.personas.length > 0
+            ? data.personas.map((persona) => h('option', { key: persona.id, value: persona.id }, persona.name || persona.id))
+            : [h('option', { key: 'current', value: draft?.persona ?? '' }, draft?.persona ?? '')]))),
+        h('div', { style: S.caption }, t('personaHint')),
         h('div', { style: S.row }, h('div', { style: S.label }, t('timezone')),
           h('input', {
             style: S.input,
@@ -363,7 +544,92 @@ window.__ModuleLoader__.load({
             disabled: busy !== '' || !draft,
             onClick: () => run('save', () => post(SETTINGS, { global: draft })),
           }, busy === 'save' ? t('busy') : t('save')),
-          h('span', { style: S.caption }, `${t('process')}: ${config.timezone || 'system'} / ${config.language}`)))
+          h('span', { style: S.caption }, `${t('process')}: ${config.persona || '—'} / ${config.timezone || 'system'} / ${config.language}`)))
+
+      const personaOptions = Array.isArray(data.personas) ? data.personas : []
+      const knownPersona = personaDraft?.id && personaOptions.some((item) => item.id === personaDraft.id)
+      const personaCard = h('div', { style: S.card },
+        h('div', { style: S.head }, t('personaEditor')),
+        h('div', { style: S.caption }, t('personaFormat')),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('persona')),
+          h('select', {
+            style: { ...S.input, width: 220 },
+            value: personaDraft?.id ?? '',
+            onChange: (event) => {
+              if (!event.target.value) newPersona()
+              else openPersona(event.target.value)
+            },
+          },
+          h('option', { value: '' }, t('personaNew')),
+          ...personaOptions.map((persona) => h('option', { key: persona.id, value: persona.id }, persona.name || persona.id)),
+          knownPersona || !personaDraft?.id
+            ? null
+            : h('option', { key: personaDraft.id, value: personaDraft.id }, personaDraft.name || personaDraft.id)),
+          h('button', {
+            type: 'button',
+            style: S.button,
+            disabled: personaBusy !== '',
+            onClick: newPersona,
+          }, t('personaNew'))),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('personaId')),
+          h('input', {
+            style: { ...S.input, width: 220 },
+            value: personaDraft?.id ?? '',
+            placeholder: 'jadekaninchen',
+            disabled: !personaCreating || personaBusy !== '',
+            onChange: (event) => setPersonaDraft({ ...personaDraft, id: event.target.value }),
+          })),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('personaName')),
+          h('input', {
+            style: { ...S.input, width: 320 },
+            value: personaDraft?.name ?? '',
+            disabled: !personaDraft || personaBusy !== '',
+            onChange: (event) => setPersonaDraft({ ...personaDraft, name: event.target.value }),
+          })),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('personaDescription')),
+          h('input', {
+            style: { ...S.input, width: 420 },
+            value: personaDraft?.description ?? '',
+            disabled: !personaDraft || personaBusy !== '',
+            onChange: (event) => setPersonaDraft({ ...personaDraft, description: event.target.value }),
+          })),
+        h('div', { style: S.row }, h('div', { style: S.label }, t('personaTags')),
+          h('input', {
+            style: { ...S.input, width: 420 },
+            value: personaDraft?.tags ?? '',
+            placeholder: '标签1, 标签2',
+            disabled: !personaDraft || personaBusy !== '',
+            onChange: (event) => setPersonaDraft({ ...personaDraft, tags: event.target.value }),
+          })),
+        h('div', { style: { display: 'grid', gap: 6 } },
+          h('div', { style: S.label }, t('personaBody')),
+          h('textarea', {
+            style: S.textarea,
+            value: personaDraft?.body ?? '',
+            disabled: !personaDraft || personaBusy !== '',
+            onChange: (event) => setPersonaDraft({ ...personaDraft, body: event.target.value }),
+          })),
+        h('div', { style: S.actions },
+          h('button', {
+            type: 'button',
+            style: S.button,
+            disabled: personaBusy !== '' || !personaDraft,
+            onClick: savePersona,
+          }, personaBusy === 'save' ? t('busy') : t('personaSave')),
+          h('button', {
+            type: 'button',
+            style: S.button,
+            disabled: personaBusy !== '' || !personaDraft,
+            onClick: () => setPersonaDraft({ ...personaDraft, body: BODY_TEMPLATE }),
+          }, t('personaTemplate')),
+          h('button', {
+            type: 'button',
+            style: S.button,
+            disabled: personaBusy !== '' || !personaDraft?.id || personaDraft.id === config.persona,
+            onClick: deletePersona,
+          }, personaBusy === 'delete' ? t('busy') : t('personaDelete')),
+          personaNotice ? h('span', { style: S.notice }, personaNotice) : null),
+        personaError ? h('div', { style: S.error }, personaError) : null)
 
       const items = conversations.length === 0
         ? [h('div', { style: S.caption }, t('empty'))]
@@ -461,6 +727,7 @@ window.__ModuleLoader__.load({
         notice ? h('div', { style: S.notice }, notice) : null,
         bridgeCard,
         settingsCard,
+        personaCard,
         h('div', { style: { display: 'grid', gap: 10 } },
           h('div', { style: S.head }, t('conversations')),
           h('div', { style: S.list }, items)))
@@ -469,8 +736,8 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
-        ctx.effect(() => ctx.locale.register(NS, 'en', DICTS.en), 'dsh-onebot: en dictionary')
-        ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'dsh-onebot: zh dictionary')
+        ctx.effect(() => ctx.locale.register(NS, 'en', DICTS.en), 'jadekaninchen: en dictionary')
+        ctx.effect(() => ctx.locale.register(NS, 'zh', DICTS.zh), 'jadekaninchen: zh dictionary')
         const t = ctx.locale.bind(NS)
         boundT = t
 

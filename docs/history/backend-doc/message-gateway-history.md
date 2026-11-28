@@ -16,6 +16,46 @@
 <原因>：...
 ```
 
+### Jadekaninchen：人格编辑器与格式约束
+
+2026-11-28 13:20 CET   [2026-11-28 12:20 UTC]
+
+决策：面板增加人格编辑器，可读取/新建/保存/删除人格卡；字段固定为 `name`（≤40）、`description`（≤120）、`tags`（≤8 个，每个 ≤20）和正文（≤20000）。正文模板固定为「身份 / 说话方式 / 性格与偏好 / 边界」四段，编辑器可一键填入。保存写数据目录里的 Markdown，删除当前使用的人格会被服务端拒绝；当前人格切换仍走设置卡的 `persona` 下拉和 profile patch。API 增加 `POST /api/mondchat/personas`，action 为 `read` / `save` / `delete` / `template`。
+
+原因：只让用户手改 Markdown 门槛太高，字段也没有边界。固定 frontmatter 和正文骨架后，面板能校验、模板能复用，文件仍然可直接编辑。人格卡是可信配置，不把聊天内容写进人格文件；保存/删除只动本机 `personas/`。
+
+### Jadekaninchen：人格卡模块
+
+2026-11-28 12:55 CET   [2026-11-28 11:55 UTC]
+
+决策：参考 Aurabot，人格卡用 Markdown 文件（可带 `---` frontmatter 的 `name` / `tags`），放在 `$DSH_HOME/mondchat/personas/`；插件自带 `personas/jadekaninchen.md`，首次启动复制到数据目录，不覆盖用户改动。配置 `persona` 选择当前人格，面板下拉切换并写回 profile patch；人格正文注入每轮唤醒提示词最前面（`<persona>`），找不到就退回列表第一个或兜底文本。
+
+原因：Jadekaninchen 的说话方式和边界应该可编辑、可替换，而不是散在 `buildWakePrompt` 的规则里。人格卡是可信配置，不是聊天数据；聊天里的注入话术仍按原规则当内容处理。当前记忆按会话存，不按人格隔离，换人格不会清空或复制记忆；需要“一人格一记忆”时再按人格分目录。
+
+### Jadekaninchen：核心事实迁 SQLite + FTS5
+
+2026-11-27 22:05 CET   [2026-11-27 21:05 UTC]
+
+决策：长期事实从 `memory-core.json` 迁到 `memory-core.sqlite`，用 `node:sqlite` + FTS5 做中文二元切词的 BM25；写一套 `search_text`，FTS5 只索引它，查询也走同一套切词。事实仍按会话隔离，合并/过时/容量规则不变；旧 JSON 在空库首次启动时自动导入，成功后改名 `.migrated`。`node:sqlite` 或 FTS5 不可用时回退原 JSON 后端。原话 JSONL 与短期摘要文件不动。
+
+原因：手写 JSON 全量扫描和自建 BM25 在事实量上来后既慢又难维护；SQLite 自带事务、索引和 FTS5，仍是本地单文件，不需要新增服务。暂不引 `sqlite-vec`：向量还需要 embedding 来源和原生扩展分发，当前先把 BM25 主检索做稳。
+
+### Jadekaninchen：三层记忆（原话 / 短期摘要 / 长期事实）
+
+2026-11-27 21:30 CET   [2026-11-27 20:30 UTC]
+
+决策：Jadekaninchen 的记忆落成三层——原话 JSONL 保留 30 天；每会话一段滚动短期摘要；结构化长期事实（文本、主体、重要度、状态）用中文二元切词 + BM25 召回。原话攒到 `compressMessages` / `compressChars` 或会话空闲 `idleMinutes` 时，后台调一次宿主模型，把最后 `tailMessages` 条之前的内容压成摘要并提炼最多 5 条事实；永远保留尾部原话。事实与旧事实按字面相似度合并，冲突（否定词/数字不同）把旧的标 `stale` 不删；事实只在原会话可见，不跨私聊、不进群。模型输出只接受 JSON，失败时原话和旧摘要都不动。
+
+原因：只追加原话会让模型看不到长期重点，直接截断又会丢掉最近上下文。分层后，摘要负责“更早的连续叙事”，长期事实负责“以后还能想起来的事”，原话尾部负责“刚才说了什么”。不引向量库和 embedding，先用本地 BM25；等召回质量不够再扩。
+
+### Jadekaninchen：DSH 应用端改名与本地记忆 MVP
+
+2026-11-27 19:10 CET   [2026-11-27 18:10 UTC]
+
+决策：`integrations/dsh-onebot` 改名为 `integrations/jadekaninchen`，插件标识改为 `jadekaninchen`，面板与本地化标题统一为 Jadekaninchen；新增 `src/memory/store.js`，按会话把入站/出站消息追加到 `$DSH_HOME/mondchat/memory.jsonl`，提供最近 N 条与大小写不敏感子串检索；新增只读工具 `mondchat_recall`。同时新增 `mock-onebot.mjs`（无依赖的最小 OneBot 12 WebSocket 服务端），在 IM 维护期间冒充桥，供插件联调。
+
+原因：记忆属于 agent 侧，放在 DSH 应用端而不是平台或桥里，保持「平台不托管 agent 记忆」的边界。先用消息事实落盘 + 子串检索，不引入摘要、向量库或模型；JSONL 只追加，记录量上来后再做轮转。IM 的网关→服务通道未恢复前，单测与联调不能依赖真桥，mock 只实现插件用到的动作与事件。
+
 ### Turms 插件限流默认值
 
 2026-11-26 01:44 CST   [2026-11-25 17:44 UTC]

@@ -4,6 +4,7 @@
 const STATUS_PATH = '/api/mondchat/status'
 const BRIDGE_PATH = '/api/mondchat/bridge'
 const SETTINGS_PATH = '/api/mondchat/settings'
+const PERSONAS_PATH = '/api/mondchat/personas'
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
     status,
@@ -56,6 +57,39 @@ export function registerRoutes(ctx, service, { log = () => {} } = {}) {
             return json({ bridge: service.status().bridge })
         } catch (error) {
             log('桥操作失败：', error.message)
+            return json({ error: String(error.message ?? error) }, 400)
+        }
+    })
+
+    register(PERSONAS_PATH, ['POST'], async (request) => {
+        const body = await readBody(request)
+        try {
+            if (body.action === 'read') {
+                const persona = service.personaDetails(body.id)
+                if (!persona) return json({ error: '人格不存在' }, 404)
+                return json({ persona, template: service.personas.template })
+            }
+            if (body.action === 'save') {
+                return json({
+                    ...service.savePersona({
+                        id: body.id,
+                        name: body.name,
+                        description: body.description,
+                        tags: body.tags,
+                        body: body.body,
+                    }),
+                    template: service.personas.template,
+                })
+            }
+            if (body.action === 'delete') {
+                return json(service.deletePersona(body.id))
+            }
+            if (body.action === 'template') {
+                return json({ template: service.personas.template })
+            }
+            return json({ error: 'action 只能是 read / save / delete / template' }, 400)
+        } catch (error) {
+            log('人格操作失败：', error.message)
             return json({ error: String(error.message ?? error) }, 400)
         }
     })

@@ -4,6 +4,8 @@
 export const LANGUAGES = ['zh', 'en']
 
 export const DEFAULTS = {
+    /** 人格卡 id；文件在 $DSH_HOME/mondchat/personas/<id>.md。 */
+    persona: 'jadekaninchen',
     /** 空字符串 = 跟随宿主时区。 */
     timezone: '',
     /** 回复语言，写进提示词的 <language>。 */
@@ -30,6 +32,8 @@ const text = (value, fallback) => (typeof value === 'string' && value.trim() ? v
 export function normalizeGlobal(config = {}) {
     const proactive = config.proactive ?? {}
     return {
+        persona: text(config.persona, DEFAULTS.persona).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40)
+            || DEFAULTS.persona,
         timezone: text(config.timezone, DEFAULTS.timezone),
         language: LANGUAGES.includes(config.language) ? config.language : DEFAULTS.language,
         groups: config.groups !== false,

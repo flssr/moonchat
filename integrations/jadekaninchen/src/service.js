@@ -15,7 +15,13 @@ import {
     takeMessages,
     titleOf as sessionTitleOf,
 } from './model/conversation.js'
-import { parseInbound } from './model/message.js'
+import { parseInbound, textOfSegments } from './model/message.js'
+import { createPersonaStore, safePersonaId } from './persona/personas.js'
+import { createMemoryStore } from './memory/store.js'
+import { createShortStore } from './memory/short.js'
+import { createCoreStore } from './memory/core.js'
+import { compressionPrompt, parseCompression } from './memory/compress.js'
+import { askHostModel } from './memory/model.js'
 import { buildWakePrompt } from './model/prompt.js'
 import {
     LANGUAGES,
@@ -33,7 +39,7 @@ const TICK_MS = 60_000
 const PLUGIN_DIR = dirname(dirname(fileURLToPath(import.meta.url)))
 
 export class MondChatService {
-    constructor({ ctx, config = {}, deps = {}, log = (...args) => console.log('[mondchat]', ...args) }) {
+    constructor({ ctx, config = {}, deps = {}, log = (...args) => console.log('[jadekaninchen]', ...args) }) {
         this.ctx = ctx
         this.config = config
         this.log = log
@@ -62,7 +68,35 @@ export class MondChatService {
         mkdirSync(this.workspace, { recursive: true })
         mkdirSync(this.home, { recursive: true })
 
+        this.personas = createPersonaStore({ home: this.home })
         this.statePath = join(this.home, 'state.json')
+        // 记忆分三层：原话 JSONL、每会话短期摘要、结构化长期事实。
+        this.memory = createMemoryStore({
+            file: config.memoryFile ?? join(this.home, 'memory.jsonl'),
+        })
+        this.short = createShortStore({
+            file: config.shortMemoryFile ?? join(this.home, 'memory-short.json'),
+        })
+        this.core = createCoreStore({
+            file: config.coreDatabaseFile ?? join(this.home, 'memory-core.sqlite'),
+            legacyFile: config.coreMemoryFile ?? join(this.home, 'memory-core.json'),
+        })
+        const memory = config.memory ?? {}
+        this.memoryPolicy = {
+            auto: memory.auto !== false,
+            compressMessages: Math.max(4, Number(memory.compressMessages) || 40),
+            compressChars: Math.max(1_000, Number(memory.compressChars) || 24_000),
+            tailMessages: Math.max(2, Number(memory.tailMessages) || 12),
+            idleMinutes: Math.max(1, Number(memory.idleMinutes) || 10),
+            retainDays: Math.max(1, Number(memory.retainDays) || 30),
+        }
+        this.compressing = new Set()
+        this.lastPruneAt = Date.now()
+        try {
+            this.memory.prune(this.memoryPolicy.retainDays)
+        } catch (error) {
+            this.log('清理旧原话失败：', error.message)
+        }
         this.state = this.loadState()
         this.global = normalizeGlobal(config)
         this.overrides = normalizeOverrides(this.state.settings)
@@ -127,6 +161,7 @@ export class MondChatService {
         this.subprocessHandle?.terminate()
         this.subprocessHandle = null
         this.bridge.close?.()
+        this.core.close?.()
     }
 
     // ---- 桥进程 ----
@@ -227,8 +262,8 @@ export class MondChatService {
             throw new Error('宿主没有 configEditor，不能改全局设置')
         }
         const entries = editor.entries()
-        const entry = entries.find((item) => item.id === 'mondchat-onebot')
-            ?? entries.find((item) => item.name === 'dsh-onebot')
+        const entry = entries.find((item) => item.id === 'jadekaninchen')
+            ?? entries.find((item) => item.name === 'jadekaninchen')
         if (!entry) throw new Error('找不到插件在 profile 里的配置项')
 
         const next = {}
@@ -238,6 +273,11 @@ export class MondChatService {
             next.language = LANGUAGES.includes(patch.language) ? patch.language : this.global.language
         }
         if (patch.groups !== undefined) next.groups = Boolean(patch.groups)
+        if (patch.persona !== undefined) {
+            const id = safePersonaId(patch.persona)
+            if (!id || !this.personas.read(id)) throw new Error('人格不存在')
+            next.persona = id
+        }
         if (Object.keys(next).length === 0) throw new Error('没有可改的全局设置')
 
         await editor.edit(entry, (current) => ({ ...current, ...next }))
@@ -302,7 +342,16 @@ export class MondChatService {
     ingest(event) {
         const parsed = parseInbound(event, { groupsEnabled: this.global.groups })
         if (!parsed) return
+        this.memory.append({
+            conversation: parsed.conversation,
+            direction: 'in',
+            userId: parsed.message.userId,
+            text: parsed.message.text,
+            messageId: parsed.message.messageId,
+            at: parsed.message.at > 0 ? parsed.message.at * 1000 : Date.now(),
+        })
         const next = this.put(recordMessage(this.conversationFor(parsed.conversation), parsed.message))
+        this.maybeCompress(next.key).catch((error) => this.log(`整理 ${next.key} 记忆失败：`, error.message))
         this.scheduleWake(next.key, inboundReason(next.queue.length))
     }
 
@@ -327,6 +376,8 @@ export class MondChatService {
             reason,
             language: this.global.language,
             timeZone: zoneOf(this.global),
+            memory: this.memoryContext(key),
+            persona: this.personaText(),
         })
         try {
             await this.ctx.sessionController.prompt({
@@ -504,7 +555,159 @@ export class MondChatService {
             ...(conversation.kind === 'group' ? { group_id: conversation.id } : { user_id: conversation.id }),
             message: segments,
         })
-        return { message_id: String(result?.message_id ?? '') }
+        const messageId = String(result?.message_id ?? '')
+        const text = textOfSegments(segments)
+        if (text.trim()) {
+            this.memory.append({
+                conversation: key,
+                direction: 'out',
+                text,
+                messageId,
+                at: Date.now(),
+            })
+            this.maybeCompress(key).catch((error) => this.log(`整理 ${key} 记忆失败：`, error.message))
+        }
+        return { message_id: messageId }
+    }
+
+    /** 原话层只读：按会话取最近 N 条；有 query 就做大小写不敏感的子串检索。 */
+    recall(key, { query = '', limit = 20 } = {}) {
+        return query
+            ? this.memory.search(query, { conversation: key, limit })
+            : this.memory.recent(key, limit)
+    }
+
+    personaText() {
+        return this.personas.text(this.global.persona)
+    }
+
+    personaDetails(id) {
+        return this.personas.read(id)
+    }
+
+    savePersona(input) {
+        const persona = this.personas.save(input)
+        return { persona, personas: this.personas.list() }
+    }
+
+    deletePersona(id) {
+        const safe = safePersonaId(id)
+        if (!safe) throw new Error('人格 id 不合法')
+        if (safe === this.global.persona) throw new Error('不能删除当前使用的人格，先切换到别的人格')
+        if (!this.personas.remove(safe)) throw new Error('人格不存在')
+        return { personas: this.personas.list() }
+    }
+
+    memorySummary(key) {
+        return this.short.get(key)?.summary ?? ''
+    }
+
+    /** 长期事实：有 query 用 BM25，没有就按新近/重要度取。 */
+    recallFacts(key, { query = '', limit = 6 } = {}) {
+        const hits = query
+            ? this.core.search(query, { conversation: key, limit })
+            : this.core.recent(key, limit)
+        return hits.map((hit) => hit.fact)
+    }
+
+    /** 唤醒时给提示词用的两层记忆；原话仍走 mondchat_unread / mondchat_recall。 */
+    memoryContext(key) {
+        const summary = this.memorySummary(key)
+        const last = this.memory.recent(key, 1)[0]
+        const query = last?.text || this.conversationFor(key).name || ''
+        const facts = this.recallFacts(key, { query, limit: 4 })
+        const seen = new Set(facts.map((fact) => fact.id))
+        for (const fact of this.recallFacts(key, { limit: 4 })) {
+            if (facts.length >= 4) break
+            if (!seen.has(fact.id)) {
+                facts.push(fact)
+                seen.add(fact.id)
+            }
+        }
+        return { summary, facts: facts.map((fact) => fact.text) }
+    }
+
+    hasMemoryModel() {
+        const llm = this.ctx?.llm ?? this.ctx?.get?.('llm')
+        if (!llm || typeof llm.stream !== 'function') return false
+        if (this.config?.model?.provider && this.config?.model?.model) return true
+        try {
+            const service = this.ctx?.get?.('agentDefaultModel')
+            const selection = typeof service?.currentSelection === 'function' ? service.currentSelection() : null
+            return Boolean(selection?.provider && selection?.model)
+        } catch {
+            return false
+        }
+    }
+
+    /**
+     * 短期摘要 + 提炼长期事实。阈值到了才压，并永远留最后 tailMessages 条原话；
+     * 模型失败不丢任何东西，下次再试。
+     */
+    async maybeCompress(key, { force = false, idleOnly = false } = {}) {
+        if (!force && !this.memoryPolicy.auto) return null
+        if (this.compressing.has(key) || !this.hasMemoryModel()) return null
+        const raw = this.memory.list(key)
+        const short = this.short.get(key)
+        let pending = raw
+        if (short?.throughId) {
+            const index = raw.findIndex((entry) => entry.id && entry.id === short.throughId)
+            if (index >= 0) pending = raw.slice(index + 1)
+            else if (short.throughAt) pending = raw.filter((entry) => entry.at > short.throughAt)
+        }
+        const tail = this.memoryPolicy.tailMessages
+        if (pending.length <= tail) return null
+        const chars = pending.reduce((sum, entry) => sum + entry.text.length, 0)
+        if (!force) {
+            if (idleOnly) {
+                if (pending.length < 4) return null
+                const last = pending.at(-1)
+                if (Date.now() - last.at < this.memoryPolicy.idleMinutes * 60_000) return null
+            } else if (pending.length < this.memoryPolicy.compressMessages
+                && chars < this.memoryPolicy.compressChars) {
+                return null
+            }
+        }
+        const cut = pending.length - tail
+        if (cut < 2) return null
+        const batch = pending.slice(0, cut)
+        const through = batch.at(-1)
+        this.compressing.add(key)
+        try {
+            const prompt = compressionPrompt({
+                summary: short?.summary ?? '',
+                messages: batch,
+                conversation: key,
+            })
+            const output = await askHostModel(this.ctx, {
+                ...prompt,
+                config: this.config,
+                maxTokens: 900,
+                temperature: 0.2,
+            })
+            const parsed = parseCompression(output, { at: through.at })
+            if (!parsed) throw new Error('模型输出无法解析为记忆 JSON')
+            this.short.set(key, {
+                summary: parsed.summary,
+                throughId: through.id,
+                throughAt: through.at,
+            })
+            for (const fact of parsed.facts) {
+                this.core.add({ ...fact, conversation: key, source: 'extract' })
+            }
+            this.memory.prune(this.memoryPolicy.retainDays)
+            return parsed
+        } catch (error) {
+            this.log(`压缩 ${key} 记忆失败，保留原话：`, error.message)
+            return null
+        } finally {
+            this.compressing.delete(key)
+        }
+    }
+
+    /** 测试与手动整理入口：默认忽略阈值，但仍保留 tail。 */
+    compressNow(key, options = {}) {
+        return this.maybeCompress(key, { force: true, ...options })
     }
 
     // ---- 主动话题 ----
@@ -523,6 +726,18 @@ export class MondChatService {
             this.put({ ...conversation, lastActivity: now })
             this.wake(conversation.key, proactiveReason(gate.idleMinutes))
                 .catch((error) => this.log('主动话题失败：', error.message))
+        }
+        for (const conversation of this.conversations.values()) {
+            this.maybeCompress(conversation.key, { idleOnly: true })
+                .catch((error) => this.log(`空闲整理 ${conversation.key} 记忆失败：`, error.message))
+        }
+        if (now - this.lastPruneAt > 3_600_000) {
+            this.lastPruneAt = now
+            try {
+                this.memory.prune(this.memoryPolicy.retainDays)
+            } catch (error) {
+                this.log('定时清理旧原话失败：', error.message)
+            }
         }
     }
 
@@ -553,6 +768,7 @@ export class MondChatService {
                 port: this.bridgePort,
             },
             config: {
+                persona: this.global.persona,
                 groups: this.global.groups,
                 workspace: this.workspace,
                 language: this.global.language,
@@ -560,6 +776,7 @@ export class MondChatService {
                 model: this.global.model,
                 proactive: this.global.proactive,
             },
+            personas: this.personas.list(),
             conversations: list,
         }
     }
